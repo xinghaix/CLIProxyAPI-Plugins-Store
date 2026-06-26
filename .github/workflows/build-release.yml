@@ -40,6 +40,11 @@ jobs:
             runner: macos-latest
             ext: dylib
             cc: ""
+          - goos: windows
+            goarch: amd64
+            runner: windows-latest
+            ext: dll
+            cc: ""
 
     steps:
       - name: Checkout plugin store
@@ -78,7 +83,15 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           OUTPUT="${{ env.PLUGIN_ID }}-v${VERSION}.${{ matrix.ext }}"
-          go build -buildmode=c-shared -o "$OUTPUT" .
+          # Go 1.26 peCreateExportFile generates .def files that GNU ld 2.45+
+          # (MinGW GCC 15.x) rejects. Using --export-all-symbols skips Go's
+          # .def generation and lets mingw ld handle exports natively.
+          # See https://github.com/golang/go/issues/78238
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            go build -buildmode=c-shared -ldflags="-extldflags=-Wl,--export-all-symbols" -o "$OUTPUT" .
+          else
+            go build -buildmode=c-shared -o "$OUTPUT" .
+          fi
           file "$OUTPUT" || true
 
       - name: Package zip
@@ -89,7 +102,11 @@ jobs:
           LIB="${{ env.PLUGIN_ID }}-v${VERSION}.${{ matrix.ext }}"
           ZIP_NAME="${{ env.PLUGIN_ID }}_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.zip"
           rm -f "$ZIP_NAME"
-          zip -j "$ZIP_NAME" "$LIB"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            7z a "$ZIP_NAME" "$LIB"
+          else
+            zip -j "$ZIP_NAME" "$LIB"
+          fi
           if command -v shasum &>/dev/null; then
             shasum -a 256 "$ZIP_NAME" >> checksums_fragment.txt
           else
