@@ -40,11 +40,6 @@ jobs:
             runner: macos-latest
             ext: dylib
             cc: ""
-          - goos: windows
-            goarch: amd64
-            runner: windows-latest
-            ext: dll
-            cc: ""
 
     steps:
       - name: Checkout plugin store
@@ -94,11 +89,7 @@ jobs:
           LIB="${{ env.PLUGIN_ID }}-v${VERSION}.${{ matrix.ext }}"
           ZIP_NAME="${{ env.PLUGIN_ID }}_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.zip"
           rm -f "$ZIP_NAME"
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            7z a "$ZIP_NAME" "$LIB"
-          else
-            zip -j "$ZIP_NAME" "$LIB"
-          fi
+          zip -j "$ZIP_NAME" "$LIB"
           if command -v shasum &>/dev/null; then
             shasum -a 256 "$ZIP_NAME" >> checksums_fragment.txt
           else
