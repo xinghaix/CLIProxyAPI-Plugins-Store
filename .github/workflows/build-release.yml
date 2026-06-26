@@ -45,6 +45,11 @@ jobs:
             runner: windows-latest
             ext: dll
             cc: ""
+          - goos: windows
+            goarch: arm64
+            runner: windows-11-arm
+            ext: dll
+            cc: ""
 
     steps:
       - name: Checkout plugin store
