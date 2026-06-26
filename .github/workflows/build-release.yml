@@ -85,6 +85,7 @@ jobs:
           CGO_ENABLED: "1"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CC: ${{ (matrix.goos == 'windows' && matrix.goarch == 'arm64') && 'clang' || '' }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           OUTPUT="${{ env.PLUGIN_ID }}-v${VERSION}.${{ matrix.ext }}"
@@ -92,6 +93,9 @@ jobs:
           # (MinGW GCC 15.x) rejects. Using --export-all-symbols skips Go's
           # .def generation and lets mingw ld handle exports natively.
           # See https://github.com/golang/go/issues/78238
+          # On windows/arm64, the runner's gcc is x86_64 and cannot assemble
+          # ARM64 instructions. Clang (LLVM) on the windows-11-arm runner
+          # handles ARM64 natively.
           if [ "${{ matrix.goos }}" = "windows" ]; then
             go build -buildmode=c-shared -ldflags="-extldflags=-Wl,--export-all-symbols" -o "$OUTPUT" .
           else
