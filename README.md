@@ -69,33 +69,53 @@ curl http://localhost:8317/v0/management/plugins \
 
 Check that `registered: true` and `effective_enabled: true` for the installed plugin.
 
-## Publishing a Plugin
+## Publishing a release
 
-Each plugin lives under `plugins/<plugin-id>/`. To add a new plugin:
+Store releases are **one semver tag → one GitHub Release** containing **all** plugins under `plugins/*/go`. CPA picks assets from `releases/latest` on the repo URL in `registry.json`.
 
-1. Create `plugins/<plugin-id>/` with the plugin source code.
-2. Add an entry to `registry.json` with the plugin metadata.
-3. Push tag **`v<version>`** (e.g. **`v0.1.0`**) on this repo. Workflow **Build and Release Plugins** builds **every** plugin under `plugins/*/go` for all platforms and attaches all zips plus **`checksums.txt`** to **one** GitHub Release on that tag.
+### Release checklist (order matters)
 
-   CPA install/update calls **`releases/latest`** on the `repository` URL in `registry.json` (this store repo). The release tag must normalize to a valid version (e.g. `v0.1.0` → `0.1.0`). Do **not** use suffix tags like `v0.1.0-plugin-name` — both plugins share the same latest release and are distinguished by asset names:
+1. **Change the plugin** (if this release includes code or metadata fixes).
+2. **Choose the new semver** (e.g. `0.1.4`). It must be **greater than any existing `v*` tag** on this repo.
+3. **Bump version everywhere** for plugins you are shipping (same string, no `v` prefix):
+   - `registry.json` → each affected plugin's `"version"`
+   - `plugins/<plugin-id>/go/main.go` → `var pluginVersion = "…"`
+   - `plugins/<plugin-id>/Makefile` → `VERSION := …` (if the plugin has a Makefile)
+4. **Commit and push to `main`** so the tag points at sources that already declare that version.
+5. **Create and push the tag manually** (tag push triggers CI; do not rely on CI to invent the version):
 
-   - `<plugin-id>_<version>_<goos>_<goarch>.zip`
-   - `checksums.txt`
+   ```bash
+   git tag -a v0.1.4 -m "v0.1.4"
+   git push origin v0.1.4
+   ```
 
-The registry `repository` field must point to `https://github.com/{owner}/{repo}`. The CPA plugin store client fetches releases from that repository's GitHub Releases API.
+6. **Watch the workflow** [Build and Release Plugins](https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/actions) until `discover`, all `build` matrix jobs, and `release` succeed. The release job uploads every `*.zip` and `checksums.txt`.
 
-### Zip format
+### What CI does (after the tag)
+
+- Parses `VERSION` from the tag (`v0.1.4` → `0.1.4`). Tags must look like `v0.1.0` — **no** per-plugin suffix tags (e.g. `v0.1.0-cpa-manager-plus`).
+- Builds each plugin for linux/darwin/windows × amd64/arm64.
+- Names artifacts `<plugin-id>_<version>_<goos>_<goarch>.zip` with `<plugin-id>-v<version>.{so,dylib,dll}` inside.
+- Sets link-time `-X main.pluginVersion=<version>` so CPA sees the same version in plugin metadata as in the zip name (must match what you set in source in step 3).
+
+### Adding a new plugin (first time)
+
+1. Add `plugins/<plugin-id>/` with `go/go.mod` and source.
+2. Add a `registry.json` entry (`repository` = this store repo).
+3. Follow the **Release checklist** above for the first tag that ships it.
+
+### Zip / checksums examples
 
 ```
-developer-role-normalizer_0.1.0_linux_amd64.zip
-└── developer-role-normalizer-v0.1.0.so      # dynamic library at zip root
+developer-role-normalizer_0.1.4_linux_amd64.zip
+└── developer-role-normalizer-v0.1.4.so
 ```
 
-### Checksums format
+```
+<sha256>  developer-role-normalizer_0.1.4_linux_amd64.zip
+```
 
-```
-<sha256>  developer-role-normalizer_0.1.0_linux_amd64.zip
-```
+The registry `repository` field must be `https://github.com/{owner}/{repo}` so CPA can call the GitHub Releases API.
 
 ## License
 

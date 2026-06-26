@@ -84,6 +84,8 @@ type registrationCapability struct {
 	RequestNormalizer bool `json:"request_normalizer"`
 }
 
+var pluginVersion = "0.1.4"
+
 func main() {}
 
 //export cliproxy_plugin_init
@@ -171,7 +173,7 @@ func pluginRegistration() registration {
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata: pluginapi.Metadata{
 			Name:             "developer-role-normalizer",
-			Version:          "0.1.0",
+			Version:          pluginVersion,
 			Author:           "xinghaix",
 			GitHubRepository: "https://github.com/xinghaix/CLIProxyAPI",
 			ConfigFields: []pluginapi.ConfigField{{

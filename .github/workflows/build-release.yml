@@ -1,4 +1,5 @@
-# CPA plugin store: one GitHub Release per semver tag (e.g. v0.1.0).
+# Tag is pushed manually after bumping registry.json + main.pluginVersion in source.
+# Workflow injects -X main.pluginVersion from the tag at link time (must match step 3 in README).
 # All plugins under plugins/*/go are built; all zips + checksums.txt go on that release.
 # CPA uses GET .../releases/latest on registry.repository and selects
 #   <plugin-id>_<version>_<goos>_<goarch>.zip from release assets.
@@ -104,10 +105,11 @@ jobs:
           PLUGIN_ID="${{ matrix.plugin_id }}"
           VERSION="${{ needs.discover.outputs.version }}"
           OUTPUT="${PLUGIN_ID}-v${VERSION}.${{ matrix.ext }}"
+          LDFLAGS="-X main.pluginVersion=${VERSION}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            go build -buildmode=c-shared -ldflags="-extldflags=-Wl,--export-all-symbols" -o "$OUTPUT" .
+            go build -buildmode=c-shared -ldflags="${LDFLAGS} -extldflags=-Wl,--export-all-symbols" -o "$OUTPUT" .
           else
-            go build -buildmode=c-shared -o "$OUTPUT" .
+            go build -buildmode=c-shared -ldflags="${LDFLAGS}" -o "$OUTPUT" .
           fi
           file "$OUTPUT" || true
 

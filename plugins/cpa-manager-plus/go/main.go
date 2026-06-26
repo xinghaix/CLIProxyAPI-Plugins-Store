@@ -74,7 +74,6 @@ import (
 
 const (
 	pluginID              = "cpa-manager-plus"
-	pluginVersion         = "0.1.0"
 	defaultManagerBaseURL = "http://127.0.0.1:18317"
 	managementHealthPath  = "/v0/management/cpa-manager-plus/health"
 	managementProxyPath   = "/v0/management/cpa-manager-plus/proxy"
@@ -84,6 +83,8 @@ const (
 	maxProxyBodyBytes     = 8 << 20
 	hostHTTPTimeout       = 120 * time.Second
 )
+
+var pluginVersion = "0.1.4"
 
 var activeConfig atomic.Value
 
