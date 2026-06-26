@@ -41,14 +41,14 @@ jobs:
           fi
           PLUGINS_JSON=$(printf '%s\n' "${PLUGINS[@]}" | jq -R . | jq -s .)
           MATRIX=$(jq -nc --argjson plugins "$PLUGINS_JSON" '
-            [$plugins[] as $pid |
+            {include: [$plugins[] as $pid |
               {plugin_id:$pid,goos:"linux",goarch:"amd64",runner:"ubuntu-latest",ext:"so"},
               {plugin_id:$pid,goos:"linux",goarch:"arm64",runner:"ubuntu-24.04-arm",ext:"so"},
               {plugin_id:$pid,goos:"darwin",goarch:"amd64",runner:"macos-latest",ext:"dylib"},
               {plugin_id:$pid,goos:"darwin",goarch:"arm64",runner:"macos-latest",ext:"dylib"},
               {plugin_id:$pid,goos:"windows",goarch:"amd64",runner:"windows-latest",ext:"dll"},
               {plugin_id:$pid,goos:"windows",goarch:"arm64",runner:"windows-11-arm",ext:"dll"}
-            ]
+            ]}
           ')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           {
@@ -56,7 +56,7 @@ jobs:
             echo "$MATRIX"
             echo 'MATRIX_EOF'
           } >> "$GITHUB_OUTPUT"
-          echo "Plugins: ${PLUGINS[*]} version $VERSION jobs: $(echo "$MATRIX" | jq length)"
+          echo "Plugins: ${PLUGINS[*]} version $VERSION jobs: $(echo "$MATRIX" | jq '.include | length')"
 
   build:
     name: ${{ matrix.plugin_id }} ${{ matrix.goos }}/${{ matrix.goarch }}
