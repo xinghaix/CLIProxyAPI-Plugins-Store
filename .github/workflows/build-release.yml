@@ -34,7 +34,7 @@ jobs:
             echo "invalid tag for CPA plugin store: $TAG (need v0.1.0 style)" >&2
             exit 1
           fi
-          mapfile -t PLUGINS < <(find plugins -mindepth 2 -maxdepth 2 -type f -name go.mod | sed 's|/go/go.mod$||;s|.*/plugins/||' | sort -u)
+          mapfile -t PLUGINS < <(find plugins -type f -path '*/go/go.mod' | sed 's|/go/go.mod$||;s|^plugins/||' | sort -u)
           if [ "${#PLUGINS[@]}" -eq 0 ]; then
             echo "no plugins under plugins/*/go" >&2
             exit 1
