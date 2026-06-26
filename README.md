@@ -75,9 +75,12 @@ Each plugin lives under `plugins/<plugin-id>/`. To add a new plugin:
 
 1. Create `plugins/<plugin-id>/` with the plugin source code.
 2. Add an entry to `registry.json` with the plugin metadata.
-3. Create a GitHub release tagged `v<version>` (e.g. `v0.1.0`) with:
-   - A zip asset named `<plugin-id>_<version>_<goos>_<goarch>.zip` containing the compiled dynamic library at the zip root.
-   - A `checksums.txt` file with SHA256 checksums.
+3. Push tag **`v<version>`** (e.g. **`v0.1.0`**) on this repo. Workflow **Build and Release Plugins** builds **every** plugin under `plugins/*/go` for all platforms and attaches all zips plus **`checksums.txt`** to **one** GitHub Release on that tag.
+
+   CPA install/update calls **`releases/latest`** on the `repository` URL in `registry.json` (this store repo). The release tag must normalize to a valid version (e.g. `v0.1.0` → `0.1.0`). Do **not** use suffix tags like `v0.1.0-plugin-name` — both plugins share the same latest release and are distinguished by asset names:
+
+   - `<plugin-id>_<version>_<goos>_<goarch>.zip`
+   - `checksums.txt`
 
 The registry `repository` field must point to `https://github.com/{owner}/{repo}`. The CPA plugin store client fetches releases from that repository's GitHub Releases API.
 

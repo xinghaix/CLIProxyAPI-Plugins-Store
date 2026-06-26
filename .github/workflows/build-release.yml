@@ -1,23 +1,14 @@
-name: Build and Release Plugin
+# CPA plugin store: one GitHub Release per semver tag (e.g. v0.1.0).
+# All plugins under plugins/*/go are built; all zips + checksums.txt go on that release.
+# CPA uses GET .../releases/latest on registry.repository and selects
+#   <plugin-id>_<version>_<goos>_<goarch>.zip from release assets.
+
+name: Build and Release Plugins
 
 on:
   push:
     tags:
-      - "v*"
-  workflow_dispatch:
-    inputs:
-      plugin_id:
-        description: Plugin directory name under plugins/
-        required: true
-        default: cpa-manager-plus
-        type: choice
-        options:
-          - cpa-manager-plus
-          - developer-role-normalizer
-      release_tag:
-        description: Git tag for the release (e.g. v0.1.0-cpa-manager-plus)
-        required: true
-        default: v0.1.0-cpa-manager-plus
+      - "v[0-9]*"
 
 permissions:
   contents: write
@@ -26,54 +17,57 @@ env:
   GO_VERSION: "1.26"
 
 jobs:
-  resolve:
+  discover:
     runs-on: ubuntu-latest
     outputs:
-      plugin_id: ${{ steps.out.outputs.plugin_id }}
-      release_tag: ${{ steps.out.outputs.release_tag }}
+      version: ${{ steps.list.outputs.version }}
+      matrix: ${{ steps.list.outputs.matrix }}
     steps:
-      - id: out
+      - uses: actions/checkout@v4
+      - id: list
+        shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "plugin_id=${{ inputs.plugin_id }}" >> "$GITHUB_OUTPUT"
-            echo "release_tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "plugin_id=developer-role-normalizer" >> "$GITHUB_OUTPUT"
-            echo "release_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          if ! echo "$VERSION" | grep -Eq '^[0-9][0-9A-Za-z.+-]*$'; then
+            echo "invalid tag for CPA plugin store: $TAG (need v0.1.0 style)" >&2
+            exit 1
           fi
+          mapfile -t PLUGINS < <(find plugins -mindepth 2 -maxdepth 2 -type f -name go.mod | sed 's|/go/go.mod$||;s|.*/plugins/||' | sort -u)
+          if [ "${#PLUGINS[@]}" -eq 0 ]; then
+            echo "no plugins under plugins/*/go" >&2
+            exit 1
+          fi
+          MATRIX='['
+          first=1
+          add() {
+            local pid="$1" goos="$2" goarch="$3" runner="$4" ext="$5"
+            if [ "$first" -eq 0 ]; then MATRIX+=','; fi
+            first=0
+            MATRIX+=$(jq -nc --arg pid "$pid" --arg goos "$goos" --arg goarch "$goarch" --arg runner "$runner" --arg ext "$ext" \
+              '{plugin_id:$pid,goos:$goos,goarch:$goarch,runner:$runner,ext:$ext}')
+          }
+          for pid in "${PLUGINS[@]}"; do
+            add "$pid" linux amd64 ubuntu-latest so
+            add "$pid" linux arm64 ubuntu-24.04-arm so
+            add "$pid" darwin amd64 macos-latest dylib
+            add "$pid" darwin arm64 macos-latest dylib
+            add "$pid" windows amd64 windows-latest dll
+            add "$pid" windows arm64 windows-11-arm dll
+          done
+          MATRIX+=']'
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Plugins: ${PLUGINS[*]} version $VERSION jobs: $(echo "$MATRIX" | jq length)"
 
   build:
-    name: Build ${{ needs.resolve.outputs.plugin_id }} ${{ matrix.goos }}/${{ matrix.goarch }}
-    needs: resolve
+    name: ${{ matrix.plugin_id }} ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: discover
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-            runner: ubuntu-latest
-            ext: so
-          - goos: linux
-            goarch: arm64
-            runner: ubuntu-24.04-arm
-            ext: so
-          - goos: darwin
-            goarch: amd64
-            runner: macos-latest
-            ext: dylib
-          - goos: darwin
-            goarch: arm64
-            runner: macos-latest
-            ext: dylib
-          - goos: windows
-            goarch: amd64
-            runner: windows-latest
-            ext: dll
-          - goos: windows
-            goarch: arm64
-            runner: windows-11-arm
-            ext: dll
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
 
     steps:
       - name: Checkout plugin store
@@ -92,7 +86,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Update go.mod replace path
-        working-directory: plugins/${{ needs.resolve.outputs.plugin_id }}/go
+        working-directory: plugins/${{ matrix.plugin_id }}/go
         shell: bash
         run: |
           WORKSPACE="${{ github.workspace }}"
@@ -102,7 +96,7 @@ jobs:
           go mod tidy
 
       - name: Build plugin
-        working-directory: plugins/${{ needs.resolve.outputs.plugin_id }}/go
+        working-directory: plugins/${{ matrix.plugin_id }}/go
         shell: bash
         env:
           CGO_ENABLED: "1"
@@ -110,11 +104,8 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CC: ${{ (matrix.goos == 'windows' && matrix.goarch == 'arm64') && 'clang' || '' }}
         run: |
-          PLUGIN_ID="${{ needs.resolve.outputs.plugin_id }}"
-          TAG="${{ needs.resolve.outputs.release_tag }}"
-          VERSION="${TAG#v}"
-          # strip optional -plugin-id suffix from version for artifact naming
-          VERSION="${VERSION%%-*}"
+          PLUGIN_ID="${{ matrix.plugin_id }}"
+          VERSION="${{ needs.discover.outputs.version }}"
           OUTPUT="${PLUGIN_ID}-v${VERSION}.${{ matrix.ext }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
             go build -buildmode=c-shared -ldflags="-extldflags=-Wl,--export-all-symbols" -o "$OUTPUT" .
@@ -124,13 +115,11 @@ jobs:
           file "$OUTPUT" || true
 
       - name: Package zip
-        working-directory: plugins/${{ needs.resolve.outputs.plugin_id }}/go
+        working-directory: plugins/${{ matrix.plugin_id }}/go
         shell: bash
         run: |
-          PLUGIN_ID="${{ needs.resolve.outputs.plugin_id }}"
-          TAG="${{ needs.resolve.outputs.release_tag }}"
-          VERSION="${TAG#v}"
-          VERSION="${VERSION%%-*}"
+          PLUGIN_ID="${{ matrix.plugin_id }}"
+          VERSION="${{ needs.discover.outputs.version }}"
           LIB="${PLUGIN_ID}-v${VERSION}.${{ matrix.ext }}"
           ZIP_NAME="${PLUGIN_ID}_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.zip"
           rm -f "$ZIP_NAME"
@@ -148,15 +137,15 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: plugin-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: ${{ matrix.plugin_id }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
-            plugins/${{ needs.resolve.outputs.plugin_id }}/go/*.zip
-            plugins/${{ needs.resolve.outputs.plugin_id }}/go/checksums_fragment.txt
+            plugins/${{ matrix.plugin_id }}/go/*.zip
+            plugins/${{ matrix.plugin_id }}/go/checksums_fragment.txt
 
   release:
-    name: Assemble Release
+    name: Assemble Release ${{ needs.discover.outputs.version }}
     runs-on: ubuntu-latest
-    needs: [resolve, build]
+    needs: [discover, build]
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -166,13 +155,14 @@ jobs:
       - name: Merge checksums
         run: |
           find artifacts -name 'checksums_fragment.txt' -exec cat {} \; | sort -u > checksums.txt
+          wc -l checksums.txt
           cat checksums.txt
 
       - name: Create release and upload assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.resolve.outputs.release_tag }}
-          name: ${{ needs.resolve.outputs.release_tag }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
             artifacts/**/*.zip
