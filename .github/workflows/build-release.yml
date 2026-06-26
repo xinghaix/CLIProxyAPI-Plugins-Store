@@ -39,26 +39,23 @@ jobs:
             echo "no plugins under plugins/*/go" >&2
             exit 1
           fi
-          MATRIX='['
-          first=1
-          add() {
-            local pid="$1" goos="$2" goarch="$3" runner="$4" ext="$5"
-            if [ "$first" -eq 0 ]; then MATRIX+=','; fi
-            first=0
-            MATRIX+=$(jq -nc --arg pid "$pid" --arg goos "$goos" --arg goarch "$goarch" --arg runner "$runner" --arg ext "$ext" \
-              '{plugin_id:$pid,goos:$goos,goarch:$goarch,runner:$runner,ext:$ext}')
-          }
-          for pid in "${PLUGINS[@]}"; do
-            add "$pid" linux amd64 ubuntu-latest so
-            add "$pid" linux arm64 ubuntu-24.04-arm so
-            add "$pid" darwin amd64 macos-latest dylib
-            add "$pid" darwin arm64 macos-latest dylib
-            add "$pid" windows amd64 windows-latest dll
-            add "$pid" windows arm64 windows-11-arm dll
-          done
-          MATRIX+=']'
-          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          PLUGINS_JSON=$(printf '%s\n' "${PLUGINS[@]}" | jq -R . | jq -s .)
+          MATRIX=$(jq -nc --argjson plugins "$PLUGINS_JSON" '
+            [$plugins[] as $pid |
+              {plugin_id:$pid,goos:"linux",goarch:"amd64",runner:"ubuntu-latest",ext:"so"},
+              {plugin_id:$pid,goos:"linux",goarch:"arm64",runner:"ubuntu-24.04-arm",ext:"so"},
+              {plugin_id:$pid,goos:"darwin",goarch:"amd64",runner:"macos-latest",ext:"dylib"},
+              {plugin_id:$pid,goos:"darwin",goarch:"arm64",runner:"macos-latest",ext:"dylib"},
+              {plugin_id:$pid,goos:"windows",goarch:"amd64",runner:"windows-latest",ext:"dll"},
+              {plugin_id:$pid,goos:"windows",goarch:"arm64",runner:"windows-11-arm",ext:"dll"}
+            ]
+          ')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          {
+            echo 'matrix<<MATRIX_EOF'
+            echo "$MATRIX"
+            echo 'MATRIX_EOF'
+          } >> "$GITHUB_OUTPUT"
           echo "Plugins: ${PLUGINS[*]} version $VERSION jobs: $(echo "$MATRIX" | jq length)"
 
   build:
