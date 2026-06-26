@@ -9,6 +9,15 @@ Custom plugin store registry for [CLIProxyAPI](https://github.com/router-for-me/
 ├── registry.json                          # Plugin store registry (consumed by CPA)
 ├── README.md                              # This file
 └── plugins/
+    ├── cpa-manager-plus/                 # CPA Manager Plus plugin mirror
+    │   ├── README.md
+    │   ├── Makefile
+    │   ├── embed.go
+    │   ├── go.mod
+    │   ├── go.sum
+    │   ├── main.go
+    │   └── web/
+    │       └── index.html
     └── developer-role-normalizer/         # One subdirectory per plugin
         ├── README.md                      # Plugin documentation
         └── go/                            # Plugin source code
@@ -22,6 +31,7 @@ Custom plugin store registry for [CLIProxyAPI](https://github.com/router-for-me/
 | Plugin | Description |
 |--------|-------------|
 | [developer-role-normalizer](plugins/developer-role-normalizer/) | Converts `developer` message roles to `system` for OpenAI-compatible providers that don't recognize the `developer` role. |
+| [cpa-manager-plus](plugins/cpa-manager-plus/) | Embeds CPA Manager Plus inside CPA and proxies panel calls to a Manager Server. |
 
 ## Using This Store
 
@@ -43,18 +53,18 @@ The built-in official store is always included; this adds a third-party source a
 ```bash
 # List available plugins from all stores
 curl http://localhost:8317/v0/management/plugin-store \
-  -H "Authorization: Bearer <management-key>"
+  -H "Authorization: Bearer ***"
 
 # Install a specific plugin
-curl -X POST http://localhost:8317/v0/management/plugin-store/developer-role-normalizer/install \
-  -H "Authorization: Bearer <management-key>"
+curl -X POST http://localhost:8317/v0/management/plugin-store/cpa-manager-plus/install \
+  -H "Authorization: Bearer ***"
 ```
 
 ### 3. Verify installation
 
 ```bash
 curl http://localhost:8317/v0/management/plugins \
-  -H "Authorization: Bearer <management-key>"
+  -H "Authorization: Bearer ***"
 ```
 
 Check that `registered: true` and `effective_enabled: true` for the installed plugin.

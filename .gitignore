@@ -1,0 +1,7 @@
+.idea/
+*.dylib
+*.so
+*.dll
+*.h
+checksums_fragment.txt
+*.zip

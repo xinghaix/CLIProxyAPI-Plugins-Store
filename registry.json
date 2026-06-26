@@ -12,6 +12,18 @@
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/developer-role-normalizer",
       "license": "MIT",
       "tags": ["request-normalizer", "openai-compat", "role-normalization"]
+    },
+    {
+      "id": "cpa-manager-plus",
+      "name": "CPA Manager Plus",
+      "description": "Embeds Manager Plus dashboard, usage, monitoring, and inspection in CPA via reverse proxy to Manager Server (host.http.do).",
+      "author": "xinghaix",
+      "version": "0.1.0",
+      "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
+      "logo": "",
+      "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/cpa-manager-plus",
+      "license": "MIT",
+      "tags": ["management-ui", "monitoring", "usage", "proxy"]
     }
   ]
 }
