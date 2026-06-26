@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "plugins": [
+    {
+      "id": "developer-role-normalizer",
+      "name": "Developer Role Normalizer",
+      "description": "Converts 'developer' message roles to 'system' for OpenAI-compatible providers (e.g. DeepSeek) that do not recognize the 'developer' role.",
+      "author": "xinghaix",
+      "version": "0.1.0",
+      "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
+      "logo": "",
+      "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/developer-role-normalizer",
+      "license": "MIT",
+      "tags": ["request-normalizer", "openai-compat", "role-normalization"]
+    }
+  ]
+}
