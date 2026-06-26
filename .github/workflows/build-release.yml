@@ -66,7 +66,7 @@ jobs:
         if: matrix.goos == 'windows'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-mingw-w64-x86-64
+          sudo apt-get install -y gcc-mingw-w64-x86-64-win32
 
       - name: Update go.mod replace path
         working-directory: plugins/${{ env.PLUGIN_ID }}/go
@@ -81,7 +81,8 @@ jobs:
           CGO_ENABLED: "1"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          CC: ${{ matrix.goos == 'linux' && matrix.goarch == 'arm64' && 'aarch64-linux-gnu-gcc' || matrix.goos == 'windows' && 'x86_64-w64-mingw32-gcc' || '' }}
+          CC: ${{ (matrix.goos == 'linux' && matrix.goarch == 'arm64') && 'aarch64-linux-gnu-gcc' || (matrix.goos == 'windows') && 'x86_64-w64-mingw32-gcc' || '' }}
+          CXX: ${{ (matrix.goos == 'linux' && matrix.goarch == 'arm64') && 'aarch64-linux-gnu-g++' || (matrix.goos == 'windows') && 'x86_64-w64-mingw32-g++' || '' }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           OUTPUT="${{ env.PLUGIN_ID }}-v${VERSION}.${{ matrix.ext }}"
