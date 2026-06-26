@@ -17,28 +17,34 @@ jobs:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - goos: linux
             goarch: amd64
             runner: ubuntu-latest
             ext: so
+            cc: ""
           - goos: linux
             goarch: arm64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04-arm
             ext: so
+            cc: ""
           - goos: darwin
             goarch: amd64
             runner: macos-latest
             ext: dylib
+            cc: ""
           - goos: darwin
             goarch: arm64
             runner: macos-latest
             ext: dylib
+            cc: ""
           - goos: windows
             goarch: amd64
-            runner: ubuntu-latest
+            runner: windows-latest
             ext: dll
+            cc: ""
 
     steps:
       - name: Checkout plugin store
@@ -56,20 +62,9 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Install cross-compiler (linux/arm64)
-        if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      - name: Install mingw (windows)
-        if: matrix.goos == 'windows'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-mingw-w64-x86-64-win32
-
       - name: Update go.mod replace path
         working-directory: plugins/${{ env.PLUGIN_ID }}/go
+        shell: bash
         run: |
           sed -i.bak 's|replace github.com/router-for-me/CLIProxyAPI/v7 => .*|replace github.com/router-for-me/CLIProxyAPI/v7 => ${{ github.workspace }}/CLIProxyAPI|' go.mod
           rm -f go.mod.bak
@@ -77,12 +72,11 @@ jobs:
 
       - name: Build plugin
         working-directory: plugins/${{ env.PLUGIN_ID }}/go
+        shell: bash
         env:
           CGO_ENABLED: "1"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          CC: ${{ (matrix.goos == 'linux' && matrix.goarch == 'arm64') && 'aarch64-linux-gnu-gcc' || (matrix.goos == 'windows') && 'x86_64-w64-mingw32-gcc' || '' }}
-          CXX: ${{ (matrix.goos == 'linux' && matrix.goarch == 'arm64') && 'aarch64-linux-gnu-g++' || (matrix.goos == 'windows') && 'x86_64-w64-mingw32-g++' || '' }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           OUTPUT="${{ env.PLUGIN_ID }}-v${VERSION}.${{ matrix.ext }}"
@@ -91,13 +85,22 @@ jobs:
 
       - name: Package zip
         working-directory: plugins/${{ env.PLUGIN_ID }}/go
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           LIB="${{ env.PLUGIN_ID }}-v${VERSION}.${{ matrix.ext }}"
           ZIP_NAME="${{ env.PLUGIN_ID }}_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.zip"
           rm -f "$ZIP_NAME"
-          zip -j "$ZIP_NAME" "$LIB"
-          shasum -a 256 "$ZIP_NAME" >> checksums_fragment.txt
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            7z a "$ZIP_NAME" "$LIB"
+          else
+            zip -j "$ZIP_NAME" "$LIB"
+          fi
+          if command -v shasum &>/dev/null; then
+            shasum -a 256 "$ZIP_NAME" >> checksums_fragment.txt
+          else
+            sha256sum "$ZIP_NAME" >> checksums_fragment.txt
+          fi
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
       - name: Upload artifact
