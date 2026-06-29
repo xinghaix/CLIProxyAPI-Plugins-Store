@@ -1,16 +1,5 @@
 <template>
   <main class="page">
-    <section class="hero">
-      <div class="hero-main">
-        <div>
-          <div class="eyebrow">CPA PLUGIN · COMPILED VUE APP · MANAGER PLUS DATA</div>
-          <h1>CPA Manager Plus</h1>
-          <p class="subtitle">数据经 CPA 同源 Management API 到插件，再反向代理到 Plus Manager Server。</p>
-        </div>
-        <div :class="['health-pill', health.state]"><span class="dot"></span><span>{{ health.text }}</span></div>
-      </div>
-    </section>
-
     <section class="toolbar">
       <nav class="tabs" aria-label="CPA Manager Plus tabs">
         <button v-for="tab in tabs" :key="tab.key" :class="['tab', {active: activeTab === tab.key}]" @click="selectTab(tab.key)">{{ tab.label }}</button>
@@ -57,6 +46,16 @@
     </section>
 
     <section class="panel" v-if="activeTab === 'config'">
+      <section class="hero">
+        <div class="hero-main">
+          <div>
+            <div class="eyebrow">CPA PLUGIN · COMPILED VUE APP · MANAGER PLUS DATA</div>
+            <h1>CPA Manager Plus</h1>
+            <p class="subtitle">数据经 CPA 同源 Management API 到插件，再反向代理到 Plus Manager Server。</p>
+          </div>
+          <div :class="['health-pill', health.state]"><span class="dot"></span><span>{{ health.text }}</span></div>
+        </div>
+      </section>
       <DataCard title="访问凭据" subtitle="仅浏览器缓存">
         <p class="muted">这里输入的是 CPA <code>remote-management.secret-key</code>，用于浏览器访问 CPA 的 <code>/v0/management/*</code>。它不是插件 YAML 里的 Plus <code>management_key</code>。</p>
         <div class="keybar">

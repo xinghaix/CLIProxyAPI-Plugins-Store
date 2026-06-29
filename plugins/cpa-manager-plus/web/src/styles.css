@@ -54,11 +54,13 @@
     .notice.error { border-color: color-mix(in srgb, var(--error-color) 45%, var(--border-color)); background: color-mix(in srgb, var(--error-color) 10%, var(--bg-primary)); }
     .panel { display: flex; flex-direction: column; gap: 16px; }
     .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 8px; }
+    .metric-card { padding: 10px 12px; border-radius: 12px; }
     .card { border: 1px solid var(--border-color); background: var(--bg-primary); border-radius: 14px; box-shadow: var(--shadow); padding: 16px; min-width: 0; }
     .card.glass { background: var(--glass-bg); border-color: var(--glass-border); }
-    .metric-label { color: var(--text-secondary); font-size: 12px; margin-bottom: 8px; }
-    .metric-value { font-size: 24px; font-weight: 800; line-height: 1.1; word-break: break-word; }
-    .metric-sub { margin-top: 8px; color: var(--text-tertiary); font-size: 12px; }
+    .metric-label { color: var(--text-secondary); font-size: 11px; margin-bottom: 5px; white-space: nowrap; }
+    .metric-value { font-size: clamp(18px, 1.8vw, 22px); font-weight: 800; line-height: 1.08; word-break: break-word; }
+    .metric-sub { margin-top: 5px; color: var(--text-tertiary); font-size: 11px; line-height: 1.35; }
     .section-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 12px; }
     .section-title h2 { margin: 0; font-size: 18px; }
     .section-title span { color: var(--text-secondary); font-size: 13px; }
@@ -75,14 +77,18 @@
     .empty { color: var(--text-secondary); padding: 20px; text-align: center; }
     .loading { color: var(--text-secondary); font-size: 13px; }
 
-    .monitoring-page { display: flex; flex-direction: column; gap: 16px; }
-    .monitoring-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-end; flex-wrap: wrap; }
-    .monitoring-head h2 { font-size: 28px; margin: 4px 0 8px; }
-    .monitoring-actions, .filter-card { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .control { border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); border-radius: 10px; padding: 9px 11px; min-height: 38px; outline: none; }
+    .monitoring-page { display: flex; flex-direction: column; gap: 12px; }
+    .filter-card { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .monitoring-filterbar { padding: 10px 12px; }
+    .filterbar-title { min-width: 118px; margin-right: 2px; }
+    .filterbar-title h2 { font-size: 20px; margin: 1px 0 0; }
+    .filterbar-title .eyebrow { font-size: 10px; letter-spacing: .04em; }
+    .custom-range-bar { padding: 10px 12px; }
+    .control { border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); border-radius: 10px; padding: 7px 9px; min-height: 34px; outline: none; font-size: 13px; }
     .control:focus { border-color: var(--primary-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 14%, transparent); }
-    .control.wide { min-width: min(460px, 80vw); flex: 1 1 260px; }
-    .control.small { width: 140px; }
+    .control.wide { min-width: min(340px, 80vw); flex: 1 1 220px; }
+    .control.compact { max-width: 180px; }
+    .control.small { width: 118px; }
     .monitor-tabs { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px; }
     .monitor-tabs .tab { display: inline-flex; gap: 6px; align-items: center; }
     .monitor-tabs .tab span { color: inherit; opacity: .7; font-size: 12px; }
@@ -95,9 +101,28 @@
     .timeline-value { font-weight: 700; }
     .timeline-sub, .small-text { color: var(--text-tertiary); font-size: 11px; }
     .monitor-table table { min-width: 980px; }
+    .event-stream-table table { min-width: 1360px; }
+    .event-stream-table th, .event-stream-table td { border-right: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent); }
+    .event-stream-table th:last-child, .event-stream-table td:last-child { border-right: 0; }
     .clickable { cursor: pointer; }
     .clickable:hover td { background: color-mix(in srgb, var(--bg-tertiary) 48%, transparent); }
-    .status-badge { display: inline-flex; border-radius: 999px; padding: 3px 8px; font-size: 12px; font-weight: 700; }
+    .blue-text { color: #2563eb; }
+    .good-text { color: var(--success-color); }
+    .warn-text { color: #d97706; }
+    .bad-text { color: var(--error-color); }
+    .usage-breakdown { max-width: 170px; white-space: normal; line-height: 1.45; }
+    .latency-pair { display: inline-grid; grid-template-columns: auto auto auto; gap: 8px; align-items: center; white-space: nowrap; }
+    .latency-pair b { color: var(--border-color); font-weight: 500; }
+    .recent-status { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; border-radius: 10px; border: 1px solid transparent; }
+    .recent-status:has(.bad) { border-color: var(--error-color); }
+    .recent-bar { width: 8px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: var(--text-tertiary); cursor: pointer; }
+    .recent-bar.good { background: var(--success-color); }
+    .recent-bar.warn { background: #f59e0b; }
+    .recent-bar.bad { background: var(--error-color); box-shadow: 0 0 0 2px color-mix(in srgb, var(--error-color) 18%, transparent); }
+    .recent-bar.empty { background: color-mix(in srgb, var(--border-color) 75%, transparent); cursor: default; }
+    .recent-bar.selected { outline: 2px solid color-mix(in srgb, var(--text-primary) 22%, transparent); outline-offset: 2px; }
+    .status-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 3px 8px; font-size: 12px; font-weight: 700; }
+    .status-badge i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
     .status-badge.good { color: #047857; background: color-mix(in srgb, var(--success-color) 12%, var(--bg-primary)); }
     .status-badge.bad { color: var(--error-color); background: color-mix(in srgb, var(--error-color) 12%, var(--bg-primary)); }
     .pager { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding-top: 12px; color: var(--text-secondary); font-size: 13px; }

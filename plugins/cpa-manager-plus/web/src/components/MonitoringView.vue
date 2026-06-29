@@ -1,67 +1,61 @@
 <template>
   <section class="monitoring-page">
-    <div class="monitoring-head card glass">
-      <div>
+    <div class="card filter-card monitoring-filterbar">
+      <div class="filterbar-title">
         <div class="eyebrow">REQUEST MONITORING</div>
         <h2>请求监控</h2>
-        <p class="muted">迁移自 CPA-Manager-Plus：筛选、摘要、维度分析、事件流、详情和导出均通过插件代理访问 Plus Manager Server。</p>
       </div>
-      <div class="monitoring-actions">
-        <select v-model="timeRange" class="control">
-          <option value="today">今天</option>
-          <option value="7d">最近 7 天</option>
-          <option value="14d">最近 14 天</option>
-          <option value="30d">最近 30 天</option>
-          <option value="all">全部</option>
-          <option value="custom">自定义</option>
-        </select>
-        <select v-model.number="autoRefreshMs" class="control">
-          <option :value="0">不自动刷新</option>
-          <option :value="5000">5 秒</option>
-          <option :value="15000">15 秒</option>
-          <option :value="30000">30 秒</option>
-          <option :value="60000">60 秒</option>
-        </select>
-        <button class="btn primary" @click="refresh(true)" :disabled="loading || !ready">{{ loading ? '加载中…' : '刷新监控' }}</button>
-        <button class="btn" @click="exportEventsCsv" :disabled="!eventRows.length">导出 CSV</button>
-      </div>
-    </div>
-
-    <div v-if="timeRange === 'custom'" class="card filter-card">
-      <label>开始 <input v-model="customStart" type="datetime-local" class="control" /></label>
-      <label>结束 <input v-model="customEnd" type="datetime-local" class="control" /></label>
-      <button class="btn" @click="refresh(true)">应用自定义时间</button>
-    </div>
-
-    <div class="card filter-card">
+      <select v-model="timeRange" class="control compact">
+        <option value="today">今天</option>
+        <option value="7d">最近 7 天</option>
+        <option value="14d">最近 14 天</option>
+        <option value="30d">最近 30 天</option>
+        <option value="all">全部</option>
+        <option value="custom">自定义</option>
+      </select>
+      <select v-model.number="autoRefreshMs" class="control compact">
+        <option :value="0">不自动刷新</option>
+        <option :value="5000">5 秒</option>
+        <option :value="15000">15 秒</option>
+        <option :value="30000">30 秒</option>
+        <option :value="60000">60 秒</option>
+      </select>
       <input v-model.trim="searchQuery" class="control wide" placeholder="全文搜索：模型 / 账号 / API Key / 路径 / trace / 错误" @keyup.enter="refresh(true)" />
-      <select v-model="filters.status" class="control">
+      <select v-model="filters.status" class="control compact">
         <option value="all">全部状态</option>
         <option value="success">仅成功</option>
         <option value="failed">仅失败</option>
       </select>
-      <select v-model="filters.provider" class="control">
+      <select v-model="filters.provider" class="control compact">
         <option value="all">全部 Provider</option>
         <option v-for="item in optionProviders" :key="item" :value="item">{{ item }}</option>
       </select>
-      <select v-model="filters.model" class="control">
+      <select v-model="filters.model" class="control compact">
         <option value="all">全部模型</option>
         <option v-for="item in optionModels" :key="item" :value="item">{{ item }}</option>
       </select>
-      <select v-model="filters.account" class="control">
+      <select v-model="filters.account" class="control compact">
         <option value="all">全部账号</option>
         <option v-for="item in optionAccounts" :key="item.value" :value="item.value">{{ item.label }}</option>
       </select>
-      <select v-model="filters.apiKeyHash" class="control">
+      <select v-model="filters.apiKeyHash" class="control compact">
         <option value="all">全部 API Key</option>
         <option v-for="item in optionApiKeys" :key="item.value" :value="item.value">{{ item.label }}</option>
       </select>
-      <input v-model.trim="filters.projectId" class="control" placeholder="Project ID" @keyup.enter="refresh(true)" />
-      <input v-model.trim="filters.requestType" class="control" placeholder="请求类型 / path" @keyup.enter="refresh(true)" />
+      <input v-model.trim="filters.projectId" class="control compact" placeholder="Project ID" @keyup.enter="refresh(true)" />
+      <input v-model.trim="filters.requestType" class="control compact" placeholder="请求类型 / path" @keyup.enter="refresh(true)" />
       <input v-model.number="filters.minLatencyMs" class="control small" type="number" min="0" placeholder="最低延迟 ms" @keyup.enter="refresh(true)" />
       <input v-model.trim="filters.cacheStatus" class="control small" placeholder="缓存状态" @keyup.enter="refresh(true)" />
-      <input v-model.trim="filters.headerTraceId" class="control wide" placeholder="Trace ID" @keyup.enter="refresh(true)" />
-      <button class="btn" @click="resetFilters">重置筛选</button>
+      <input v-model.trim="filters.headerTraceId" class="control compact" placeholder="Trace ID" @keyup.enter="refresh(true)" />
+      <button class="btn primary" @click="refresh(true)" :disabled="loading || !ready">{{ loading ? '加载中…' : '刷新' }}</button>
+      <button class="btn" @click="exportEventsCsv" :disabled="!eventRows.length">导出 CSV</button>
+      <button class="btn" @click="resetFilters">重置</button>
+    </div>
+
+    <div v-if="timeRange === 'custom'" class="card filter-card custom-range-bar">
+      <label>开始 <input v-model="customStart" type="datetime-local" class="control" /></label>
+      <label>结束 <input v-model="customEnd" type="datetime-local" class="control" /></label>
+      <button class="btn" @click="refresh(true)">应用</button>
     </div>
 
     <section v-if="error" class="notice error">{{ error }}</section>
@@ -86,25 +80,77 @@
       <button v-for="tab in dataTabs" :key="tab.key" :class="['tab', {active: activeDataTab === tab.key}]" @click="activeDataTab = tab.key">{{ tab.label }} <span>{{ tab.count }}</span></button>
     </div>
 
-    <DataCard v-if="activeDataTab === 'events'" title="实时事件" :subtitle="eventsSubtitle">
-      <div class="table-wrap monitor-table">
+    <DataCard v-if="activeDataTab === 'events'" title="事件流" :subtitle="eventsSubtitle">
+      <div class="table-wrap monitor-table event-stream-table">
         <table>
-          <thead><tr><th>时间</th><th>状态</th><th>模型</th><th>账号 / Key</th><th>路径</th><th>Token</th><th>延迟</th><th>错误 / Trace</th></tr></thead>
+          <thead>
+            <tr>
+              <th>来源 / API KEY</th>
+              <th>模型</th>
+              <th>强度</th>
+              <th>最近状态</th>
+              <th>请求状态</th>
+              <th>成功率</th>
+              <th>总调用</th>
+              <th>TPS</th>
+              <th>首字 ｜ 耗时</th>
+              <th>时间</th>
+              <th>本次用量</th>
+              <th>本次花费</th>
+            </tr>
+          </thead>
           <tbody>
-            <tr v-for="row in pagedEvents" :key="row.event_hash || row.request_id || row.__id" @click="selectedEvent = row" class="clickable">
-              <td>{{ formatDateTime(row.timestamp_ms) }}</td>
-              <td><span :class="['status-badge', row.failed ? 'bad' : 'good']">{{ row.failed ? '失败' : '成功' }}</span></td>
-              <td><strong>{{ row.model || '—' }}</strong><div class="muted small-text">{{ row.resolved_model || row.auth_provider_snapshot || '' }}</div></td>
-              <td>{{ row.account_snapshot || row.auth_label_snapshot || row.auth_index || '—' }}<div class="muted small-text">{{ shortHash(row.api_key_hash) }}</div></td>
-              <td><code>{{ row.method || '' }} {{ row.path || row.endpoint || '—' }}</code></td>
-              <td>{{ fmtInt(row.total_tokens) }}</td>
-              <td>{{ fmtMs(row.latency_ms) }}</td>
-              <td>{{ row.fail_summary || row.header_error_kind || row.header_error_code || row.header_trace_id || '—' }}</td>
+            <tr v-for="row in pagedEvents" :key="row.id" @click="selectedEvent = row.raw" class="clickable">
+              <td>
+                <strong>{{ row.sourceName }}</strong>
+                <div class="muted small-text">提供方: {{ row.provider }}</div>
+                <div class="muted small-text">API Key: {{ row.apiKeyMasked }}</div>
+              </td>
+              <td>
+                <strong>{{ row.model }}</strong>
+                <div v-if="row.resolvedModel && row.resolvedModel !== row.model" class="muted small-text">{{ row.resolvedModel }}</div>
+              </td>
+              <td>
+                <strong :class="{'blue-text': row.intensity !== '-'}">{{ row.intensity }}</strong>
+                <div class="muted small-text">等级: {{ row.tier }}</div>
+              </td>
+              <td>
+                <div class="recent-status" :title="row.recentTitle">
+                  <button
+                    v-for="item in row.recent"
+                    :key="item.id"
+                    type="button"
+                    :class="['recent-bar', item.tone, {selected: item.event === row.raw}]"
+                    :title="item.title"
+                    @click.stop="selectedEvent = item.event"
+                  ></button>
+                </div>
+              </td>
+              <td><span :class="['status-badge', row.failed ? 'bad' : 'good']"><i></i>{{ row.failed ? '失败' : '成功' }}</span></td>
+              <td><strong :class="successRateClass(row.successRate)">{{ fmtPct(row.successRate) }}</strong></td>
+              <td>{{ fmtInt(row.totalCalls) }}</td>
+              <td>{{ fmtTps(row.tps) }}</td>
+              <td>
+                <div class="latency-pair">
+                  <span :class="latencyClass(row.ttftMs)">{{ fmtSeconds(row.ttftMs) }}</span>
+                  <b>｜</b>
+                  <span :class="latencyClass(row.latencyMs)">{{ fmtSeconds(row.latencyMs) }}</span>
+                </div>
+              </td>
+              <td>
+                <div>{{ formatDate(row.timestampMs) }}</div>
+                <div>{{ formatTime(row.timestampMs) }}</div>
+              </td>
+              <td>
+                <strong>{{ fmtCompact(row.totalTokens) }}</strong>
+                <div class="muted small-text usage-breakdown">{{ row.usageText }}</div>
+              </td>
+              <td><strong>{{ fmtMoney(row.cost) }}</strong></td>
             </tr>
           </tbody>
         </table>
       </div>
-      <PaginationBar :page="eventPage" :page-size="eventPageSize" :total="eventRows.length" @page="eventPage = $event" />
+      <PaginationBar :page="eventPage" :page-size="eventPageSize" :total="eventTableRows.length" @page="eventPage = $event" />
     </DataCard>
 
     <DataCard v-if="activeDataTab === 'accounts'" title="账号维度" subtitle="account_stats">
@@ -201,8 +247,10 @@ const summaryCards = computed(() => [
 ]);
 
 const eventRows = computed(() => (data.value?.events?.items || []).map((row, idx) => ({...row, __id: idx})));
-const pagedEvents = computed(() => pageRows(eventRows.value, eventPage.value, eventPageSize.value));
-const eventsSubtitle = computed(() => `events_page · 已载入 ${eventRows.value.length} / ${data.value?.events?.total_count ?? '未知'} · has_more=${Boolean(data.value?.events?.has_more)}`);
+const eventGroupMap = computed(() => buildEventGroupMap(eventRows.value, accountRows.value, apiKeyRows.value));
+const eventTableRows = computed(() => eventRows.value.map(row => buildEventTableRow(row, eventGroupMap.value)));
+const pagedEvents = computed(() => pageRows(eventTableRows.value, eventPage.value, eventPageSize.value));
+const eventsSubtitle = computed(() => `events_page · 已载入 ${eventTableRows.value.length} / ${data.value?.events?.total_count ?? '未知'} · has_more=${Boolean(data.value?.events?.has_more)}`);
 const timelineRows = computed(() => data.value?.timeline || []);
 const maxTimelineCalls = computed(() => Math.max(1, ...timelineRows.value.map(p => Number(p.calls || p.requests || 0))));
 const modelRows = computed(() => data.value?.model_stats || data.value?.model_share || []);
@@ -336,6 +384,112 @@ function exportEventsCsv(){
   a.click();
   URL.revokeObjectURL(url);
 }
+function buildEventGroupMap(events, accounts, apiKeys){
+  const map = new Map();
+  const put = (key, value) => { if(key && key !== '-') map.set(String(key), value); };
+  for(const row of apiKeys || []){
+    const calls = Number(row.calls ?? row.total_calls ?? 0);
+    const success = Number(row.success_calls ?? Math.round(calls * Number(row.success_rate ?? 0)) ?? 0);
+    const cost = Number(row.cost ?? row.total_cost ?? 0);
+    const group = {
+      calls,
+      successCalls: success,
+      failureCalls: Number(row.failure_calls ?? Math.max(0, calls - success)),
+      successRate: normalizeRate(row.success_rate, calls, success),
+      avgCostPerCall: calls > 0 ? cost / calls : 0,
+    };
+    put(row.api_key_hash, group);
+    put(row.id, group);
+  }
+  for(const row of accounts || []){
+    const calls = Number(row.calls ?? row.total_calls ?? 0);
+    const success = Number(row.success_calls ?? Math.round(calls * Number(row.success_rate ?? 0)) ?? 0);
+    const cost = Number(row.cost ?? row.total_cost ?? 0);
+    const group = {
+      calls,
+      successCalls: success,
+      failureCalls: Number(row.failure_calls ?? Math.max(0, calls - success)),
+      successRate: normalizeRate(row.success_rate, calls, success),
+      avgCostPerCall: calls > 0 ? cost / calls : 0,
+    };
+    [row.id, row.source_hash, ...(row.source_hashes || []), ...(row.auth_indices || []), row.account_snapshot, row.auth_label_snapshot].forEach(key => put(key, group));
+  }
+  const eventGroups = new Map();
+  for(const event of events || []){
+    const key = eventGroupKey(event);
+    const group = eventGroups.get(key) || {calls:0, successCalls:0, failureCalls:0, events:[]};
+    group.calls += 1;
+    group.successCalls += event.failed ? 0 : 1;
+    group.failureCalls += event.failed ? 1 : 0;
+    group.events.push(event);
+    eventGroups.set(key, group);
+  }
+  for(const [key, group] of eventGroups){
+    group.events.sort((a,b) => Number(b.timestamp_ms || 0) - Number(a.timestamp_ms || 0));
+    const existing = map.get(key) || {};
+    map.set(key, {
+      calls: existing.calls || group.calls,
+      successCalls: existing.successCalls ?? group.successCalls,
+      failureCalls: existing.failureCalls ?? group.failureCalls,
+      successRate: existing.successRate ?? normalizeRate(null, group.calls, group.successCalls),
+      avgCostPerCall: existing.avgCostPerCall || 0,
+      events: group.events,
+    });
+  }
+  return map;
+}
+function buildEventTableRow(row, groupMap){
+  const key = eventGroupKey(row);
+  const group = groupMap.get(row.api_key_hash) || groupMap.get(row.source_hash) || groupMap.get(row.auth_index) || groupMap.get(key) || {};
+  const recent = buildRecentStatus(group.events || [row], row);
+  const latencyMs = numberOrNull(row.latency_ms);
+  const outputTokens = Number(row.output_tokens || 0);
+  return {
+    id: row.event_hash || row.request_id || `${row.timestamp_ms}-${row.__id}`,
+    raw: row,
+    sourceName: row.account_snapshot || row.auth_label_snapshot || row.source || row.auth_index || '—',
+    provider: row.auth_provider_snapshot || row.provider || row.source || '—',
+    apiKeyMasked: maskApiKey(row.api_key_hash),
+    model: row.model || '—',
+    resolvedModel: row.resolved_model || '',
+    intensity: row.reasoning_effort || row.service_tier || '-',
+    tier: row.service_tier || (row.reasoning_effort && row.reasoning_effort !== '-' ? 'priority' : 'default'),
+    recent,
+    recentTitle: recent.map(item => item.title).join('\n'),
+    failed: Boolean(row.failed),
+    successRate: group.successRate ?? (row.failed ? 0 : 1),
+    totalCalls: group.calls || 1,
+    tps: latencyMs && latencyMs > 0 ? outputTokens / (latencyMs / 1000) : null,
+    ttftMs: numberOrNull(row.ttft_ms) ?? latencyMs,
+    latencyMs,
+    timestampMs: row.timestamp_ms,
+    totalTokens: Number(row.total_tokens || 0),
+    usageText: buildUsageText(row),
+    cost: Number(row.cost ?? row.total_cost ?? row.usage_cost ?? group.avgCostPerCall ?? 0),
+  };
+}
+function buildRecentStatus(events, current){
+  const list = (events || []).slice().sort((a,b) => Number(b.timestamp_ms || 0) - Number(a.timestamp_ms || 0)).slice(0, 5);
+  while(list.length < 5) list.push(null);
+  return list.map((event, idx) => {
+    if(!event) return {id:`empty-${idx}`, tone:'empty', event:null, title:'暂无记录'};
+    const title = `${formatDateTime(event.timestamp_ms)} · ${event.failed ? '失败' : '成功'}${event.fail_summary ? ' · ' + event.fail_summary : ''}${event.header_error_kind ? ' · ' + event.header_error_kind : ''}`;
+    return {id:event.event_hash || event.request_id || `${event.timestamp_ms}-${idx}`, tone:event.failed ? 'bad' : latencyTone(event.latency_ms), event, title};
+  });
+}
+function eventGroupKey(row){ return row.api_key_hash || row.source_hash || row.auth_index || row.account_snapshot || row.auth_label_snapshot || String(row.__id || 'event'); }
+function normalizeRate(rate, calls, success){ if(rate != null && Number.isFinite(Number(rate))) return Number(rate) > 1 ? Number(rate) / 100 : Number(rate); return calls > 0 ? success / calls : null; }
+function numberOrNull(v){ const n = Number(v); return Number.isFinite(n) ? n : null; }
+function buildUsageText(row){
+  const parts = [];
+  parts.push(`I ${fmtCompact(row.input_tokens)}`);
+  parts.push(`O ${fmtCompact(row.output_tokens)}`);
+  if(Number(row.reasoning_tokens || 0) > 0) parts.push(`R ${fmtCompact(row.reasoning_tokens)}`);
+  const cached = Number(row.cached_tokens || row.cache_read_tokens || row.cache_creation_tokens || 0);
+  if(cached > 0) parts.push(`C ${fmtCompact(cached)}`);
+  return parts.join(' · ');
+}
+function maskApiKey(value){ const s = String(value || '').trim(); if(!s) return '—'; if(s.startsWith('sk') && s.length > 8) return `${s.slice(0,2)}******${s.slice(-2)}`; return shortHash(s); }
 function barWidth(value){ return `${Math.max(2, Math.round((Number(value || 0) / maxTimelineCalls.value) * 100))}%`; }
 function pretty(v){ return JSON.stringify(v ?? {}, null, 2); }
 function defaultFilters(){ return {status:'all', provider:'all', model:'all', account:'all', apiKeyHash:'all', projectId:'', requestType:'', minLatencyMs:'', cacheStatus:'', headerTraceId:''}; }
@@ -349,7 +503,21 @@ function fmtInt(v){ const n = Number(v || 0); return Number.isFinite(n) ? new In
 function fmtPct(v){ if(v == null || Number.isNaN(Number(v))) return '—'; const n = Number(v); return `${(n <= 1 ? n*100 : n).toFixed(1)}%`; }
 function fmtMoney(v){ if(v == null || Number.isNaN(Number(v))) return '—'; return '$' + Number(v).toFixed(4); }
 function fmtMs(v){ if(v == null || Number.isNaN(Number(v))) return '—'; return `${Math.round(Number(v))} ms`; }
+function fmtSeconds(v){ if(v == null || Number.isNaN(Number(v))) return '—'; return `${(Number(v) / 1000).toFixed(Number(v) >= 10000 ? 1 : 2)} s`; }
+function fmtTps(v){ if(v == null || Number.isNaN(Number(v))) return '—'; return Number(v).toFixed(Number(v) >= 10 ? 0 : 1); }
+function fmtCompact(v){
+  const n = Number(v || 0);
+  if(!Number.isFinite(n)) return '—';
+  if(Math.abs(n) >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if(Math.abs(n) >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 1 : 1)}K`;
+  return fmtInt(n);
+}
+function successRateClass(v){ const n = Number(v); if(!Number.isFinite(n)) return ''; return n >= 0.95 ? 'good-text' : n >= 0.85 ? 'warn-text' : 'bad-text'; }
+function latencyTone(v){ const n = Number(v); if(!Number.isFinite(n)) return 'good'; return n >= 30000 ? 'bad' : n >= 10000 ? 'warn' : 'good'; }
+function latencyClass(v){ return `${latencyTone(v)}-text`; }
 function formatDateTime(ms){ if(!ms) return '—'; return new Date(Number(ms)).toLocaleString('zh-CN', {hour12:false}); }
+function formatDate(ms){ if(!ms) return '—'; return new Date(Number(ms)).toLocaleDateString('zh-CN', {year:'numeric', month:'2-digit', day:'2-digit'}).replaceAll('/', '/'); }
+function formatTime(ms){ if(!ms) return '—'; return new Date(Number(ms)).toLocaleTimeString('zh-CN', {hour12:false}); }
 function shortHash(v){ const s = String(v || '').trim(); return s.length > 14 ? `${s.slice(0,7)}…${s.slice(-5)}` : (s || '—'); }
 function pickObject(obj, keys){ return Object.fromEntries(keys.map(k => [k, obj?.[k]]).filter(([,v]) => v !== undefined)); }
 function csvCell(v){ const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replaceAll('"','""')}"` : s; }

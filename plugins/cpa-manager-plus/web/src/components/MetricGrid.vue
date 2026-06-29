@@ -1,6 +1,6 @@
 <template>
-  <div class="grid">
-    <div v-for="card in cards" :key="card.label" class="card glass">
+  <div class="metric-grid">
+    <div v-for="card in cards" :key="card.label" class="card glass metric-card">
       <div class="metric-label">{{ card.label }}</div>
       <div class="metric-value">{{ format(card.value) }}</div>
       <div v-if="card.sub" class="metric-sub">{{ card.sub }}</div>
