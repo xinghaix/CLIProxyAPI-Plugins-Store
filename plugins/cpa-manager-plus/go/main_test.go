@@ -115,12 +115,8 @@ func TestResourceFileForPath(t *testing.T) {
 	}{
 		{resourceAppPath, "web-dist/index.html", true},
 		{"/v0/resource/plugins/cpa-manager-plus/app/", "web-dist/index.html", true},
-		{"/v0/resource/plugins/cpa-manager-plus/assets/app.js", "web-dist/assets/app.js", true},
-		{"/v0/resource/plugins/cpa-manager-plus/assets/app.css", "web-dist/assets/app.css", true},
-		{"/v0/resource/plugins/cpa-manager-plus/assets/app.svg", "", false},
-		{"/v0/resource/plugins/cpa-manager-plus/assets/nested/app.js", "", false},
+		{"/v0/resource/plugins/cpa-manager-plus/assets/app.js", "", false},
 		{"/v0/resource/plugins/cpa-manager-plus/../main.go", "", false},
-		{"/v0/resource/plugins/cpa-manager-plus/unknown.js", "", false},
 		{"/v0/resource/plugins/other/app", "", false},
 	}
 	for _, tc := range cases {
@@ -132,16 +128,11 @@ func TestResourceFileForPath(t *testing.T) {
 }
 
 func TestContentTypeForResourceFile(t *testing.T) {
-	cases := map[string]string{
-		"web-dist/index.html":     "text/html; charset=utf-8",
-		"web-dist/assets/app.js":  "application/javascript; charset=utf-8",
-		"web-dist/assets/app.css": "text/css; charset=utf-8",
-		"web-dist/asset.bin":      "application/octet-stream",
+	if got := contentTypeForResourceFile("web-dist/index.html"); got != contentTypeHTML {
+		t.Fatalf("contentTypeForResourceFile = %q, want %q", got, contentTypeHTML)
 	}
-	for file, want := range cases {
-		if got := contentTypeForResourceFile(file); got != want {
-			t.Fatalf("contentTypeForResourceFile(%q) = %q, want %q", file, got, want)
-		}
+	if got := contentTypeForResourceFile("anything.bin"); got != contentTypeHTML {
+		t.Fatalf("contentTypeForResourceFile = %q, want %q", got, contentTypeHTML)
 	}
 }
 
@@ -151,21 +142,15 @@ func TestHandleResourceReadsEmbeddedVueAssets(t *testing.T) {
 		t.Fatalf("app status = %d", app.StatusCode)
 	}
 	appBody := string(app.Body)
-	if !strings.Contains(appBody, "./assets/app.js") || !strings.Contains(appBody, "./assets/app.css") {
-		t.Fatalf("app html does not reference compiled Vue assets")
+	if !strings.Contains(appBody, "COMPILED VUE APP") && !strings.Contains(appBody, "<meta charset") {
+		t.Fatalf("app html does not look like compiled Vue app")
 	}
 	if got := app.Headers.Get("Content-Type"); got != contentTypeHTML {
 		t.Fatalf("app Content-Type = %q", got)
 	}
 
-	asset := handleResource("/v0/resource/plugins/cpa-manager-plus/assets/app.js")
-	if asset.StatusCode != http.StatusOK {
-		t.Fatalf("asset status = %d", asset.StatusCode)
-	}
-	if !strings.Contains(string(asset.Body), "createApp") && !strings.Contains(string(asset.Body), "createElementBlock") {
-		t.Fatalf("compiled Vue asset marker missing")
-	}
-	if got := asset.Headers.Get("Content-Type"); got != "application/javascript; charset=utf-8" {
-		t.Fatalf("asset Content-Type = %q", got)
+	unknown := handleResource("/v0/resource/plugins/cpa-manager-plus/assets/app.js")
+	if unknown.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown resource status = %d, want 404", unknown.StatusCode)
 	}
 }

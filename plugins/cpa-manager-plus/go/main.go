@@ -349,40 +349,11 @@ func resourceFileForPath(requestPath string) (string, bool) {
 	if cleaned == resourceAppPath || cleaned == "/v0/resource/plugins/cpa-manager-plus/app/" {
 		return "web-dist/index.html", true
 	}
-	prefix := "/v0/resource/plugins/cpa-manager-plus/"
-	if !strings.HasPrefix(cleaned, prefix) {
-		return "", false
-	}
-	name := strings.TrimPrefix(cleaned, prefix)
-	if name == "" || strings.Contains(name, "..") {
-		return "", false
-	}
-	if strings.HasPrefix(name, "assets/") {
-		asset := strings.TrimPrefix(name, "assets/")
-		if asset == "" || strings.Contains(asset, "/") {
-			return "", false
-		}
-		switch path.Ext(asset) {
-		case ".js", ".css":
-			return "web-dist/" + name, true
-		default:
-			return "", false
-		}
-	}
 	return "", false
 }
 
 func contentTypeForResourceFile(filePath string) string {
-	switch path.Ext(filePath) {
-	case ".html":
-		return contentTypeHTML
-	case ".js":
-		return "application/javascript; charset=utf-8"
-	case ".css":
-		return "text/css; charset=utf-8"
-	default:
-		return "application/octet-stream"
-	}
+	return contentTypeHTML
 }
 
 func handleHealth(req pluginapi.ManagementRequest) managementResponse {
