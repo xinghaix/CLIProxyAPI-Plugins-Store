@@ -84,7 +84,7 @@ type registrationCapability struct {
 	RequestNormalizer bool `json:"request_normalizer"`
 }
 
-var pluginVersion = "0.1.4"
+var pluginVersion = "0.1.5"
 
 func main() {}
 

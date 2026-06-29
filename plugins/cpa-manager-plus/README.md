@@ -26,7 +26,11 @@
 | 字段 | 说明 |
 |------|------|
 | `manager_base_url` | Manager Server 地址，默认 `http://127.0.0.1:18317` |
-| `admin_key` | 可选；设置后插件用 Bearer 访问 Manager，不转发浏览器 Authorization |
+| `management_key` | **可选**。Manager Plus 的 admin Bearer，仅插件服务端 `host.http.do` 访问 18317 时使用。本机无鉴权可省略。旧字段 `admin_key` 仍可读，等价于 `management_key` |
+
+**CPA 管理密钥**（`remote-management.secret-key`）**不要**写入插件配置。浏览器调用 `/v0/management/cpa-manager-plus/*` 时，由已登录的 CPA 管理台（`localStorage` `cli-proxy-auth`）自动携带；插件进程**无法**从 CPA 配置读取 secret-key（SDK 无 host 回调）。
+
+**Plus 是否需要 `management_key`？** 仅当 Manager Server 对 API 校验 Bearer 时需要；与 CPA secret-key 无关，切勿混填。
 
 ## 构建
 

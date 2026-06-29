@@ -84,7 +84,7 @@ const (
 	hostHTTPTimeout       = 120 * time.Second
 )
 
-var pluginVersion = "0.1.4"
+var pluginVersion = "0.1.5"
 
 var activeConfig atomic.Value
 
@@ -110,8 +110,9 @@ type lifecycleRequest struct {
 }
 
 type pluginConfig struct {
-	ManagerBaseURL string `yaml:"manager_base_url"`
-	AdminKey       string `yaml:"admin_key"`
+	ManagerBaseURL  string `yaml:"manager_base_url"`
+	ManagementKey   string `yaml:"management_key"`
+	AdminKey        string `yaml:"admin_key"` // deprecated: use management_key
 }
 
 type registration struct {
@@ -259,8 +260,11 @@ func mergeConfig(base, override pluginConfig) pluginConfig {
 	if strings.TrimSpace(override.ManagerBaseURL) != "" {
 		base.ManagerBaseURL = override.ManagerBaseURL
 	}
-	if strings.TrimSpace(override.AdminKey) != "" {
-		base.AdminKey = override.AdminKey
+	if strings.TrimSpace(override.ManagementKey) != "" {
+		base.ManagementKey = override.ManagementKey
+	}
+	if strings.TrimSpace(override.AdminKey) != "" && base.ManagementKey == "" {
+		base.ManagementKey = override.AdminKey
 	}
 	return base
 }
@@ -270,7 +274,11 @@ func normalizeConfig(cfg pluginConfig) pluginConfig {
 	if cfg.ManagerBaseURL == "" {
 		cfg.ManagerBaseURL = defaultManagerBaseURL
 	}
-	cfg.AdminKey = strings.TrimSpace(cfg.AdminKey)
+	cfg.ManagementKey = strings.TrimSpace(cfg.ManagementKey)
+	if cfg.ManagementKey == "" {
+		cfg.ManagementKey = strings.TrimSpace(cfg.AdminKey)
+	}
+	cfg.AdminKey = ""
 	return cfg
 }
 
@@ -292,7 +300,7 @@ func pluginRegistration() registration {
 			GitHubRepository: "https://github.com/xinghaix/cpa-plugin-cpa-manager-plus",
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "manager_base_url", Type: pluginapi.ConfigFieldTypeString, Description: "Manager Server base URL (default http://127.0.0.1:18317)"},
-				{Name: "admin_key", Type: pluginapi.ConfigFieldTypeString, Description: "Optional Manager admin Bearer token; if empty, forwards client Authorization"},
+				{Name: "management_key", Type: pluginapi.ConfigFieldTypeString, Description: "Manager Plus admin Bearer token for proxy to Manager Server (optional if Manager allows unauthenticated local access)"},
 			},
 		},
 		Capabilities: registrationCapabilities{ManagementAPI: true},
@@ -396,15 +404,15 @@ func proxyToManager(ctx context.Context, cfg pluginConfig, req pluginapi.Managem
 	return resp.StatusCode, resp.Body, nil
 }
 
-func managerAuthorization(cfg pluginConfig, req pluginapi.ManagementRequest) string {
-	if cfg.AdminKey != "" {
-		key := cfg.AdminKey
-		if !strings.HasPrefix(strings.ToLower(key), "bearer ") {
-			key = "Bearer " + key
-		}
-		return key
+func managerAuthorization(cfg pluginConfig, _ pluginapi.ManagementRequest) string {
+	key := strings.TrimSpace(cfg.ManagementKey)
+	if key == "" {
+		return ""
 	}
-	return strings.TrimSpace(req.Headers.Get("Authorization"))
+	if !strings.HasPrefix(strings.ToLower(key), "bearer ") {
+		key = "Bearer " + key
+	}
+	return key
 }
 
 func buildManagerURL(base, path, query string) (string, error) {
