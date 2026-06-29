@@ -71,48 +71,67 @@ Check that `registered: true` and `effective_enabled: true` for the installed pl
 
 ## Publishing a release
 
-Store releases are **one semver tag → one GitHub Release** containing **all** plugins under `plugins/*/go`. CPA picks assets from `releases/latest` on the repo URL in `registry.json`.
+Store releases are **one plugin per tag**. A tag builds and uploads assets only for the plugin encoded in the tag suffix. CPA picks assets from `releases/latest` on the repo URL in `registry.json`.
+
+### Tag format
+
+```text
+v<version>-<plugin-id>
+```
+
+Example:
+
+```text
+v1.2.0-cpa-manager-plus
+```
+
+This builds only:
+
+```text
+plugins/cpa-manager-plus/go
+```
 
 ### Release checklist (order matters)
 
 1. **Change the plugin** (if this release includes code or metadata fixes).
-2. **Choose the new semver** (e.g. `0.1.4`). It must be **greater than any existing `v*` tag** on this repo.
-3. **Bump version everywhere** for plugins you are shipping (same string, no `v` prefix):
-   - `registry.json` → each affected plugin's `"version"`
+2. **Choose the plugin version** (e.g. `1.2.0`).
+3. **Bump version everywhere for that plugin only** (same string, no `v` prefix):
+   - `registry.json` → that plugin's `"version"`
    - `plugins/<plugin-id>/go/main.go` → `var pluginVersion = "…"`
    - `plugins/<plugin-id>/Makefile` → `VERSION := …` (if the plugin has a Makefile)
 4. **Commit and push to `main`** so the tag points at sources that already declare that version.
-5. **Create and push the tag manually** (tag push triggers CI; do not rely on CI to invent the version):
+5. **Create and push the plugin tag manually** (tag push triggers CI; do not rely on CI to invent the version):
 
    ```bash
-   git tag -a v0.1.4 -m "v0.1.4"
-   git push origin v0.1.4
+   git tag -a v1.2.0-cpa-manager-plus -m "cpa-manager-plus v1.2.0"
+   git push origin v1.2.0-cpa-manager-plus
    ```
 
-6. **Watch the workflow** [Build and Release Plugins](https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/actions) until `discover`, all `build` matrix jobs, and `release` succeed. The release job uploads every `*.zip` and `checksums.txt`.
+6. **Watch the workflow** [Build and Release Plugin](https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/actions) until `discover`, the six-platform `build` matrix, and `release` succeed. The release job uploads that plugin's `*.zip` files and `checksums.txt`.
 
 ### What CI does (after the tag)
 
-- Parses `VERSION` from the tag (`v0.1.4` → `0.1.4`). Tags must look like `v0.1.0` — **no** per-plugin suffix tags (e.g. `v0.1.0-cpa-manager-plus`).
-- Builds each plugin for linux/darwin/windows × amd64/arm64.
+- Parses `VERSION` and `PLUGIN_ID` from the tag (`v1.2.0-cpa-manager-plus` → `VERSION=1.2.0`, `PLUGIN_ID=cpa-manager-plus`).
+- Builds only that plugin for linux/darwin/windows × amd64/arm64.
+- If the plugin has `web/package.json`, runs `npm ci && npm run build` before Go build so Go embeds compiled frontend assets.
 - Names artifacts `<plugin-id>_<version>_<goos>_<goarch>.zip` with `<plugin-id>-v<version>.{so,dylib,dll}` inside.
-- Sets link-time `-X main.pluginVersion=<version>` so CPA sees the same version in plugin metadata as in the zip name (must match what you set in source in step 3).
+- Sets link-time `-X main.pluginVersion=<version>` so CPA sees the same version in plugin metadata as in the zip name.
 
 ### Adding a new plugin (first time)
 
 1. Add `plugins/<plugin-id>/` with `go/go.mod` and source.
 2. Add a `registry.json` entry (`repository` = this store repo).
-3. Follow the **Release checklist** above for the first tag that ships it.
+3. Follow the **Release checklist** above with a plugin-specific tag.
 
 ### Zip / checksums examples
 
 ```
-developer-role-normalizer_0.1.4_linux_amd64.zip
-└── developer-role-normalizer-v0.1.4.so
+cpa-manager-plus_1.2.0_linux_amd64.zip
+└── cpa-manager-plus-v1.2.0.so
 ```
 
 ```
-<sha256>  developer-role-normalizer_0.1.4_linux_amd64.zip
+<sha256>  cpa-manager-plus_1.2.0_linux_amd64.zip
 ```
 
 The registry `repository` field must be `https://github.com/{owner}/{repo}` so CPA can call the GitHub Releases API.

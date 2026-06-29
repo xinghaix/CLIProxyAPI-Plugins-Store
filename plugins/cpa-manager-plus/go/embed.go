@@ -1,6 +1,6 @@
 package main
 
-import _ "embed"
+import "embed"
 
-//go:embed web/index.html
-var embeddedAppHTML []byte
+//go:embed web-dist/* web-dist/assets/*
+var embeddedWebFS embed.FS

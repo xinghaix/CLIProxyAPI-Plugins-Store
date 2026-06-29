@@ -57,14 +57,13 @@ import "C"
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"sync/atomic"
-	"time"
 	"unsafe"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
@@ -81,10 +80,9 @@ const (
 	contentTypeJSON       = "application/json; charset=utf-8"
 	contentTypeHTML       = "text/html; charset=utf-8"
 	maxProxyBodyBytes     = 8 << 20
-	hostHTTPTimeout       = 120 * time.Second
 )
 
-var pluginVersion = "0.1.5"
+var pluginVersion = "0.1.6"
 
 var activeConfig atomic.Value
 
@@ -110,9 +108,9 @@ type lifecycleRequest struct {
 }
 
 type pluginConfig struct {
-	ManagerBaseURL  string `yaml:"manager_base_url"`
-	ManagementKey   string `yaml:"management_key"`
-	AdminKey        string `yaml:"admin_key"` // deprecated: use management_key
+	ManagerBaseURL string `yaml:"manager_base_url"`
+	ManagementKey  string `yaml:"management_key"`
+	AdminKey       string `yaml:"admin_key"` // deprecated: use management_key
 }
 
 type registration struct {
@@ -297,7 +295,7 @@ func pluginRegistration() registration {
 			Name:             "CPA Manager Plus",
 			Version:          pluginVersion,
 			Author:           "xinghaix",
-			GitHubRepository: "https://github.com/xinghaix/cpa-plugin-cpa-manager-plus",
+			GitHubRepository: "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "manager_base_url", Type: pluginapi.ConfigFieldTypeString, Description: "Manager Server base URL (default http://127.0.0.1:18317)"},
 				{Name: "management_key", Type: pluginapi.ConfigFieldTypeString, Description: "Manager Plus admin Bearer token for proxy to Manager Server (optional if Manager allows unauthenticated local access)"},
@@ -319,8 +317,8 @@ func handleManagement(raw []byte) ([]byte, error) {
 		path = "/"
 	}
 	switch {
-	case strings.EqualFold(req.Method, http.MethodGet) && path == resourceAppPath:
-		return okEnvelope(htmlResponse(http.StatusOK, append([]byte(nil), embeddedAppHTML...)))
+	case strings.EqualFold(req.Method, http.MethodGet) && strings.HasPrefix(path, "/v0/resource/plugins/cpa-manager-plus"):
+		return okEnvelope(handleResource(path))
 	case strings.EqualFold(req.Method, http.MethodGet) && path == managementHealthPath:
 		return okEnvelope(handleHealth(req.ManagementRequest))
 	case strings.EqualFold(req.Method, http.MethodPost) && path == managementProxyPath:
@@ -330,11 +328,66 @@ func handleManagement(raw []byte) ([]byte, error) {
 	}
 }
 
+func handleResource(requestPath string) managementResponse {
+	filePath, ok := resourceFileForPath(requestPath)
+	if !ok {
+		return jsonResponse(http.StatusNotFound, map[string]any{"error": "resource not found", "path": requestPath})
+	}
+	body, errRead := embeddedWebFS.ReadFile(filePath)
+	if errRead != nil {
+		return jsonResponse(http.StatusNotFound, map[string]any{"error": "resource not found", "path": requestPath})
+	}
+	return managementResponse{
+		StatusCode: http.StatusOK,
+		Headers:    http.Header{"Content-Type": []string{contentTypeForResourceFile(filePath)}},
+		Body:       append([]byte(nil), body...),
+	}
+}
+
+func resourceFileForPath(requestPath string) (string, bool) {
+	cleaned := path.Clean("/" + strings.TrimSpace(requestPath))
+	if cleaned == resourceAppPath || cleaned == "/v0/resource/plugins/cpa-manager-plus/app/" {
+		return "web-dist/index.html", true
+	}
+	prefix := "/v0/resource/plugins/cpa-manager-plus/"
+	if !strings.HasPrefix(cleaned, prefix) {
+		return "", false
+	}
+	name := strings.TrimPrefix(cleaned, prefix)
+	if name == "" || strings.Contains(name, "..") {
+		return "", false
+	}
+	if strings.HasPrefix(name, "assets/") {
+		asset := strings.TrimPrefix(name, "assets/")
+		if asset == "" || strings.Contains(asset, "/") {
+			return "", false
+		}
+		switch path.Ext(asset) {
+		case ".js", ".css":
+			return "web-dist/" + name, true
+		default:
+			return "", false
+		}
+	}
+	return "", false
+}
+
+func contentTypeForResourceFile(filePath string) string {
+	switch path.Ext(filePath) {
+	case ".html":
+		return contentTypeHTML
+	case ".js":
+		return "application/javascript; charset=utf-8"
+	case ".css":
+		return "text/css; charset=utf-8"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 func handleHealth(req pluginapi.ManagementRequest) managementResponse {
 	cfg := currentConfig()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	status, _, err := proxyToManager(ctx, cfg, req, http.MethodGet, "/health", "", nil)
+	status, _, _, err := proxyToManager(cfg, req, http.MethodGet, "/health", "", nil)
 	out := healthResponse{ManagerBaseURL: cfg.ManagerBaseURL, ManagerStatus: status}
 	if err != nil {
 		out.Error = err.Error()
@@ -370,24 +423,28 @@ func handleProxy(req pluginapi.ManagementRequest) managementResponse {
 	if len(payload.Body) > 0 && string(payload.Body) != "null" {
 		body = append([]byte(nil), payload.Body...)
 	}
+	if errValidate := validateProxyTarget(method, path); errValidate != nil {
+		return jsonResponse(http.StatusForbidden, map[string]any{"error": errValidate.Error()})
+	}
 	cfg := currentConfig()
-	ctx, cancel := context.WithTimeout(context.Background(), hostHTTPTimeout)
-	defer cancel()
-	status, respBody, err := proxyToManager(ctx, cfg, req, method, path, payload.Query, body)
+	status, respHeaders, respBody, err := proxyToManager(cfg, req, method, path, payload.Query, body)
 	if err != nil {
 		return jsonResponse(http.StatusBadGateway, map[string]any{"error": err.Error()})
 	}
 	return managementResponse{
 		StatusCode: status,
-		Headers:    http.Header{"Content-Type": []string{contentTypeJSON}},
+		Headers:    respHeaders,
 		Body:       respBody,
 	}
 }
 
-func proxyToManager(ctx context.Context, cfg pluginConfig, req pluginapi.ManagementRequest, method, path, query string, body []byte) (int, []byte, error) {
+func proxyToManager(cfg pluginConfig, req pluginapi.ManagementRequest, method, path, query string, body []byte) (int, http.Header, []byte, error) {
+	if errValidate := validateProxyTarget(method, path); errValidate != nil {
+		return 0, nil, nil, errValidate
+	}
 	target, errURL := buildManagerURL(cfg.ManagerBaseURL, path, query)
 	if errURL != nil {
-		return 0, nil, errURL
+		return 0, nil, nil, errURL
 	}
 	headers := http.Header{}
 	headers.Set("Accept", "application/json")
@@ -397,11 +454,79 @@ func proxyToManager(ctx context.Context, cfg pluginConfig, req pluginapi.Managem
 	if len(body) > 0 {
 		headers.Set("Content-Type", "application/json")
 	}
-	resp, errDo := callHostHTTP(ctx, method, target, headers, body)
+	resp, errDo := callHostHTTP(method, target, headers, body)
 	if errDo != nil {
-		return 0, nil, errDo
+		return 0, nil, nil, errDo
 	}
-	return resp.StatusCode, resp.Body, nil
+	return resp.StatusCode, proxyResponseHeaders(resp.Headers), resp.Body, nil
+}
+
+func validateProxyTarget(method, path string) error {
+	method = strings.ToUpper(strings.TrimSpace(method))
+	if _, ok := allowedProxyMethods[method]; !ok {
+		return fmt.Errorf("method %s is not allowed", method)
+	}
+	path = strings.TrimRight(strings.TrimSpace(path), "/")
+	if path == "" {
+		path = "/"
+	}
+	for _, rule := range allowedProxyPathRules {
+		if rule(path) {
+			return nil
+		}
+	}
+	return fmt.Errorf("manager path %s is not allowed", path)
+}
+
+var allowedProxyMethods = map[string]struct{}{
+	http.MethodGet:    {},
+	http.MethodPost:   {},
+	http.MethodPut:    {},
+	http.MethodPatch:  {},
+	http.MethodDelete: {},
+}
+
+var allowedProxyPathRules = []func(string) bool{
+	exactPath("/health"),
+	exactPath("/status"),
+	prefixPath("/usage-service/"),
+	exactPath("/v0/management/dashboard/summary"),
+	exactPath("/v0/management/usage"),
+	prefixPath("/v0/management/usage/"),
+	exactPath("/v0/management/model-prices"),
+	prefixPath("/v0/management/model-prices/"),
+	exactPath("/v0/management/api-key-aliases"),
+	prefixPath("/v0/management/api-key-aliases/"),
+	exactPath("/v0/management/monitoring/header-snapshots"),
+	exactPath("/v0/management/monitoring/analytics"),
+	exactPath("/v0/management/codex-inspection/run"),
+	exactPath("/v0/management/codex-inspection/runs"),
+	prefixPath("/v0/management/codex-inspection/runs/"),
+}
+
+func exactPath(want string) func(string) bool {
+	return func(path string) bool { return path == want }
+}
+
+func prefixPath(prefix string) func(string) bool {
+	return func(path string) bool { return strings.HasPrefix(path, prefix) }
+}
+
+func proxyResponseHeaders(upstream map[string][]string) http.Header {
+	headers := http.Header{}
+	for key, values := range upstream {
+		if strings.EqualFold(key, "Content-Type") {
+			for _, value := range values {
+				if strings.TrimSpace(value) != "" {
+					headers.Add("Content-Type", value)
+				}
+			}
+		}
+	}
+	if headers.Get("Content-Type") == "" {
+		headers.Set("Content-Type", contentTypeJSON)
+	}
+	return headers
 }
 
 func managerAuthorization(cfg pluginConfig, _ pluginapi.ManagementRequest) string {
@@ -416,6 +541,7 @@ func managerAuthorization(cfg pluginConfig, _ pluginapi.ManagementRequest) strin
 }
 
 func buildManagerURL(base, path, query string) (string, error) {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
@@ -433,8 +559,7 @@ func buildManagerURL(base, path, query string) (string, error) {
 	return u.String(), nil
 }
 
-func callHostHTTP(ctx context.Context, method, target string, headers http.Header, body []byte) (hostHTTPResult, error) {
-	_ = ctx
+func callHostHTTP(method, target string, headers http.Header, body []byte) (hostHTTPResult, error) {
 	h := map[string][]string(headers)
 	payload := map[string]any{
 		"method":  method,

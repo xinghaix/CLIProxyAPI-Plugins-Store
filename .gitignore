@@ -3,5 +3,8 @@
 *.so
 *.dll
 *.h
-checksums_fragment.txt
 *.zip
+checksums.txt
+checksums_fragment.txt
+node_modules/
+plugins/*/go/web-dist/
