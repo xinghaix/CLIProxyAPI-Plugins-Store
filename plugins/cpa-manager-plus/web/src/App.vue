@@ -45,11 +45,7 @@
     </section>
 
     <section class="panel" v-if="activeTab === 'monitoring'">
-      <MetricGrid :cards="monitoringCards" />
-      <DataCard title="监控分析" subtitle="/v0/management/monitoring/analytics">
-        <DataTable :rows="monitoringRows" :preferred-keys="['time','createdAt','provider','model','authIndex','status','statusCode','error','latencyMs']" />
-      </DataCard>
-      <pre>{{ pretty(monitoringData) }}</pre>
+      <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
     </section>
 
     <section class="panel" v-if="activeTab === 'inspection'">
@@ -86,6 +82,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import DataCard from './components/DataCard.vue';
 import DataTable from './components/DataTable.vue';
 import MetricGrid from './components/MetricGrid.vue';
+import MonitoringView from './components/MonitoringView.vue';
 import { PROXY, HEALTH, SESSION_KEY, LEGACY_SESSION_KEY, readCPAAuthStoreKey, pick, findArray, formatCell, todayStartQuery } from './utils/data.js';
 
 const tabs = [
@@ -102,9 +99,9 @@ const cpaKeyInput = ref((sessionStorage.getItem(SESSION_KEY) || '').trim());
 const errors = reactive({});
 const dashboardData = ref(null);
 const usageData = ref(null);
-const monitoringData = ref(null);
 const inspectionData = ref(null);
 const configData = ref(null);
+const monitoringView = ref(null);
 
 const resolvedCPAKey = computed(() => {
   const input = (cpaKeyInput.value || '').trim();
@@ -119,7 +116,6 @@ const authNotice = computed(() => resolvedCPAKey.value ? '' : '未检测到可�
 const activeError = computed(() => errors[activeTab.value] || '');
 const dashboardRows = computed(() => Object.entries(dashboardData.value || {}).map(([key,value]) => ({key, value: formatCell(value)})));
 const usageRows = computed(() => findArray(usageData.value));
-const monitoringRows = computed(() => findArray(monitoringData.value));
 const inspectionRows = computed(() => findArray(inspectionData.value));
 const configRows = computed(() => {
   const d = configData.value && configData.value.config ? configData.value.config : (configData.value || {});
@@ -144,16 +140,7 @@ const usageCards = computed(() => {
     {label:'费用', value: pick(d, ['totalCost','cost','amount'])},
   ];
 });
-const monitoringCards = computed(() => {
-  const d = monitoringData.value || {};
-  const rows = monitoringRows.value;
-  return [
-    {label:'事件数', value: rows.length || pick(d, ['events','eventCount','total'])},
-    {label:'失败', value: pick(d, ['failed','failedCount','errors','errorCount'])},
-    {label:'账号数', value: pick(d, ['accounts','accountCount'])},
-    {label:'模型数', value: pick(d, ['models','modelCount'])},
-  ];
-});
+
 const inspectionCards = computed(() => {
   const rows = inspectionRows.value;
   const last = rows[0] || {};
@@ -211,7 +198,7 @@ async function refreshActive(){
   try{
     if(activeTab.value === 'dashboard') await loadDashboard();
     if(activeTab.value === 'usage') await loadUsage();
-    if(activeTab.value === 'monitoring') await loadMonitoring();
+    if(activeTab.value === 'monitoring') await (monitoringView.value ? monitoringView.value.refresh(true) : Promise.resolve());
     if(activeTab.value === 'inspection') await loadInspection();
     if(activeTab.value === 'config') await loadConfig();
   }catch(e){ errors[activeTab.value] = e.message || String(e); }
@@ -219,7 +206,6 @@ async function refreshActive(){
 }
 async function loadDashboard(){ dashboardData.value = await proxyCall({method:'GET', path:'/v0/management/dashboard/summary', query:todayStartQuery()}); }
 async function loadUsage(){ usageData.value = await proxyCall({method:'GET', path:'/v0/management/usage'}); }
-async function loadMonitoring(){ monitoringData.value = await proxyCall({method:'GET', path:'/v0/management/monitoring/analytics'}); }
 async function loadInspection(){ inspectionData.value = await proxyCall({method:'GET', path:'/v0/management/codex-inspection/runs'}); }
 async function loadConfig(){ configData.value = await proxyCall({method:'GET', path:'/usage-service/config'}); }
 function saveCPAKey(){

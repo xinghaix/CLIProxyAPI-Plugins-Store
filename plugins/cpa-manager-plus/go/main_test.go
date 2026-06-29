@@ -69,6 +69,7 @@ func TestValidateProxyTarget(t *testing.T) {
 		{http.MethodGet, "/usage-service/info"},
 		{http.MethodGet, "/v0/management/dashboard/summary"},
 		{http.MethodGet, "/v0/management/monitoring/analytics"},
+		{http.MethodPost, "/v0/management/monitoring/analytics"},
 		{http.MethodPost, "/v0/management/codex-inspection/run"},
 		{http.MethodPost, "/v0/management/codex-inspection/runs/12/actions"},
 	}

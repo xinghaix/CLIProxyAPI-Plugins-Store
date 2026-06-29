@@ -72,7 +72,6 @@ import (
 )
 
 const (
-	pluginID                = "cpa-manager-plus"
 	defaultManagerBaseURL   = "http://127.0.0.1:18317"
 	managementHealthPathRel = "/cpa-manager-plus/health"
 	managementProxyPathRel  = "/cpa-manager-plus/proxy"
@@ -84,7 +83,7 @@ const (
 	maxProxyBodyBytes       = 8 << 20
 )
 
-var pluginVersion = "0.1.6"
+var pluginVersion = "0.1.7"
 
 var activeConfig atomic.Value
 
