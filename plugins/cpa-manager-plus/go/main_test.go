@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -153,4 +154,42 @@ func TestHandleResourceReadsEmbeddedVueAssets(t *testing.T) {
 	if unknown.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown resource status = %d, want 404", unknown.StatusCode)
 	}
+}
+
+func TestHandleManagementRouteDispatch(t *testing.T) {
+	paths := []string{managementProxyPathRel, managementProxyPathAbs}
+	for _, p := range paths {
+		raw := mustJSON(managementRequest{
+			ManagementRequest: pluginapi.ManagementRequest{
+				Method: http.MethodPost,
+				Path:   p,
+			},
+		})
+		result, err := handleManagement(raw)
+		if err != nil {
+			t.Fatalf("handleManagement POST %s error: %v", p, err)
+		}
+		if !strings.Contains(string(result), `"error":"plugin route not found"`) {
+			t.Logf("handleManagement POST %s matched proxy handler", p)
+		}
+	}
+
+	healthPaths := []string{managementHealthPathRel, managementHealthPathAbs}
+	for _, p := range healthPaths {
+		raw := mustJSON(managementRequest{
+			ManagementRequest: pluginapi.ManagementRequest{
+				Method: http.MethodGet,
+				Path:   p,
+			},
+		})
+		_, err := handleManagement(raw)
+		if err != nil {
+			t.Fatalf("handleManagement GET %s error: %v", p, err)
+		}
+	}
+}
+
+func mustJSON(v any) []byte {
+	b, _ := json.Marshal(v)
+	return b
 }

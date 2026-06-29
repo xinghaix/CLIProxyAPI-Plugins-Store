@@ -72,14 +72,16 @@ import (
 )
 
 const (
-	pluginID              = "cpa-manager-plus"
-	defaultManagerBaseURL = "http://127.0.0.1:18317"
-	managementHealthPath  = "/v0/management/cpa-manager-plus/health"
-	managementProxyPath   = "/v0/management/cpa-manager-plus/proxy"
-	resourceAppPath       = "/v0/resource/plugins/cpa-manager-plus/app"
-	contentTypeJSON       = "application/json; charset=utf-8"
-	contentTypeHTML       = "text/html; charset=utf-8"
-	maxProxyBodyBytes     = 8 << 20
+	pluginID                = "cpa-manager-plus"
+	defaultManagerBaseURL   = "http://127.0.0.1:18317"
+	managementHealthPathRel = "/cpa-manager-plus/health"
+	managementProxyPathRel  = "/cpa-manager-plus/proxy"
+	managementHealthPathAbs = "/v0/management/cpa-manager-plus/health"
+	managementProxyPathAbs  = "/v0/management/cpa-manager-plus/proxy"
+	resourceAppPath         = "/v0/resource/plugins/cpa-manager-plus/app"
+	contentTypeJSON         = "application/json; charset=utf-8"
+	contentTypeHTML         = "text/html; charset=utf-8"
+	maxProxyBodyBytes       = 8 << 20
 )
 
 var pluginVersion = "0.1.6"
@@ -316,12 +318,15 @@ func handleManagement(raw []byte) ([]byte, error) {
 	if path == "" {
 		path = "/"
 	}
+	isHealth := path == managementHealthPathRel || path == managementHealthPathAbs
+	isProxy := path == managementProxyPathRel || path == managementProxyPathAbs
+
 	switch {
 	case strings.EqualFold(req.Method, http.MethodGet) && strings.HasPrefix(path, "/v0/resource/plugins/cpa-manager-plus"):
 		return okEnvelope(handleResource(path))
-	case strings.EqualFold(req.Method, http.MethodGet) && path == managementHealthPath:
+	case strings.EqualFold(req.Method, http.MethodGet) && isHealth:
 		return okEnvelope(handleHealth(req.ManagementRequest))
-	case strings.EqualFold(req.Method, http.MethodPost) && path == managementProxyPath:
+	case strings.EqualFold(req.Method, http.MethodPost) && isProxy:
 		return okEnvelope(handleProxy(req.ManagementRequest))
 	default:
 		return okEnvelope(jsonResponse(http.StatusNotFound, map[string]any{"error": "plugin route not found", "path": path}))

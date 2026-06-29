@@ -61,7 +61,7 @@
     </section>
 
     <section class="panel" v-if="activeTab === 'config'">
-      <DataCard title="访问凭据" subtitle="sessionStorage only">
+      <DataCard title="访问凭据" subtitle="仅浏览器缓存">
         <p class="muted">这里输入的是 CPA <code>remote-management.secret-key</code>，用于浏览器访问 CPA 的 <code>/v0/management/*</code>。它不是插件 YAML 里的 Plus <code>management_key</code>。</p>
         <div class="keybar">
           <input v-model.trim="cpaKeyInput" type="password" autocomplete="off" placeholder="CPA management key（当前会话临时保存）" @keyup.enter="saveCPAKey" />
