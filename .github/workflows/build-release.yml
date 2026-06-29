@@ -1,15 +1,19 @@
-# Tag is pushed manually after bumping registry.json + main.pluginVersion in source.
-# Tag format is v<version>-<plugin-id>, for example v1.2.0-cpa-manager-plus.
-# One tag builds and releases exactly one plugin under plugins/<plugin-id>/go.
-# CPA uses GET .../releases/latest on registry.repository and selects
-#   <plugin-id>_<version>_<goos>_<goarch>.zip from release assets.
+# Tag format is v<version> (standard semver, e.g. v1.2.0).
+# Before tagging, the plugin's version must be bumped in:
+#   1. plugins/<id>/go/main.go   → var pluginVersion = "1.2.0"
+#   2. registry.json             → "version": "1.2.0"
+#   3. plugins/<id>/Makefile     → VERSION := 1.2.0 (if exists)
+# The workflow reads var pluginVersion from each plugin's source and only
+# builds plugins whose hardcoded version matches the tag version.
+# A release contains only the matching plugins' platform zips + checksums.
+# CPA uses GET .../releases/latest on registry.repository.
 
-name: Build and Release Plugin
+name: Build and Release Matching Plugins
 
 on:
   push:
     tags:
-      - "v[0-9]*-*"
+      - "v[0-9]*"
 
 permissions:
   contents: write
@@ -23,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.list.outputs.version }}
-      plugin_id: ${{ steps.list.outputs.plugin_id }}
+      plugin_ids: ${{ steps.list.outputs.plugin_ids }}
       matrix: ${{ steps.list.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
@@ -32,9 +36,13 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          TAG_BODY="${TAG#v}"
-          if [ "$TAG_BODY" = "$TAG" ]; then
-            echo "invalid tag for CPA plugin store: $TAG (need v<version>-<plugin-id>, e.g. v1.2.0-cpa-manager-plus)" >&2
+          VERSION="${TAG#v}"
+          if [ "$VERSION" = "$TAG" ]; then
+            echo "invalid tag: $TAG (need v<version>, e.g. v1.2.0)" >&2
+            exit 1
+          fi
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+][0-9A-Za-z.-]+)?$'; then
+            echo "invalid version in tag: $VERSION (need semver like 1.2.0)" >&2
             exit 1
           fi
 
@@ -44,51 +52,51 @@ jobs:
             exit 1
           fi
 
-          PLUGIN_ID=""
-          VERSION=""
-          # Plugin IDs may contain hyphens, so match the longest known plugin id suffix.
-          SORTED_PLUGINS=$(printf '%s\n' "$PLUGINS" | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2-)
-          for pid in $SORTED_PLUGINS; do
-            suffix="-${pid}"
-            if [[ "$TAG_BODY" == *"$suffix" ]]; then
-              PLUGIN_ID="$pid"
-              VERSION="${TAG_BODY%$suffix}"
-              break
+          MATCHING_PLUGINS=""
+          ALL_VERSIONS=""
+          for pid in $PLUGINS; do
+            pv=$(grep -oP 'var pluginVersion\s*=\s*"\K[^"]+' "plugins/${pid}/go/main.go" 2>/dev/null || echo '')
+            if [ -z "$pv" ]; then
+              echo "WARNING: cannot read version from plugins/${pid}/go/main.go" >&2
+              continue
+            fi
+            ALL_VERSIONS="${ALL_VERSIONS}  ${pid}: ${pv}\n"
+            if [ "$pv" = "$VERSION" ]; then
+              MATCHING_PLUGINS="$MATCHING_PLUGINS $pid"
             fi
           done
 
-          if [ -z "$PLUGIN_ID" ] || [ -z "$VERSION" ]; then
-            echo "invalid tag for CPA plugin store: $TAG" >&2
-            echo "expected v<version>-<plugin-id>, where plugin-id is one of: $(printf '%s' "$PLUGINS" | tr '\n' ' ')" >&2
-            exit 1
-          fi
-          if [ ! -f "plugins/${PLUGIN_ID}/go/go.mod" ]; then
-            echo "plugin not found: ${PLUGIN_ID}" >&2
-            exit 1
-          fi
-          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+][0-9A-Za-z.-]+)?$'; then
-            echo "invalid version in tag: $VERSION (need semver like 1.2.0; prerelease '-' is reserved for plugin-id suffix)" >&2
+          MATCHING_PLUGINS=$(echo "$MATCHING_PLUGINS" | xargs -n1 | sort -u | xargs)
+          if [ -z "$MATCHING_PLUGINS" ]; then
+            echo "no plugin has version $VERSION in source" >&2
+            echo "available plugin versions:" >&2
+            printf "%b" "$ALL_VERSIONS" >&2
             exit 1
           fi
 
-          MATRIX=$(jq -nc --arg pid "$PLUGIN_ID" '
-            {include: [
-              {plugin_id:$pid,goos:"linux",goarch:"amd64",runner:"ubuntu-latest",ext:"so"},
-              {plugin_id:$pid,goos:"linux",goarch:"arm64",runner:"ubuntu-24.04-arm",ext:"so"},
-              {plugin_id:$pid,goos:"darwin",goarch:"amd64",runner:"macos-latest",ext:"dylib"},
-              {plugin_id:$pid,goos:"darwin",goarch:"arm64",runner:"macos-latest",ext:"dylib"},
-              {plugin_id:$pid,goos:"windows",goarch:"amd64",runner:"windows-latest",ext:"dll"},
-              {plugin_id:$pid,goos:"windows",goarch:"arm64",runner:"windows-11-arm",ext:"dll"}
-            ]}
-          ')
+          echo "tag version: $VERSION"
+          echo "matching plugins: $MATCHING_PLUGINS"
+          printf "%b" "$ALL_VERSIONS"
+
+          # Build matrix: matching plugins × 6 platforms
+          ENTRIES=""
+          for pid in $MATCHING_PLUGINS; do
+            for pair in "linux:amd64:ubuntu-latest:so" "linux:arm64:ubuntu-24.04-arm:so" "darwin:amd64:macos-latest:dylib" "darwin:arm64:macos-latest:dylib" "windows:amd64:windows-latest:dll" "windows:arm64:windows-11-arm:dll"; do
+              IFS=':' read -r goos goarch runner ext <<< "$pair"
+              ENTRIES="${ENTRIES}{\"plugin_id\":\"$pid\",\"goos\":\"$goos\",\"goarch\":\"$goarch\",\"runner\":\"$runner\",\"ext\":\"$ext\"},"
+            done
+          done
+          ENTRIES="${ENTRIES%,}"
+          MATRIX="{\"include\":[$ENTRIES]}"
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "plugin_id=$PLUGIN_ID" >> "$GITHUB_OUTPUT"
+          echo "plugin_ids=$MATCHING_PLUGINS" >> "$GITHUB_OUTPUT"
           {
             echo 'matrix<<MATRIX_EOF'
             echo "$MATRIX"
             echo 'MATRIX_EOF'
           } >> "$GITHUB_OUTPUT"
-          echo "Plugin: $PLUGIN_ID version $VERSION jobs: $(echo "$MATRIX" | jq '.include | length')"
+          echo "jobs: $(echo "$MATRIX" | jq '.include | length')"
 
   build:
     name: ${{ matrix.plugin_id }} ${{ matrix.goos }}/${{ matrix.goarch }}
@@ -190,7 +198,7 @@ jobs:
             plugins/${{ matrix.plugin_id }}/go/checksums_fragment.txt
 
   release:
-    name: Assemble Release ${{ needs.discover.outputs.plugin_id }} ${{ needs.discover.outputs.version }}
+    name: Release v${{ needs.discover.outputs.version }}
     runs-on: ubuntu-latest
     needs: [discover, build]
     steps:
@@ -209,7 +217,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: ${{ needs.discover.outputs.plugin_id }} v${{ needs.discover.outputs.version }}
+          name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
             artifacts/**/*.zip

@@ -71,57 +71,55 @@ Check that `registered: true` and `effective_enabled: true` for the installed pl
 
 ## Publishing a release
 
-Store releases are **one plugin per tag**. A tag builds and uploads assets only for the plugin encoded in the tag suffix. CPA picks assets from `releases/latest` on the repo URL in `registry.json`.
+Store releases use **standard semver tags** (e.g. `v1.2.0`). One tag = one release, and only plugins whose hardcoded `var pluginVersion` matches the tag version are built. CPA picks assets from `releases/latest` on the repo URL in `registry.json`.
 
 ### Tag format
 
 ```text
-v<version>-<plugin-id>
+v<version>
 ```
 
 Example:
 
 ```text
-v1.2.0-cpa-manager-plus
+v1.2.0
 ```
 
-This builds only:
-
-```text
-plugins/cpa-manager-plus/go
-```
+This builds every plugin whose `go/main.go` declares `var pluginVersion = "1.2.0"`. If no plugin matches, CI fails with a list of available plugin versions.
 
 ### Release checklist (order matters)
 
 1. **Change the plugin** (if this release includes code or metadata fixes).
-2. **Choose the plugin version** (e.g. `1.2.0`).
-3. **Bump version everywhere for that plugin only** (same string, no `v` prefix):
-   - `registry.json` → that plugin's `"version"`
+2. **Choose the new version** (e.g. `1.2.0`).
+3. **Bump version everywhere** for the plugin(s) you are releasing (same string, no `v` prefix):
    - `plugins/<plugin-id>/go/main.go` → `var pluginVersion = "…"`
+   - `registry.json` → that plugin's `"version"`
    - `plugins/<plugin-id>/Makefile` → `VERSION := …` (if the plugin has a Makefile)
 4. **Commit and push to `main`** so the tag points at sources that already declare that version.
-5. **Create and push the plugin tag manually** (tag push triggers CI; do not rely on CI to invent the version):
+5. **Create and push the tag manually** (tag push triggers CI):
 
    ```bash
-   git tag -a v1.2.0-cpa-manager-plus -m "cpa-manager-plus v1.2.0"
-   git push origin v1.2.0-cpa-manager-plus
+   git tag -a v1.2.0 -m "v1.2.0"
+   git push origin v1.2.0
    ```
 
-6. **Watch the workflow** [Build and Release Plugin](https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/actions) until `discover`, the six-platform `build` matrix, and `release` succeed. The release job uploads that plugin's `*.zip` files and `checksums.txt`.
+6. **Watch the workflow** [Build and Release Matching Plugins](https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/actions) until `discover`, all `build` matrix jobs, and `release` succeed.
 
 ### What CI does (after the tag)
 
-- Parses `VERSION` and `PLUGIN_ID` from the tag (`v1.2.0-cpa-manager-plus` → `VERSION=1.2.0`, `PLUGIN_ID=cpa-manager-plus`).
-- Builds only that plugin for linux/darwin/windows × amd64/arm64.
-- If the plugin has `web/package.json`, runs `npm ci && npm run build` before Go build so Go embeds compiled frontend assets.
+- Parses `VERSION` from the tag (`v1.2.0` → `1.2.0`).
+- Scans every `plugins/*/go/main.go` for `var pluginVersion` and builds only plugins whose version matches the tag.
+- Each matching plugin is built for linux/darwin/windows × amd64/arm64 (6 platform zips each).
+- If a plugin has `web/package.json`, runs `npm ci && npm run build` before Go build.
 - Names artifacts `<plugin-id>_<version>_<goos>_<goarch>.zip` with `<plugin-id>-v<version>.{so,dylib,dll}` inside.
-- Sets link-time `-X main.pluginVersion=<version>` so CPA sees the same version in plugin metadata as in the zip name.
+- Merges all checksums into one `checksums.txt` and uploads with the release.
+
 
 ### Adding a new plugin (first time)
 
 1. Add `plugins/<plugin-id>/` with `go/go.mod` and source.
 2. Add a `registry.json` entry (`repository` = this store repo).
-3. Follow the **Release checklist** above with a plugin-specific tag.
+3. Follow the **Release checklist** above with a standard semver tag.
 
 ### Zip / checksums examples
 
