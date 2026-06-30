@@ -99,7 +99,7 @@
               <th>成功率</th>
               <th>总调用</th>
               <th>TPS</th>
-              <th>首字 ｜ 耗时</th>
+              <th>首字</th><th>耗时</th>
               <th>时间</th>
               <th>本次用量</th>
               <th>本次花费</th>
@@ -134,13 +134,8 @@
               <td><strong :class="successRateClass(row.successRate)">{{ fmtPct(row.successRate) }}</strong></td>
               <td>{{ fmtInt(row.totalCalls) }}</td>
               <td>{{ fmtTps(row.tps) }}</td>
-              <td>
-                <div class="latency-pair">
-                  <span :class="latencyClass(row.ttftMs)">{{ fmtSeconds(row.ttftMs) }}</span>
-                  <b>｜</b>
-                  <span :class="latencyClass(row.latencyMs)">{{ fmtSeconds(row.latencyMs) }}</span>
-                </div>
-              </td>
+              <td><span :class="latencyClass(row.ttftMs)">{{ fmtSeconds(row.ttftMs) }}</span></td>
+              <td><span :class="latencyClass(row.latencyMs)">{{ fmtSeconds(row.latencyMs) }}</span></td>
               <td>
                 <div>{{ formatDate(row.timestampMs) }}</div>
                 <div>{{ formatTime(row.timestampMs) }}</div>
@@ -164,12 +159,17 @@
       </Teleport>
     </DataCard>
 
-    <DataCard v-if="activeDataTab === 'accounts'" title="账号维度" subtitle="account_stats">
-      <SimpleTable :rows="accountRows" :columns="accountColumns" @select="setAccountFilter" />
-    </DataCard>
-
-    <DataCard v-if="activeDataTab === 'apiKeys'" title="API Key 维度" subtitle="api_key_stats">
-      <SimpleTable :rows="apiKeyRows" :columns="apiKeyColumns" @select="setApiKeyFilter" />
+    <DataCard v-if="activeDataTab === 'accounts'" title="账号汇总" subtitle="account_stats / api_key_stats">
+      <div class="split">
+        <div>
+          <h3 style="margin:0 0 10px; font-size:14px; color:var(--cpa-text-secondary)">账号维度</h3>
+          <SimpleTable :rows="accountRows" :columns="accountColumns" @select="setAccountFilter" />
+        </div>
+        <div>
+          <h3 style="margin:0 0 10px; font-size:14px; color:var(--cpa-text-secondary)">API Key 维度</h3>
+          <SimpleTable :rows="apiKeyRows" :columns="apiKeyColumns" @select="setApiKeyFilter" />
+        </div>
+      </div>
     </DataCard>
 
     <DataCard v-if="activeDataTab === 'models'" title="模型维度" subtitle="model_stats / model_share">
@@ -223,8 +223,7 @@ let timer = null;
 
 const dataTabs = computed(() => [
   {key:'events', label:'事件流', count:eventRows.value.length},
-  {key:'accounts', label:'账号', count:accountRows.value.length},
-  {key:'apiKeys', label:'API Key', count:apiKeyRows.value.length},
+  {key:'accounts', label:'账号汇总', count:accountRows.value.length + apiKeyRows.value.length},
   {key:'models', label:'模型', count:modelRows.value.length},
   {key:'timeline', label:'时间线', count:timelineRows.value.length},
 ]);
@@ -552,6 +551,8 @@ function eventGroupKey(row){
 function normalizeRate(rate, calls, success){ if(rate != null && Number.isFinite(Number(rate))) return Number(rate) > 1 ? Number(rate) / 100 : Number(rate); return calls > 0 ? success / calls : null; }
 function numberOrNull(v){ const n = Number(v); return Number.isFinite(n) ? n : null; }
 function buildUsageText(row){
+  const total = Number(row.total_tokens || 0);
+  if(total === 0) return '0';
   const parts = [];
   parts.push(`I ${fmtCompact(row.input_tokens)}`);
   parts.push(`O ${fmtCompact(row.output_tokens)}`);
