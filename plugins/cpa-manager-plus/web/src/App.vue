@@ -4,10 +4,6 @@
       <nav class="tabs" aria-label="CPA Manager Plus tabs">
         <button v-for="tab in tabs" :key="tab.key" :class="['tab', {active: activeTab === tab.key}]" @click="selectTab(tab.key)">{{ tab.label }}</button>
       </nav>
-      <div class="toolbar-actions" aria-label="Manager actions">
-        <button class="btn" @click="checkHealth" :disabled="loading">检测 Manager</button>
-        <button class="btn primary" @click="refreshActive" :disabled="loading">{{ loading ? '加载中…' : '刷新当前' }}</button>
-      </div>
     </section>
 
     <section v-if="authNotice" class="notice">{{ authNotice }}</section>
@@ -53,7 +49,6 @@
             <h1>CPA Manager Plus</h1>
             <p class="subtitle">数据经 CPA 同源 Management API 到插件，再反向代理到 Plus Manager Server。</p>
           </div>
-          <div :class="['health-pill', health.state]"><span class="dot"></span><span>{{ health.text }}</span></div>
         </div>
       </section>
       <DataCard title="访问凭据" subtitle="仅浏览器缓存">
@@ -61,8 +56,10 @@
         <div class="keybar">
           <input v-model.trim="cpaKeyInput" type="password" autocomplete="off" placeholder="CPA management key（当前会话临时保存）" @keyup.enter="saveCPAKey" />
           <button class="btn primary" @click="saveCPAKey">保存并检测</button>
+          <button class="btn" @click="checkHealth" :disabled="loading">检测 Manager</button>
           <button class="btn danger" @click="clearCPAKey">清除</button>
         </div>
+        <div :class="['health-pill', health.state]"><span class="dot"></span><span>{{ health.text }}</span></div>
       </DataCard>
       <div class="split">
         <DataCard title="Manager 配置" subtitle="/usage-service/config">
