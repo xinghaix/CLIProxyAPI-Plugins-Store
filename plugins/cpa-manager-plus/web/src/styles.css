@@ -193,6 +193,8 @@ h2 { margin: 0; }
 .heatmap-cell { width: 28px; height: 24px; cursor: pointer; transition: transform .1s; }
 .heatmap-cell:hover { transform: scale(1.15); outline: 2px solid var(--cpa-primary); z-index: 1; position: relative; }
 .timeline-row.selected { background: var(--cpa-primary-soft); border-radius: var(--cpa-radius-sm); }
+.selected-row td { background: color-mix(in srgb, var(--cpa-primary) 10%, var(--cpa-surface)); }
+.detail-card-head-action { display:flex; justify-content:flex-end; margin-bottom:10px; }
 .notice { border: 1px solid color-mix(in srgb, var(--cpa-warning) 34%, var(--cpa-border)); background: var(--cpa-warning-soft); color: var(--cpa-text-secondary); border-radius: var(--cpa-radius-lg); padding: 12px 14px; font-size: 13px; line-height: 1.5; }
 .notice.error { border-color: color-mix(in srgb, var(--cpa-error) 40%, var(--cpa-border)); background: var(--cpa-error-soft); color: color-mix(in srgb, var(--cpa-error) 70%, var(--cpa-text-primary)); }
 

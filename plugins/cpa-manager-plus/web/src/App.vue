@@ -115,7 +115,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import DataCard from './components/DataCard.vue';
 import DataTable from './components/DataTable.vue';
 import MonitoringView from './components/MonitoringView.vue';
@@ -316,6 +316,17 @@ function clearCPAKey(){
   sessionStorage.removeItem(LEGACY_SESSION_KEY);
   health.state = ''; health.text = '未检测 Manager';
 }
+function handleOpenMonitoring(){
+  activeTab.value = 'monitoring';
+  setTimeout(() => { refreshActive(); }, 0);
+}
 
-onMounted(() => { checkHealth(); refreshActive(); });
+onMounted(() => {
+  checkHealth();
+  refreshActive();
+  window.addEventListener('cpa-manager-plus:open-monitoring', handleOpenMonitoring);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('cpa-manager-plus:open-monitoring', handleOpenMonitoring);
+});
 </script>

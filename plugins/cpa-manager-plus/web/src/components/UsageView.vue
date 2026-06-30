@@ -83,18 +83,18 @@
 
       <div class="split">
         <DataCard title="模型排名" subtitle="Top 8">
-          <SimpleTable :rows="topModels" :columns="rankColumns" selectable @select="row => selectedModelId = row.id || row.model" />
+          <SimpleTable :rows="topModels" :columns="rankColumns" selectable :selected-id="selectedModelId" @select="row => selectedModelId = row.id || row.model" />
         </DataCard>
         <DataCard title="API Key 排名" subtitle="Top 8">
-          <SimpleTable :rows="topApiKeys" :columns="apiKeyRankColumns" selectable @select="row => { selectedApiKeyHash = row.api_key_hash || row.id; loadSelectedApiKeyTimeline(); }" />
+          <SimpleTable :rows="topApiKeys" :columns="apiKeyRankColumns" selectable :selected-id="selectedApiKeyHash" @select="row => { selectedApiKeyHash = row.api_key_hash || row.id; loadSelectedApiKeyTimeline(); }" />
         </DataCard>
       </div>
 
-      <DataCard v-if="selectedBucketMs && drilldownRows.length" title="请求预览" subtitle="选中时间桶">
+      <DataCard v-if="selectedBucketMs && drilldownRows.length" title="钻取预览" subtitle="选中时间桶">
         <SimpleTable :rows="drilldownRows" :columns="drilldownColumns" />
       </DataCard>
 
-      <DataCard v-if="anomalyRows.length" title="异常点" :subtitle="`${anomalyRows.length} 个`">
+      <DataCard v-if="anomalyRows.length" title="风险时段" :subtitle="`${anomalyRows.length} 个`">
         <SimpleTable :rows="anomalyRows" :columns="anomalyColumns" />
       </DataCard>
     </div>
@@ -122,9 +122,12 @@
     <!-- Models tab -->
     <div v-if="activeTab === 'models'" class="usage-tab-content">
       <DataCard title="模型维度" subtitle="model_stats / model_share">
-        <SimpleTable :rows="modelRows" :columns="modelColumns" selectable @select="row => selectedModelId = row.id || row.model" />
+        <SimpleTable :rows="modelRows" :columns="modelColumns" selectable :selected-id="selectedModelId" @select="row => selectedModelId = row.id || row.model" />
       </DataCard>
       <DataCard v-if="selectedModel" title="模型详情" :subtitle="selectedModel.model || '—'">
+        <div class="detail-card-head-action">
+          <button class="btn" @click="openMonitoringForModel(selectedModel)">查看请求详情</button>
+        </div>
         <DetailGrid :items="buildModelDetail(selectedModel)" />
       </DataCard>
     </div>
@@ -132,7 +135,7 @@
     <!-- API Keys tab -->
     <div v-if="activeTab === 'apiKeys'" class="usage-tab-content">
       <DataCard title="API Key 维度" subtitle="api_key_stats">
-        <SimpleTable :rows="apiKeyRows" :columns="apiKeyColumns" selectable @select="row => { selectedApiKeyHash = row.api_key_hash || row.id; loadSelectedApiKeyTimeline(); }" />
+        <SimpleTable :rows="apiKeyRows" :columns="apiKeyColumns" selectable :selected-id="selectedApiKeyHash" @select="row => { selectedApiKeyHash = row.api_key_hash || row.id; loadSelectedApiKeyTimeline(); }" />
       </DataCard>
       <DataCard v-if="selectedApiKeyTimeline.length" title="选中 API Key 趋势" :subtitle="selectedApiKey?.api_key_hash || selectedApiKey?.id || '—'">
         <div class="timeline-bars">
@@ -144,6 +147,9 @@
         </div>
       </DataCard>
       <DataCard v-if="selectedApiKey" title="API Key 详情" :subtitle="selectedApiKey.api_key_hash || selectedApiKey.id || '—'">
+        <div class="detail-card-head-action">
+          <button class="btn" @click="openMonitoringForApiKey(selectedApiKey)">查看请求详情</button>
+        </div>
         <DetailGrid :items="buildApiKeyDetail(selectedApiKey)" />
       </DataCard>
     </div>
@@ -151,7 +157,7 @@
     <!-- Credentials tab -->
     <div v-if="activeTab === 'credentials'" class="usage-tab-content">
       <DataCard title="凭据维度" subtitle="credential_stats / credential_timeline">
-        <SimpleTable :rows="credentialRows" :columns="credentialColumns" selectable @select="row => selectedCredentialId = row.id || row.auth_file || row.authFile" />
+        <SimpleTable :rows="credentialRows" :columns="credentialColumns" selectable :selected-id="selectedCredentialId" @select="row => selectedCredentialId = row.id || row.auth_file || row.authFile" />
       </DataCard>
       <DataCard v-if="selectedCredentialTimelineRows.length" title="凭据趋势" :subtitle="selectedCredential?.auth_file || selectedCredential?.authFile || selectedCredential?.id || '—'">
         <div class="timeline-bars">
@@ -163,7 +169,10 @@
           </div>
         </div>
       </DataCard>
-      <DataCard v-if="selectedCredential" title="凭据详情" :subtitle="selectedCredential.auth_file || selectedCredential.authFile || selectedCredential.id || '—'">
+      <DataCard v-if="selectedCredential" title="账号凭据详情" :subtitle="selectedCredential.auth_file || selectedCredential.authFile || selectedCredential.id || '—'">
+        <div class="detail-card-head-action">
+          <button class="btn" @click="openMonitoringForCredential(selectedCredential)">查看请求详情</button>
+        </div>
         <DetailGrid :items="buildCredentialDetail(selectedCredential)" />
       </DataCard>
     </div>
@@ -565,6 +574,19 @@ function buildHeatmapDetail(cell){
     {label:'失败率', value: fmtPct(cell.failure_rate)},
   ];
 }
+function openMonitoringWithPayload(payload){
+  try { sessionStorage.setItem('cpa-manager-plus:pending-monitoring-filter', JSON.stringify(payload)); } catch {}
+  window.dispatchEvent(new CustomEvent('cpa-manager-plus:open-monitoring'));
+}
+function openMonitoringForModel(row){
+  openMonitoringWithPayload({ model: row?.model || 'all' });
+}
+function openMonitoringForApiKey(row){
+  openMonitoringWithPayload({ apiKeyHash: row?.api_key_hash || row?.id || 'all' });
+}
+function openMonitoringForCredential(row){
+  openMonitoringWithPayload({ authFile: row?.auth_file || row?.authFile || row?.id || 'all' });
+}
 
 function trendValue(point){
   if(trendMetric.value === 'requestCount') return Number(point.calls || 0);
@@ -646,17 +668,22 @@ function fmtCompact(v){
 defineExpose({ refresh });
 
 const SimpleTable = defineComponent({
-  props: { rows:{type:Array, default:()=>[]}, columns:{type:Array, default:()=>[]}, selectable:{type:Boolean, default:false} },
+  props: { rows:{type:Array, default:()=>[]}, columns:{type:Array, default:()=>[]}, selectable:{type:Boolean, default:false}, selectedId:{type:[String, Number], default:''} },
   emits: ['select'],
   setup(props, {emit}){
     return () => {
       if(!props.rows.length) return h('div', {class:'empty'}, '暂无数据');
       const head = h('thead', h('tr', props.columns.map(col => h('th', col[1]))));
-      const body = h('tbody', props.rows.slice(0, 50).map((row, idx) =>
-        h('tr', props.selectable ? {key:idx, class:'clickable', onClick:()=>emit('select', row)} : {key:idx},
+      const body = h('tbody', props.rows.slice(0, 50).map((row, idx) => {
+        const rowId = row.id || row.model || row.api_key_hash || row.auth_file || row.authFile || idx;
+        const isSelected = props.selectedId && String(props.selectedId) === String(rowId);
+        const rowProps = props.selectable
+          ? {key:idx, class:['clickable', isSelected ? 'selected-row' : ''].filter(Boolean).join(' '), onClick:()=>emit('select', row)}
+          : {key:idx};
+        return h('tr', rowProps,
           props.columns.map(col => h('td', renderCell(row[col[0]], col[2])))
-        )
-      ));
+        );
+      }));
       return h('div', {class:'table-wrap monitor-table'}, h('table', [head, body]));
     };
   }
