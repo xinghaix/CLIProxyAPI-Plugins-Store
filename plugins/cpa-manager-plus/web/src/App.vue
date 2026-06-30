@@ -26,11 +26,7 @@
     </section>
 
     <section class="panel" v-if="activeTab === 'usage'">
-      <MetricGrid :cards="usageCards" />
-      <DataCard title="用量记录" subtitle="/v0/management/usage">
-        <DataTable :rows="usageRows" :preferred-keys="['date','day','model','provider','authIndex','requests','tokens','cost','inputTokens','outputTokens']" />
-      </DataCard>
-      <pre>{{ pretty(usageData) }}</pre>
+      <UsageView ref="usageView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
     </section>
 
     <section class="panel" v-if="activeTab === 'inspection'">
@@ -132,6 +128,7 @@ import DataCard from './components/DataCard.vue';
 import DataTable from './components/DataTable.vue';
 import MetricGrid from './components/MetricGrid.vue';
 import MonitoringView from './components/MonitoringView.vue';
+import UsageView from './components/UsageView.vue';
 import { PROXY, HEALTH, SESSION_KEY, LEGACY_SESSION_KEY, readCPAAuthStoreKey, pick, findArray, formatCell, todayStartQuery } from './utils/data.js';
 import { initThemeBridge } from './themeBridge.js';
 
@@ -154,6 +151,7 @@ const usageData = ref(null);
 const inspectionData = ref(null);
 const configData = ref(null);
 const monitoringView = ref(null);
+const usageView = ref(null);
 
 // Manager config state
 const mgrSaving = ref(false);
@@ -285,7 +283,7 @@ async function refreshActive(){
   errors[activeTab.value] = '';
   try{
     if(activeTab.value === 'dashboard') await loadDashboard();
-    if(activeTab.value === 'usage') await loadUsage();
+    if(activeTab.value === 'usage') await (usageView.value ? usageView.value.refresh(true) : Promise.resolve());
     if(activeTab.value === 'monitoring') await (monitoringView.value ? monitoringView.value.refresh(true) : Promise.resolve());
     if(activeTab.value === 'inspection') await loadInspection();
     if(activeTab.value === 'config') await loadConfig();

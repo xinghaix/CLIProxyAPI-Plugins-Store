@@ -176,6 +176,23 @@ h2 { margin: 0; }
 .config-meta-grid > div { display: flex; flex-direction: column; gap: 2px; }
 .config-meta-grid span { font-size: 12px; color: var(--cpa-text-tertiary); }
 .config-meta-grid strong { font-size: 14px; }
+
+/* Usage analytics styles */
+.usage-filterbar { display: flex; flex-direction: column; gap: 8px; padding: 14px; }
+.filterbar-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.filterbar-row label { display: inline-flex; gap: 8px; align-items: center; color: var(--cpa-text-secondary); font-size: 13px; }
+.usage-tab-content { display: flex; flex-direction: column; gap: 12px; }
+.trend-controls { display: flex; gap: 6px; margin-bottom: 12px; }
+.trend-controls .tab { min-height: 32px; padding: 4px 12px; font-size: 12px; }
+.heatmap-controls { display: flex; gap: 8px; margin-bottom: 12px; }
+.heatmap-grid-wrap { overflow: auto; }
+.heatmap-table { width: 100%; font-size: 11px; }
+.heatmap-table th, .heatmap-table td { padding: 2px; text-align: center; border: 1px solid var(--cpa-border); }
+.heatmap-table th { background: var(--cpa-surface-muted); font-weight: 600; }
+.heatmap-day-label { text-align: right; padding-right: 6px; white-space: nowrap; color: var(--cpa-text-secondary); background: var(--cpa-surface-muted); }
+.heatmap-cell { width: 28px; height: 24px; cursor: pointer; transition: transform .1s; }
+.heatmap-cell:hover { transform: scale(1.15); outline: 2px solid var(--cpa-primary); z-index: 1; position: relative; }
+.timeline-row.selected { background: var(--cpa-primary-soft); border-radius: var(--cpa-radius-sm); }
 .notice { border: 1px solid color-mix(in srgb, var(--cpa-warning) 34%, var(--cpa-border)); background: var(--cpa-warning-soft); color: var(--cpa-text-secondary); border-radius: var(--cpa-radius-lg); padding: 12px 14px; font-size: 13px; line-height: 1.5; }
 .notice.error { border-color: color-mix(in srgb, var(--cpa-error) 40%, var(--cpa-border)); background: var(--cpa-error-soft); color: color-mix(in srgb, var(--cpa-error) 70%, var(--cpa-text-primary)); }
 
