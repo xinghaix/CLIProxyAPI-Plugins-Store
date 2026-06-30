@@ -83,12 +83,16 @@
 
       <div class="split">
         <DataCard title="模型排名" subtitle="Top 8">
-          <SimpleTable :rows="topModels" :columns="rankColumns" />
+          <SimpleTable :rows="topModels" :columns="rankColumns" selectable @select="row => selectedModelId = row.id || row.model" />
         </DataCard>
         <DataCard title="API Key 排名" subtitle="Top 8">
-          <SimpleTable :rows="topApiKeys" :columns="apiKeyRankColumns" />
+          <SimpleTable :rows="topApiKeys" :columns="apiKeyRankColumns" selectable @select="row => { selectedApiKeyHash = row.api_key_hash || row.id; loadSelectedApiKeyTimeline(); }" />
         </DataCard>
       </div>
+
+      <DataCard v-if="selectedBucketMs && drilldownRows.length" title="请求预览" subtitle="选中时间桶">
+        <SimpleTable :rows="drilldownRows" :columns="drilldownColumns" />
+      </DataCard>
 
       <DataCard v-if="anomalyRows.length" title="异常点" :subtitle="`${anomalyRows.length} 个`">
         <SimpleTable :rows="anomalyRows" :columns="anomalyColumns" />
@@ -102,7 +106,7 @@
           <button v-for="m in trendMetrics" :key="m.key" :class="['tab', {active: trendMetric === m.key}]" @click="trendMetric = m.key">{{ m.label }}</button>
         </div>
         <div class="timeline-bars" v-if="timelineRows.length">
-          <div v-for="point in timelineRows" :key="point.bucket_ms" class="timeline-row">
+          <div v-for="point in timelineRows" :key="point.bucket_ms" class="timeline-row" :class="{selected: selectedBucketMs === point.bucket_ms}" @click="selectBucket(point)">
             <span class="timeline-label">{{ point.label }}</span>
             <div class="timeline-track"><i :style="{width: trendBarWidth(point)}"></i></div>
             <span class="timeline-value">{{ formatTrendValue(point) }}</span>
@@ -110,26 +114,57 @@
         </div>
         <div v-else class="empty">暂无趋势数据</div>
       </DataCard>
+      <DataCard v-if="selectedBucketMs && drilldownRows.length" title="请求预览" subtitle="选中时间桶">
+        <SimpleTable :rows="drilldownRows" :columns="drilldownColumns" />
+      </DataCard>
     </div>
 
     <!-- Models tab -->
     <div v-if="activeTab === 'models'" class="usage-tab-content">
       <DataCard title="模型维度" subtitle="model_stats / model_share">
-        <SimpleTable :rows="modelRows" :columns="modelColumns" />
+        <SimpleTable :rows="modelRows" :columns="modelColumns" selectable @select="row => selectedModelId = row.id || row.model" />
+      </DataCard>
+      <DataCard v-if="selectedModel" title="模型详情" :subtitle="selectedModel.model || '—'">
+        <DetailGrid :items="buildModelDetail(selectedModel)" />
       </DataCard>
     </div>
 
     <!-- API Keys tab -->
     <div v-if="activeTab === 'apiKeys'" class="usage-tab-content">
       <DataCard title="API Key 维度" subtitle="api_key_stats">
-        <SimpleTable :rows="apiKeyRows" :columns="apiKeyColumns" />
+        <SimpleTable :rows="apiKeyRows" :columns="apiKeyColumns" selectable @select="row => { selectedApiKeyHash = row.api_key_hash || row.id; loadSelectedApiKeyTimeline(); }" />
+      </DataCard>
+      <DataCard v-if="selectedApiKeyTimeline.length" title="选中 API Key 趋势" :subtitle="selectedApiKey?.api_key_hash || selectedApiKey?.id || '—'">
+        <div class="timeline-bars">
+          <div v-for="point in selectedApiKeyTimeline" :key="point.bucket_ms" class="timeline-row">
+            <span class="timeline-label">{{ point.label }}</span>
+            <div class="timeline-track"><i :style="{width: trendBarWidth(point)}"></i></div>
+            <span class="timeline-value">{{ formatTrendValue(point) }}</span>
+          </div>
+        </div>
+      </DataCard>
+      <DataCard v-if="selectedApiKey" title="API Key 详情" :subtitle="selectedApiKey.api_key_hash || selectedApiKey.id || '—'">
+        <DetailGrid :items="buildApiKeyDetail(selectedApiKey)" />
       </DataCard>
     </div>
 
     <!-- Credentials tab -->
     <div v-if="activeTab === 'credentials'" class="usage-tab-content">
       <DataCard title="凭据维度" subtitle="credential_stats / credential_timeline">
-        <SimpleTable :rows="credentialRows" :columns="credentialColumns" />
+        <SimpleTable :rows="credentialRows" :columns="credentialColumns" selectable @select="row => selectedCredentialId = row.id || row.auth_file || row.authFile" />
+      </DataCard>
+      <DataCard v-if="selectedCredentialTimelineRows.length" title="凭据趋势" :subtitle="selectedCredential?.auth_file || selectedCredential?.authFile || selectedCredential?.id || '—'">
+        <div class="timeline-bars">
+          <div v-for="point in selectedCredentialTimelineRows" :key="point.bucket_ms" class="timeline-row">
+            <span class="timeline-label">{{ point.label }}</span>
+            <div class="timeline-track"><i :style="{width: credentialTrendBarWidth(point)}"></i></div>
+            <span class="timeline-value">{{ fmtCompact(point.calls) }}</span>
+            <span class="timeline-sub">{{ fmtCompact(point.total_tokens) }} tok · {{ fmtMoney(point.cost) }}</span>
+          </div>
+        </div>
+      </DataCard>
+      <DataCard v-if="selectedCredential" title="凭据详情" :subtitle="selectedCredential.auth_file || selectedCredential.authFile || selectedCredential.id || '—'">
+        <DetailGrid :items="buildCredentialDetail(selectedCredential)" />
       </DataCard>
     </div>
 
@@ -172,6 +207,20 @@
         </div>
         <div v-else class="empty">暂无热力图数据</div>
       </DataCard>
+      <DataCard v-if="selectedHeatmapCell && selectedHeatmapCell.cell" title="热力图详情" :subtitle="`${weekdayLabel(selectedHeatmapCell.weekday)} ${selectedHeatmapCell.hour}:00`">
+        <DetailGrid :items="buildHeatmapDetail(selectedHeatmapCell.cell)" />
+        <div class="split" style="margin-top:12px">
+          <DataCard v-if="selectedHeatmapCell.cell.model_contributors?.length" title="模型贡献者" subtitle="Top">
+            <SimpleTable :rows="selectedHeatmapCell.cell.model_contributors" :columns="heatContributorColumns" />
+          </DataCard>
+          <DataCard v-if="selectedHeatmapCell.cell.api_key_contributors?.length" title="API Key 贡献者" subtitle="Top">
+            <SimpleTable :rows="selectedHeatmapCell.cell.api_key_contributors" :columns="heatContributorColumns" />
+          </DataCard>
+        </div>
+        <DataCard v-if="selectedHeatmapCell.cell.provider_contributors?.length" title="Provider 贡献者" subtitle="Top">
+          <SimpleTable :rows="selectedHeatmapCell.cell.provider_contributors" :columns="heatContributorColumns" />
+        </DataCard>
+      </DataCard>
     </div>
   </section>
 </template>
@@ -194,9 +243,15 @@ const loading = ref(false);
 const error = ref('');
 const activeTab = ref('overview');
 const selectedBucketMs = ref(null);
+const selectedModelId = ref('');
+const selectedApiKeyHash = ref('');
+const selectedCredentialId = ref('');
+const selectedHeatmapCell = ref(null);
 const trendMetric = ref('requestCount');
 const heatmapMetric = ref('requestCount');
 const heatmapScaleMode = ref('absolute');
+const selectedApiKeyTimeline = ref([]);
+const selectedApiKeyTimelineLoading = ref(false);
 const customStartInput = ref('');
 const customEndInput = ref('');
 const filters = ref(defaultFilters());
@@ -263,6 +318,9 @@ const summaryCards = computed(() => {
 // Top N rows
 const topModels = computed(() => [...modelRows.value].sort((a,b) => Number(b.calls ?? 0) - Number(a.calls ?? 0)).slice(0, 8));
 const topApiKeys = computed(() => [...apiKeyRows.value].sort((a,b) => Number(b.calls ?? 0) - Number(a.calls ?? 0)).slice(0, 8));
+const selectedModel = computed(() => modelRows.value.find(r => (r.id || r.model) === selectedModelId.value) || modelRows.value[0] || null);
+const selectedApiKey = computed(() => apiKeyRows.value.find(r => (r.api_key_hash || r.id) === selectedApiKeyHash.value) || apiKeyRows.value[0] || null);
+const selectedCredential = computed(() => credentialRows.value.find(r => (r.id || r.auth_file) === selectedCredentialId.value) || credentialRows.value[0] || null);
 
 // Timeline max
 const maxTimelineCalls = computed(() => Math.max(1, ...timelineRows.value.map(p => Number(p.calls || 0))));
@@ -307,6 +365,27 @@ const credentialColumns = [
 const anomalyColumns = [
   ['label','时间'], ['severity','级别'], ['calls','请求','int'], ['failure_rate','失败率','pct'], ['cost','费用','money'], ['request_change','请求变化','pct'],
 ];
+const drilldownColumns = [
+  ['timestamp_ms','时间','time'], ['model','模型'], ['api_key_hash','API Key','hash'], ['provider','Provider'], ['total_tokens','Token','int'], ['cost','费用','money'], ['failure_rate','失败率','pct'],
+];
+const heatContributorColumns = [
+  ['label','标签'], ['calls','请求','int'], ['tokens','Token','int'], ['cost','费用','money'], ['failure_rate','失败率','pct'], ['share','占比','pct'],
+];
+const drilldownRows = computed(() => data.value?.drilldown_preview?.items || []);
+const selectedCredentialTimelineRows = computed(() => {
+  const id = selectedCredential.value?.id || selectedCredential.value?.auth_file || selectedCredential.value?.authFile || '';
+  if(!id) return [];
+  return (data.value?.credential_timeline || [])
+    .filter(p => (p.id || p.auth_file_snapshot || p.auth_index || p.source_hash || '-') === id)
+    .map(p => ({
+      bucket_ms: p.bucket_ms,
+      label: p.bucket_label || (p.bucket_ms ? new Date(Number(p.bucket_ms)).toLocaleString('zh-CN', {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false}) : '—'),
+      calls: p.calls,
+      total_tokens: p.total_tokens ?? p.tokens,
+      cost: p.cost,
+    }))
+    .sort((a,b) => Number(a.bucket_ms || 0) - Number(b.bucket_ms || 0));
+});
 
 watch(filters, () => {}, {deep:true});
 
@@ -354,6 +433,13 @@ function buildRequest(){
     heatmap: true,
     anomaly_points: true,
     granularity,
+    ...(selectedBucketMs.value ? {
+      drilldown_preview: {
+        from_ms: selectedBucketMs.value,
+        to_ms: selectedBucketMs.value + (granularity === 'day' ? DAY_MS : HOUR_MS),
+        limit: 12,
+      },
+    } : {}),
   };
   const request = {
     from_ms: bounds.fromMs,
@@ -389,8 +475,96 @@ function resolveGranularity(){
   return 'hour';
 }
 function applyCustomRange(){ refresh(true); }
-function selectBucket(point){ selectedBucketMs.value = selectedBucketMs.value === point?.bucket_ms ? null : point?.bucket_ms ?? null; }
-function selectHeatmapCell(wi, hi, cell){ if(!cell) return; }
+function selectBucket(point){
+  selectedBucketMs.value = selectedBucketMs.value === point?.bucket_ms ? null : point?.bucket_ms ?? null;
+  refresh(true);
+}
+function selectHeatmapCell(wi, hi, cell){
+  if(!cell) return;
+  selectedHeatmapCell.value = {weekday: wi, hour: hi, cell};
+}
+async function loadSelectedApiKeyTimeline(){
+  const hash = selectedApiKeyHash.value;
+  if(!hash) return;
+  selectedApiKeyTimelineLoading.value = true;
+  try{
+    const now = Date.now();
+    const bounds = getRangeBounds(now);
+    const f = {};
+    if(filters.value.model !== 'all') f.models = [filters.value.model];
+    if(filters.value.provider !== 'all') f.providers = [filters.value.provider.toLowerCase()];
+    if(filters.value.authFile !== 'all') f.auth_files = [filters.value.authFile];
+    if(filters.value.status === 'success') f.include_failed = false;
+    if(filters.value.status === 'failed') f.failed_only = true;
+    if(filters.value.minLatencyMs !== 'all') f.min_latency_ms = Number(filters.value.minLatencyMs);
+    if(filters.value.cacheStatus !== 'all') f.cache_status = filters.value.cacheStatus;
+    f.api_key_hashes = [hash];
+    const resp = await props.proxyCall({method:'POST', path:'/v0/management/monitoring/analytics', body:{
+      from_ms: bounds.fromMs,
+      to_ms: bounds.toMs,
+      now_ms: now,
+      time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+      ...(filters.value.searchQuery ? {search_query: filters.value.searchQuery} : {}),
+      filters: f,
+      include: {timeline: true, granularity: resolveGranularity()},
+    }});
+    selectedApiKeyTimeline.value = resp?.timeline || [];
+  }catch{
+    selectedApiKeyTimeline.value = [];
+  }finally{
+    selectedApiKeyTimelineLoading.value = false;
+  }
+}
+function buildModelDetail(row){
+  if(!row) return [];
+  return [
+    {label:'模型', value: row.model || '—'},
+    {label:'Provider', value: row.provider || '—'},
+    {label:'请求', value: fmtInt(row.calls)},
+    {label:'成功率', value: fmtPct(row.success_rate)},
+    {label:'失败', value: fmtInt(row.failure_calls)},
+    {label:'Token', value: fmtCompact(row.total_tokens)},
+    {label:'费用', value: fmtMoney(row.cost)},
+  ];
+}
+function buildApiKeyDetail(row){
+  if(!row) return [];
+  return [
+    {label:'API Key', value: shortHash(row.api_key_hash || row.id)},
+    {label:'账号', value: row.account_snapshot || '—'},
+    {label:'Provider', value: row.provider || '—'},
+    {label:'请求', value: fmtInt(row.calls)},
+    {label:'成功率', value: fmtPct(row.success_rate)},
+    {label:'Token', value: fmtCompact(row.total_tokens)},
+    {label:'费用', value: fmtMoney(row.cost)},
+    {label:'最后出现', value: row.last_seen_ms ? new Date(Number(row.last_seen_ms)).toLocaleString('zh-CN', {hour12:false}) : '—'},
+  ];
+}
+function buildCredentialDetail(row){
+  if(!row) return [];
+  return [
+    {label:'凭据文件', value: row.auth_file || row.authFile || row.id || '—'},
+    {label:'Provider', value: row.provider || '—'},
+    {label:'账号', value: row.account_snapshot || row.account || '—'},
+    {label:'Auth Index', value: row.auth_index || row.authIndex || '—'},
+    {label:'Project ID', value: row.project_id || row.projectId || '—'},
+    {label:'请求', value: fmtInt(row.calls)},
+    {label:'成功率', value: fmtPct(row.success_rate)},
+    {label:'Token', value: fmtCompact(row.total_tokens)},
+    {label:'费用', value: fmtMoney(row.cost)},
+  ];
+}
+function buildHeatmapDetail(cell){
+  if(!cell) return [];
+  return [
+    {label:'请求', value: fmtInt(cell.calls)},
+    {label:'成功', value: fmtInt(cell.success)},
+    {label:'失败', value: fmtInt(cell.failure)},
+    {label:'Token', value: fmtCompact(cell.tokens)},
+    {label:'费用', value: fmtMoney(cell.cost)},
+    {label:'失败率', value: fmtPct(cell.failure_rate)},
+  ];
+}
 
 function trendValue(point){
   if(trendMetric.value === 'requestCount') return Number(point.calls || 0);
@@ -404,6 +578,11 @@ function formatTrendValue(point){
   return fmtCompact(v);
 }
 function trendBarWidth(point){ return `${Math.max(2, Math.round((trendValue(point) / maxTrendValue.value) * 100))}%`; }
+function credentialTrendBarWidth(point){
+  const rows = selectedCredentialTimelineRows.value;
+  const max = Math.max(1, ...rows.map(p => Number(p.calls || 0)));
+  return `${Math.max(2, Math.round((Number(point.calls || 0) / max) * 100))}%`;
+}
 function barWidth(value){ return `${Math.max(2, Math.round((Number(value || 0) / maxTimelineCalls.value) * 100))}%`; }
 
 function heatmapCellValue(cell){
@@ -467,18 +646,27 @@ function fmtCompact(v){
 defineExpose({ refresh });
 
 const SimpleTable = defineComponent({
-  props: { rows:{type:Array, default:()=>[]}, columns:{type:Array, default:()=>[]} },
-  setup(props){
+  props: { rows:{type:Array, default:()=>[]}, columns:{type:Array, default:()=>[]}, selectable:{type:Boolean, default:false} },
+  emits: ['select'],
+  setup(props, {emit}){
     return () => {
       if(!props.rows.length) return h('div', {class:'empty'}, '暂无数据');
       const head = h('thead', h('tr', props.columns.map(col => h('th', col[1]))));
       const body = h('tbody', props.rows.slice(0, 50).map((row, idx) =>
-        h('tr', {key:idx},
+        h('tr', props.selectable ? {key:idx, class:'clickable', onClick:()=>emit('select', row)} : {key:idx},
           props.columns.map(col => h('td', renderCell(row[col[0]], col[2])))
         )
       ));
       return h('div', {class:'table-wrap monitor-table'}, h('table', [head, body]));
     };
+  }
+});
+const DetailGrid = defineComponent({
+  props: { items:{type:Array, default:()=>[]} },
+  setup(props){
+    return () => h('div', {class:'config-meta-grid'}, props.items.map((item, idx) =>
+      h('div', {key: idx}, [h('span', item.label), h('strong', item.value)])
+    ));
   }
 });
 function renderCell(v, type){
