@@ -69,8 +69,12 @@
 
     <MetricGrid :cards="summaryCards" />
 
-    <div class="card chart-card">
-      <div class="section-title"><h2>时间线</h2><span>{{ data?.granularity || 'auto' }} · {{ formatDateTime(data?.generated_at_ms) }}</span></div>
+    <div class="monitor-tabs card">
+      <button v-for="tab in dataTabs" :key="tab.key" :class="['tab', {active: activeDataTab === tab.key}]" @click="activeDataTab = tab.key">{{ tab.label }} <span>{{ tab.count }}</span></button>
+    </div>
+
+    <DataCard v-if="activeDataTab === 'timeline'" title="时间线">
+      <div class="section-title"><span>{{ data?.granularity || 'auto' }} · {{ formatDateTime(data?.generated_at_ms) }}</span></div>
       <div class="timeline-bars" v-if="timelineRows.length">
         <div v-for="point in timelineRows" :key="point.label + point.bucket_ms" class="timeline-row">
           <span class="timeline-label">{{ point.label }}</span>
@@ -80,11 +84,7 @@
         </div>
       </div>
       <div v-else class="empty">暂无时间线数据</div>
-    </div>
-
-    <div class="monitor-tabs card">
-      <button v-for="tab in dataTabs" :key="tab.key" :class="['tab', {active: activeDataTab === tab.key}]" @click="activeDataTab = tab.key">{{ tab.label }} <span>{{ tab.count }}</span></button>
-    </div>
+    </DataCard>
 
     <DataCard v-if="activeDataTab === 'events'" title="事件流">
       <div class="table-wrap monitor-table event-stream-table">
@@ -226,6 +226,7 @@ const dataTabs = computed(() => [
   {key:'accounts', label:'账号', count:accountRows.value.length},
   {key:'apiKeys', label:'API Key', count:apiKeyRows.value.length},
   {key:'models', label:'模型', count:modelRows.value.length},
+  {key:'timeline', label:'时间线', count:timelineRows.value.length},
 ]);
 
 const summary = computed(() => data.value?.summary || {});
