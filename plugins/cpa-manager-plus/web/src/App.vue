@@ -115,6 +115,9 @@
     <section class="panel" v-if="activeTab === 'model-prices'">
       <ModelPricesView ref="modelPricesView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
     </section>
+    <section class="panel" v-if="activeTab === 'account-actions'">
+      <AccountActionsView ref="accountActionsView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
+    </section>
   </main>
 </template>
 
@@ -126,6 +129,7 @@ import MonitoringView from './components/MonitoringView.vue';
 import UsageView from './components/UsageView.vue';
 import DashboardView from './components/DashboardView.vue';
 import ModelPricesView from './components/ModelPricesView.vue';
+import AccountActionsView from './components/AccountActionsView.vue';
 import { PROXY, HEALTH, SESSION_KEY, LEGACY_SESSION_KEY, readCPAAuthStoreKey } from './utils/data.js';
 import { initThemeBridge } from './themeBridge.js';
 
@@ -149,6 +153,7 @@ const dashboardView = ref(null);
 const monitoringView = ref(null);
 const usageView = ref(null);
 const modelPricesView = ref(null);
+const accountActionsView = ref(null);
 
 // Manager config state
 const mgrSaving = ref(false);
@@ -259,6 +264,7 @@ async function refreshActive(){
     if(activeTab.value === 'inspection') await loadInspection();
     if(activeTab.value === 'config') await loadConfig();
     if(activeTab.value === 'model-prices') await (modelPricesView.value ? modelPricesView.value.refresh(true) : Promise.resolve());
+    if(activeTab.value === 'account-actions') await (accountActionsView.value ? accountActionsView.value.refresh(true) : Promise.resolve());
   }catch(e){ errors[activeTab.value] = e.message || String(e); }
   finally{ loading.value = false; }
 }
