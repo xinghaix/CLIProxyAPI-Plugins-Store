@@ -31,12 +31,17 @@
           <option value="all">全部 Provider</option>
           <option v-for="item in optionProviders" :key="item" :value="item">{{ item }}</option>
         </select>
+      </div>
+      <div class="filterbar-actions">
+        <button class="btn primary" @click="refresh(true)" :disabled="loading || !ready">{{ loading ? '加载中…' : '刷新' }}</button>
+        <button class="btn" @click="exportEventsCsv" :disabled="!eventRows.length">导出 CSV</button>
+        <button class="btn" @click="resetFilters">重置</button>
+      </div>
+      <div class="filterbar-controls secondary-filters">
         <select v-model="filters.model" class="control compact">
           <option value="all">全部模型</option>
           <option v-for="item in optionModels" :key="item" :value="item">{{ item }}</option>
         </select>
-      </div>
-      <div class="filterbar-controls secondary-filters">
         <select v-model="filters.account" class="control compact">
           <option value="all">全部账号</option>
           <option v-for="item in optionAccounts" :key="item.value" :value="item.value">{{ item.label }}</option>
@@ -50,11 +55,6 @@
         <input v-model.number="filters.minLatencyMs" class="control small" type="number" min="0" placeholder="最低延迟 ms" @keyup.enter="refresh(true)" />
         <input v-model.trim="filters.cacheStatus" class="control small" placeholder="缓存状态" @keyup.enter="refresh(true)" />
         <input v-model.trim="filters.headerTraceId" class="control compact" placeholder="Trace ID" @keyup.enter="refresh(true)" />
-      </div>
-      <div class="filterbar-actions">
-        <button class="btn primary" @click="refresh(true)" :disabled="loading || !ready">{{ loading ? '加载中…' : '刷新' }}</button>
-        <button class="btn" @click="exportEventsCsv" :disabled="!eventRows.length">导出 CSV</button>
-        <button class="btn" @click="resetFilters">重置</button>
       </div>
     </div>
 
@@ -86,7 +86,7 @@
       <button v-for="tab in dataTabs" :key="tab.key" :class="['tab', {active: activeDataTab === tab.key}]" @click="activeDataTab = tab.key">{{ tab.label }} <span>{{ tab.count }}</span></button>
     </div>
 
-    <DataCard v-if="activeDataTab === 'events'" title="事件流" :subtitle="eventsSubtitle">
+    <DataCard v-if="activeDataTab === 'events'" title="事件流">
       <div class="table-wrap monitor-table event-stream-table">
         <table>
           <thead>
@@ -242,30 +242,38 @@ const dataTabs = computed(() => [
 
 const summary = computed(() => data.value?.summary || {});
 const eventRows = computed(() => (data.value?.events?.items || []).map((row, idx) => ({...row, __id: idx})));
-const loadedAllEvents = computed(() => {
-  const events = data.value?.events;
-  return events && events.total_count != null && !events.has_more && Number(events.total_count) === eventRows.value.length;
+// loadedAllEvents removed — no longer needed after KPI card cleanup
+const hasPrices = computed(() => Number(summary.value.total_cost) > 0);
+const summaryCards = computed(() => {
+  const s = summary.value;
+  const totalCacheTokens = Number(s.cached_tokens ?? 0) + Number(s.cache_read_tokens ?? 0) + Number(s.cache_creation_tokens ?? 0);
+  const cacheHitTokens = Number(s.cached_tokens ?? 0) + Number(s.cache_read_tokens ?? 0);
+  const inputSideTokens = Math.max(Number(s.input_tokens ?? 0), Number(s.cached_tokens ?? 0)) + Number(s.cache_read_tokens ?? 0) + Number(s.cache_creation_tokens ?? 0);
+  const cacheHitRate = inputSideTokens > 0 ? cacheHitTokens / inputSideTokens : 0;
+  const tokenMix = (n) => s.total_tokens > 0 ? `${fmtPct(n / s.total_tokens)}` : '—';
+  return [
+    {label:'总调用', value: fmtInt(s.total_calls), sub:`${accountCount.value} 账号`},
+    {label:'调用成功率', value: fmtPct(s.success_rate), sub: fmtDuration(s.average_latency_ms)},
+    {label:'失败总数', value: fmtInt(s.failure_calls), sub:`${failedGroupCount.value} 监控组`},
+    {label:'预估花费', value: hasPrices.value ? fmtMoney(s.total_cost) : '--', sub: hasPrices.value ? '已配置单价模型' : '未配置单价'},
+    {label:'总 Tokens', value: fmtCompact(s.total_tokens), sub:`推理 ${fmtCompact(s.reasoning_tokens)}`},
+    {label:'输入 Tokens', value: fmtCompact(s.input_tokens), sub:`占比 ${tokenMix(Number(s.input_tokens ?? 0))}`},
+    {label:'输出 Tokens', value: fmtCompact(s.output_tokens), sub:`占比 ${tokenMix(Number(s.output_tokens ?? 0))}`},
+    {label:'缓存 Tokens', value: fmtCompact(totalCacheTokens), sub:`命中率 ${fmtPct(cacheHitRate)}`},
+  ];
 });
-const zeroTokenRows = computed(() => eventRows.value.filter(row => row.total_tokens != null && Number(row.total_tokens) === 0));
-const zeroTokenCalls = computed(() => loadedAllEvents.value ? zeroTokenRows.value.length : (summary.value.zero_token_calls ?? zeroTokenRows.value.length));
-const zeroTokenModels = computed(() => {
-  const models = loadedAllEvents.value ? unique(zeroTokenRows.value.map(row => row.model)) : (summary.value.zero_token_models || []);
-  return models.slice(0, 3).join(', ');
+const eventGroupMap = computed(() => buildEventGroupMap(eventRows.value));
+const failedGroupCount = computed(() => {
+  let count = 0;
+  for(const group of eventGroupMap.value.values()){
+    if((group.failureCalls ?? 0) > 0) count++;
+  }
+  return count;
 });
-const summaryCards = computed(() => [
-  {label:'总请求', value: summary.value.total_calls ?? 0, sub:`成功 ${fmtInt(summary.value.success_calls)} / 失败 ${fmtInt(summary.value.failure_calls)}`},
-  {label:'成功率', value: fmtPct(summary.value.success_rate), sub:`任务成功 ${fmtPct(summary.value.approx_task_success_rate)}`},
-  {label:'总 Token', value: summary.value.total_tokens ?? 0, sub:`输入 ${fmtInt(summary.value.input_tokens)} / 输出 ${fmtInt(summary.value.output_tokens)}`},
-  {label:'费用', value: fmtMoney(summary.value.total_cost), sub:`单次 ${fmtMoney(summary.value.average_cost_per_call)}`},
-  {label:'平均延迟', value: fmtMs(summary.value.average_latency_ms), sub:`P95 ${fmtMs(summary.value.p95_latency_ms)}`},
-  {label:'吞吐', value: `${fmtInt(summary.value.rpm_30m)} RPM`, sub:`${fmtInt(summary.value.tpm_30m)} TPM`},
-  {label:'零 Token', value: zeroTokenCalls.value, sub: zeroTokenModels.value},
-  {label:'近似任务', value: summary.value.approx_tasks ?? 0, sub:`失败 ${fmtInt(summary.value.approx_task_failures)}`},
-]);
-const eventGroupMap = computed(() => buildEventGroupMap(eventRows.value, accountRows.value, apiKeyRows.value));
+const accountCount = computed(() => accountRows.value.length);
 const eventTableRows = computed(() => eventRows.value.map(row => buildEventTableRow(row, eventGroupMap.value)));
 const pagedEvents = computed(() => pageRows(eventTableRows.value, eventPage.value, eventPageSize.value));
-const eventsSubtitle = computed(() => `events_page · 已载入 ${eventTableRows.value.length} / ${data.value?.events?.total_count ?? '未知'} · has_more=${Boolean(data.value?.events?.has_more)}`);
+// eventsSubtitle removed — debug paging info no longer shown in card header
 const timelineRows = computed(() => data.value?.timeline || []);
 const maxTimelineCalls = computed(() => Math.max(1, ...timelineRows.value.map(p => Number(p.calls || p.requests || 0))));
 const modelRows = computed(() => data.value?.model_stats || data.value?.model_share || []);
@@ -399,63 +407,65 @@ function exportEventsCsv(){
   a.click();
   URL.revokeObjectURL(url);
 }
-function buildEventGroupMap(events, accounts, apiKeys){
-  const map = new Map();
-  const put = (key, value) => { if(key && key !== '-') map.set(String(key), value); };
-  for(const row of apiKeys || []){
-    const calls = Number(row.calls ?? row.total_calls ?? 0);
-    const success = Number(row.success_calls ?? Math.round(calls * Number(row.success_rate ?? 0)) ?? 0);
-    const group = {
-      calls,
-      successCalls: success,
-      failureCalls: Number(row.failure_calls ?? Math.max(0, calls - success)),
-      successRate: normalizeRate(row.success_rate, calls, success),
-    };
-    put(row.api_key_hash, group);
-    put(row.id, group);
-  }
-  for(const row of accounts || []){
-    const calls = Number(row.calls ?? row.total_calls ?? 0);
-    const success = Number(row.success_calls ?? Math.round(calls * Number(row.success_rate ?? 0)) ?? 0);
-    const group = {
-      calls,
-      successCalls: success,
-      failureCalls: Number(row.failure_calls ?? Math.max(0, calls - success)),
-      successRate: normalizeRate(row.success_rate, calls, success),
-    };
-    [row.id, row.source_hash, ...(row.source_hashes || []), ...(row.auth_indices || []), row.account_snapshot, row.auth_label_snapshot].forEach(key => put(key, group));
-  }
-  const eventGroups = new Map();
-  for(const event of events || []){
+function buildEventGroupMap(events){
+  const sortedAsc = [...(events || [])].sort(
+    (a, b) => Number(a.timestamp_ms || 0) - Number(b.timestamp_ms || 0) || String(a.__id).localeCompare(String(b.__id))
+  );
+  const metricsByStream = new Map();
+  const groupsByStream = new Map();
+  for(const event of sortedAsc){
     const key = eventGroupKey(event);
-    const group = eventGroups.get(key) || {calls:0, successCalls:0, failureCalls:0, events:[]};
+    const prev = metricsByStream.get(key) ?? {total:0, success:0, pattern:[]};
+    const statsIncluded = event.failed === true || Number(event.input_tokens || 0) > 0 || Number(event.output_tokens || 0) > 0;
+    const requestCount = prev.total + (statsIncluded ? 1 : 0);
+    const successCount = prev.success + (statsIncluded && !event.failed ? 1 : 0);
+    const successRate = requestCount > 0 ? successCount / requestCount : 1;
+    const pattern = [...prev.pattern, !event.failed].slice(-10);
+    metricsByStream.set(key, {total: requestCount, success: successCount, pattern});
+    const group = groupsByStream.get(key) ?? {calls:0, successCalls:0, failureCalls:0, events:[]};
     group.calls += 1;
     group.successCalls += event.failed ? 0 : 1;
     group.failureCalls += event.failed ? 1 : 0;
     group.events.push(event);
-    eventGroups.set(key, group);
+    groupsByStream.set(key, group);
   }
-  for(const [key, group] of eventGroups){
+  const map = new Map();
+  for(const [key, group] of groupsByStream){
     group.events.sort((a,b) => Number(b.timestamp_ms || 0) - Number(a.timestamp_ms || 0));
-    const existing = map.get(key) || {};
-    map.set(key, {
-      calls: existing.calls || group.calls,
-      successCalls: existing.successCalls ?? group.successCalls,
-      failureCalls: existing.failureCalls ?? group.failureCalls,
-      successRate: existing.successRate ?? normalizeRate(null, group.calls, group.successCalls),
-      events: group.events,
+    map.set(key, group);
+  }
+  // attach per-event sliding-window snapshot for buildEventTableRow
+  map._slidingWindow = new Map();
+  // re-walk sortedAsc to capture snapshot at each event position
+  const sw = new Map();
+  for(const event of sortedAsc){
+    const key = eventGroupKey(event);
+    const prev = sw.get(key) ?? {total:0, success:0, pattern:[]};
+    const statsIncluded = event.failed === true || Number(event.input_tokens || 0) > 0 || Number(event.output_tokens || 0) > 0;
+    const requestCount = prev.total + (statsIncluded ? 1 : 0);
+    const successCount = prev.success + (statsIncluded && !event.failed ? 1 : 0);
+    const successRate = requestCount > 0 ? successCount / requestCount : 1;
+    const pattern = [...prev.pattern, !event.failed].slice(-10);
+    sw.set(key, {total: requestCount, success: successCount, pattern});
+    if(!map._slidingWindow.has(key)) map._slidingWindow.set(key, new Map());
+    map._slidingWindow.get(key).set(event.event_hash || event.request_id || `${event.timestamp_ms}-${event.__id}`, {
+      requestCount,
+      successRate,
+      recentPattern: pattern,
     });
   }
   return map;
 }
 function buildEventTableRow(row, groupMap){
   const key = eventGroupKey(row);
-  const group = groupMap.get(row.api_key_hash) || groupMap.get(row.source_hash) || groupMap.get(row.auth_index) || groupMap.get(key) || {};
+  const group = groupMap.get(key) || {};
+  const eventId = row.event_hash || row.request_id || `${row.timestamp_ms}-${row.__id}`;
+  const sliding = groupMap._slidingWindow?.get(key)?.get(eventId);
   const recent = buildRecentStatus(group.events || [row], row);
   const latencyMs = numberOrNull(row.latency_ms);
   const outputTokens = Number(row.output_tokens || 0);
   return {
-    id: row.event_hash || row.request_id || `${row.timestamp_ms}-${row.__id}`,
+    id: eventId,
     raw: row,
     sourceName: row.account_snapshot || row.auth_label_snapshot || row.source || row.auth_index || '—',
     provider: row.auth_provider_snapshot || row.provider || row.source || '—',
@@ -467,8 +477,8 @@ function buildEventTableRow(row, groupMap){
     recent,
     recentTitle: recent.map(item => item.title).join('\n'),
     failed: Boolean(row.failed),
-    successRate: group.successRate ?? (row.failed ? 0 : 1),
-    totalCalls: group.calls || 1,
+    successRate: sliding?.successRate ?? (row.failed ? 0 : 1),
+    totalCalls: sliding?.requestCount ?? 1,
     tps: latencyMs && latencyMs > 0 ? outputTokens / (latencyMs / 1000) : null,
     ttftMs: numberOrNull(row.ttft_ms) ?? latencyMs,
     latencyMs,
@@ -487,7 +497,13 @@ function buildRecentStatus(events, current){
     return {id:event.event_hash || event.request_id || `${event.timestamp_ms}-${idx}`, tone:event.failed ? 'bad' : latencyTone(event.latency_ms), event, title};
   });
 }
-function eventGroupKey(row){ return row.api_key_hash || row.source_hash || row.auth_index || row.account_snapshot || row.auth_label_snapshot || String(row.__id || 'event'); }
+function eventGroupKey(row){
+  const account = row.account_snapshot || row.auth_label_snapshot || row.source || row.auth_index || '';
+  const provider = row.auth_provider_snapshot || row.provider || '';
+  const model = row.model || '';
+  const channel = row.auth_index || '';
+  return [account, provider, model, channel].join('::');
+}
 function normalizeRate(rate, calls, success){ if(rate != null && Number.isFinite(Number(rate))) return Number(rate) > 1 ? Number(rate) / 100 : Number(rate); return calls > 0 ? success / calls : null; }
 function numberOrNull(v){ const n = Number(v); return Number.isFinite(n) ? n : null; }
 function buildUsageText(row){
@@ -513,6 +529,7 @@ function fmtInt(v){ const n = Number(v || 0); return Number.isFinite(n) ? new In
 function fmtPct(v){ if(v == null || Number.isNaN(Number(v))) return '—'; const n = Number(v); return `${(n <= 1 ? n*100 : n).toFixed(1)}%`; }
 function fmtMoney(v){ if(v == null || Number.isNaN(Number(v))) return '—'; return '$' + Number(v).toFixed(4); }
 function fmtMs(v){ if(v == null || Number.isNaN(Number(v))) return '—'; return `${Math.round(Number(v))} ms`; }
+function fmtDuration(v){ const n = Number(v); if(v == null || !Number.isFinite(n)) return '—'; if(n < 1000) return `${Math.round(n)} ms`; const sec = n / 1000; if(sec < 60) return `${sec.toFixed(sec < 10 ? 1 : 0)} s`; const min = Math.floor(sec / 60); const rem = Math.round(sec % 60); return `${min}m ${rem}s`; }
 function fmtSeconds(v){ if(v == null || Number.isNaN(Number(v))) return '—'; return `${(Number(v) / 1000).toFixed(Number(v) >= 10000 ? 1 : 2)} s`; }
 function fmtTps(v){ if(v == null || Number.isNaN(Number(v))) return '—'; return Number(v).toFixed(Number(v) >= 10 ? 0 : 1); }
 function fmtCompact(v){

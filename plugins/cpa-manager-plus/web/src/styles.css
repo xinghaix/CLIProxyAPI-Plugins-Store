@@ -199,12 +199,12 @@ pre { margin: 0; max-height: 380px; overflow: auto; border: 1px solid var(--cpa-
   align-items: start;
   padding: 14px;
 }
-.filterbar-title { grid-row: span 2; min-width: 132px; padding-top: 2px; }
+.filterbar-title { grid-row: 1 / 3; min-width: 132px; padding-top: 2px; }
 .filterbar-title h2 { font-size: 20px; margin: 2px 0 0; letter-spacing: -.01em; }
 .filterbar-title .eyebrow { font-size: 10px; letter-spacing: .08em; }
 .filterbar-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
-.primary-filters { grid-column: 2; }
-.secondary-filters { grid-column: 2 / -1; }
+.primary-filters { grid-column: 2; grid-row: 1; }
+.secondary-filters { grid-column: 2 / -1; grid-row: 2; }
 .filterbar-actions { grid-column: 3; grid-row: 1; display: inline-flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
 .custom-range-bar { padding: 12px 14px; }
 .custom-range-bar label { display: inline-flex; gap: 8px; align-items: center; color: var(--cpa-text-secondary); font-size: 13px; }
@@ -255,7 +255,7 @@ pre { margin: 0; max-height: 380px; overflow: auto; border: 1px solid var(--cpa-
 @media (max-width: 1280px) {
   .monitoring-filterbar { grid-template-columns: 1fr; }
   .filterbar-title, .primary-filters, .secondary-filters, .filterbar-actions { grid-column: 1; grid-row: auto; }
-  .filterbar-title { min-width: 0; }
+  .filterbar-title { min-width: 0; grid-row: auto; }
   .filterbar-actions { justify-content: flex-start; }
 }
 @media (max-width: 980px) {
