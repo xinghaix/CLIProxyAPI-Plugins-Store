@@ -159,7 +159,7 @@
         <div v-if="failureTooltip.visible" class="failure-tooltip-popover" :style="failureTooltip.style" @mouseenter="keepFailureTooltip" @mouseleave="hideFailureTooltip">
           <button class="failure-tooltip-copy" @click.stop="copyFailureText" title="复制">⎘</button>
           <div v-if="failureTooltip.row?.failStatusCode" class="failure-tooltip-status">HTTP {{ failureTooltip.row.failStatusCode }}</div>
-          <div v-if="failureTooltip.row?.failSummary" class="failure-tooltip-body">{{ failureTooltip.row.failSummary }}</div>
+          <div v-if="failureTooltip.row?.failSummary" class="failure-tooltip-body">{{ decodeHtmlEntities(failureTooltip.row.failSummary) }}</div>
         </div>
       </Teleport>
     </DataCard>
@@ -302,8 +302,8 @@ const eventDetailCards = computed(() => selectedEvent.value ? [
   {label:'延迟', value:fmtMs(selectedEvent.value.latency_ms)},
   {label:'费用', value:fmtMoney(calculateEventCost(selectedEvent.value, modelPrices.value))},
 ] : []);
-const eventBaseDetail = computed(() => selectedEvent.value ? pickObject(selectedEvent.value, ['request_id','event_hash','timestamp_ms','model','resolved_model','endpoint','method','path','auth_index','source','source_hash','api_key_hash','account_snapshot','auth_label_snapshot','auth_provider_snapshot','auth_project_id_snapshot','input_tokens','output_tokens','cached_tokens','cache_read_tokens','cache_creation_tokens','reasoning_tokens','total_tokens','latency_ms','ttft_ms','failed','fail_status_code','fail_summary']) : {});
-const eventHeaderDetail = computed(() => selectedEvent.value ? pickObject(selectedEvent.value, ['header_quota_recover_at_ms','header_quota_used_percent','header_quota_plan_type','header_error_kind','header_error_code','header_trace_id']) : {});
+const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id','event_hash','timestamp_ms','model','resolved_model','endpoint','method','path','auth_index','source','source_hash','api_key_hash','account_snapshot','auth_label_snapshot','auth_provider_snapshot','auth_project_id_snapshot','input_tokens','output_tokens','cached_tokens','cache_read_tokens','cache_creation_tokens','reasoning_tokens','total_tokens','latency_ms','ttft_ms','failed','fail_status_code','fail_summary'])) : {});
+const eventHeaderDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['header_quota_recover_at_ms','header_quota_used_percent','header_quota_plan_type','header_error_kind','header_error_code','header_trace_id'])) : {});
 
 watch([timeRange, searchQuery, filters], () => { eventPage.value = 1; }, {deep:true});
 watch(autoRefreshMs, setupTimer);
@@ -431,11 +431,25 @@ function copyFailureText(){
   if(!row) return;
   const parts = [];
   if(row.failStatusCode) parts.push(`HTTP ${row.failStatusCode}`);
-  if(row.failSummary) parts.push(row.failSummary);
+  if(row.failSummary) parts.push(decodeHtmlEntities(row.failSummary));
   const text = parts.join('\n');
   if(navigator.clipboard){
     navigator.clipboard.writeText(text).then(() => {}).catch(() => {});
   }
+}
+function decodeHtmlEntities(str){
+  if(!str) return '';
+  const txt = document.createElement('textarea');
+  txt.innerHTML = str;
+  return txt.value;
+}
+function decodeDetailObject(obj){
+  if(!obj || typeof obj !== 'object') return obj;
+  const result = {};
+  for(const [key, value] of Object.entries(obj)){
+    result[key] = typeof value === 'string' ? decodeHtmlEntities(value) : value;
+  }
+  return result;
 }
 function exportEventsCsv(){
   const cols = ['timestamp_ms','failed','model','auth_index','account_snapshot','api_key_hash','method','path','total_tokens','latency_ms','fail_status_code','fail_summary','header_trace_id'];
