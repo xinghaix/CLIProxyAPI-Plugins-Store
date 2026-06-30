@@ -320,13 +320,21 @@ function handleOpenMonitoring(){
   activeTab.value = 'monitoring';
   setTimeout(() => { refreshActive(); }, 0);
 }
+function handleOpenTab(event){
+  const tab = event?.detail?.tab;
+  if(!tab) return;
+  activeTab.value = tab;
+  setTimeout(() => { refreshActive(); }, 0);
+}
 
 onMounted(() => {
   checkHealth();
   refreshActive();
   window.addEventListener('cpa-manager-plus:open-monitoring', handleOpenMonitoring);
+  window.addEventListener('cpa-manager-plus:open-tab', handleOpenTab);
 });
 onBeforeUnmount(() => {
   window.removeEventListener('cpa-manager-plus:open-monitoring', handleOpenMonitoring);
+  window.removeEventListener('cpa-manager-plus:open-tab', handleOpenTab);
 });
 </script>

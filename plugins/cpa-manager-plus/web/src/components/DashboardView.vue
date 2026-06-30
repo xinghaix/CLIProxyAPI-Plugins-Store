@@ -11,6 +11,7 @@
       <div class="dashboard-header-right">
         <span class="dashboard-time">{{ currentTime }}</span>
         <button class="btn" @click="refresh(true)" :disabled="loading">{{ loading ? '刷新中…' : '刷新' }}</button>
+        <button class="btn" @click="openTab('config')">配置</button>
       </div>
     </div>
 
@@ -119,7 +120,16 @@
     </DataCard>
 
     <!-- Quick stats -->
-    <MetricGrid :cards="quickStats" />
+    <div class="dashboard-bento-grid">
+      <button v-for="item in quickStats" :key="item.key" class="dashboard-bento-card" @click="openTab(item.tab)">
+        <div class="dashboard-bento-top">
+          <span class="dashboard-bento-label">{{ item.label }}</span>
+          <span class="dashboard-bento-arrow">→</span>
+        </div>
+        <div class="dashboard-bento-value">{{ item.value }}</div>
+        <div class="dashboard-bento-sub muted small-text">{{ item.sub }}</div>
+      </button>
+    </div>
 
     <!-- Config summary -->
     <DataCard v-if="configSummary.length" title="当前配置摘要" subtitle="config.yaml">
@@ -185,9 +195,10 @@ const usageCards = computed(() => {
 const quickStats = computed(() => {
   const s = summary.value;
   return [
-    {label:'管理密钥', value: s.api_keys ?? '—', sub:'CPA 配置'},
-    {label:'OAuth 凭据', value: s.auth_files ?? '—', sub:'auth files'},
-    {label:'可用模型', value: s.available_models ?? '—', sub:'models'},
+    {key:'config', label:'管理密钥', value: s.api_keys ?? '—', sub:'CPA 配置', tab:'config'},
+    {key:'inspection', label:'OAuth 凭据', value: s.auth_files ?? '—', sub:'账号巡检', tab:'inspection'},
+    {key:'usage', label:'用量分析', value: fmtCompact(rolling.value.total_calls), sub:'30 分钟视角', tab:'usage'},
+    {key:'monitoring', label:'请求监控', value: recentFailures.value.length, sub:'近期失败样本', tab:'monitoring'},
   ];
 });
 
@@ -212,6 +223,9 @@ onMounted(() => {
 onBeforeUnmount(() => { if(timer) clearInterval(timer); });
 
 function updateClock(){ currentTime.value = new Date().toLocaleString('zh-CN', {hour12:false}); }
+function openTab(tab){
+  window.dispatchEvent(new CustomEvent('cpa-manager-plus:open-tab', { detail: { tab } }));
+}
 
 async function refresh(force=false){
   if(!props.ready) return;
