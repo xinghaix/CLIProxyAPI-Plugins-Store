@@ -5,51 +5,57 @@
         <div class="eyebrow">REQUEST MONITORING</div>
         <h2>请求监控</h2>
       </div>
-      <select v-model="timeRange" class="control compact">
-        <option value="today">今天</option>
-        <option value="7d">最近 7 天</option>
-        <option value="14d">最近 14 天</option>
-        <option value="30d">最近 30 天</option>
-        <option value="all">全部</option>
-        <option value="custom">自定义</option>
-      </select>
-      <select v-model.number="autoRefreshMs" class="control compact">
-        <option :value="0">不自动刷新</option>
-        <option :value="5000">5 秒</option>
-        <option :value="15000">15 秒</option>
-        <option :value="30000">30 秒</option>
-        <option :value="60000">60 秒</option>
-      </select>
-      <input v-model.trim="searchQuery" class="control wide" placeholder="全文搜索：模型 / 账号 / API Key / 路径 / trace / 错误" @keyup.enter="refresh(true)" />
-      <select v-model="filters.status" class="control compact">
-        <option value="all">全部状态</option>
-        <option value="success">仅成功</option>
-        <option value="failed">仅失败</option>
-      </select>
-      <select v-model="filters.provider" class="control compact">
-        <option value="all">全部 Provider</option>
-        <option v-for="item in optionProviders" :key="item" :value="item">{{ item }}</option>
-      </select>
-      <select v-model="filters.model" class="control compact">
-        <option value="all">全部模型</option>
-        <option v-for="item in optionModels" :key="item" :value="item">{{ item }}</option>
-      </select>
-      <select v-model="filters.account" class="control compact">
-        <option value="all">全部账号</option>
-        <option v-for="item in optionAccounts" :key="item.value" :value="item.value">{{ item.label }}</option>
-      </select>
-      <select v-model="filters.apiKeyHash" class="control compact">
-        <option value="all">全部 API Key</option>
-        <option v-for="item in optionApiKeys" :key="item.value" :value="item.value">{{ item.label }}</option>
-      </select>
-      <input v-model.trim="filters.projectId" class="control compact" placeholder="Project ID" @keyup.enter="refresh(true)" />
-      <input v-model.trim="filters.requestType" class="control compact" placeholder="请求类型 / path" @keyup.enter="refresh(true)" />
-      <input v-model.number="filters.minLatencyMs" class="control small" type="number" min="0" placeholder="最低延迟 ms" @keyup.enter="refresh(true)" />
-      <input v-model.trim="filters.cacheStatus" class="control small" placeholder="缓存状态" @keyup.enter="refresh(true)" />
-      <input v-model.trim="filters.headerTraceId" class="control compact" placeholder="Trace ID" @keyup.enter="refresh(true)" />
-      <button class="btn primary" @click="refresh(true)" :disabled="loading || !ready">{{ loading ? '加载中…' : '刷新' }}</button>
-      <button class="btn" @click="exportEventsCsv" :disabled="!eventRows.length">导出 CSV</button>
-      <button class="btn" @click="resetFilters">重置</button>
+      <div class="filterbar-controls primary-filters">
+        <select v-model="timeRange" class="control compact">
+          <option value="today">今天</option>
+          <option value="7d">最近 7 天</option>
+          <option value="14d">最近 14 天</option>
+          <option value="30d">最近 30 天</option>
+          <option value="all">全部</option>
+          <option value="custom">自定义</option>
+        </select>
+        <select v-model.number="autoRefreshMs" class="control compact">
+          <option :value="0">不自动刷新</option>
+          <option :value="5000">5 秒</option>
+          <option :value="15000">15 秒</option>
+          <option :value="30000">30 秒</option>
+          <option :value="60000">60 秒</option>
+        </select>
+        <input v-model.trim="searchQuery" class="control wide" placeholder="全文搜索：模型 / 账号 / API Key / 路径 / trace / 错误" @keyup.enter="refresh(true)" />
+        <select v-model="filters.status" class="control compact">
+          <option value="all">全部状态</option>
+          <option value="success">仅成功</option>
+          <option value="failed">仅失败</option>
+        </select>
+        <select v-model="filters.provider" class="control compact">
+          <option value="all">全部 Provider</option>
+          <option v-for="item in optionProviders" :key="item" :value="item">{{ item }}</option>
+        </select>
+        <select v-model="filters.model" class="control compact">
+          <option value="all">全部模型</option>
+          <option v-for="item in optionModels" :key="item" :value="item">{{ item }}</option>
+        </select>
+      </div>
+      <div class="filterbar-controls secondary-filters">
+        <select v-model="filters.account" class="control compact">
+          <option value="all">全部账号</option>
+          <option v-for="item in optionAccounts" :key="item.value" :value="item.value">{{ item.label }}</option>
+        </select>
+        <select v-model="filters.apiKeyHash" class="control compact">
+          <option value="all">全部 API Key</option>
+          <option v-for="item in optionApiKeys" :key="item.value" :value="item.value">{{ item.label }}</option>
+        </select>
+        <input v-model.trim="filters.projectId" class="control compact" placeholder="Project ID" @keyup.enter="refresh(true)" />
+        <input v-model.trim="filters.requestType" class="control compact" placeholder="请求类型 / path" @keyup.enter="refresh(true)" />
+        <input v-model.number="filters.minLatencyMs" class="control small" type="number" min="0" placeholder="最低延迟 ms" @keyup.enter="refresh(true)" />
+        <input v-model.trim="filters.cacheStatus" class="control small" placeholder="缓存状态" @keyup.enter="refresh(true)" />
+        <input v-model.trim="filters.headerTraceId" class="control compact" placeholder="Trace ID" @keyup.enter="refresh(true)" />
+      </div>
+      <div class="filterbar-actions">
+        <button class="btn primary" @click="refresh(true)" :disabled="loading || !ready">{{ loading ? '加载中…' : '刷新' }}</button>
+        <button class="btn" @click="exportEventsCsv" :disabled="!eventRows.length">导出 CSV</button>
+        <button class="btn" @click="resetFilters">重置</button>
+      </div>
     </div>
 
     <div v-if="timeRange === 'custom'" class="card filter-card custom-range-bar">
@@ -88,10 +94,10 @@
               <th>来源 / API KEY</th>
               <th>模型</th>
               <th>强度</th>
-              <th>最近状态</th>
+              <th>同组近况</th>
               <th>请求状态</th>
-              <th>成功率</th>
-              <th>总调用</th>
+              <th>同组成功率</th>
+              <th>同组调用</th>
               <th>TPS</th>
               <th>首字 ｜ 耗时</th>
               <th>时间</th>
@@ -235,6 +241,17 @@ const dataTabs = computed(() => [
 ]);
 
 const summary = computed(() => data.value?.summary || {});
+const eventRows = computed(() => (data.value?.events?.items || []).map((row, idx) => ({...row, __id: idx})));
+const loadedAllEvents = computed(() => {
+  const events = data.value?.events;
+  return events && events.total_count != null && !events.has_more && Number(events.total_count) === eventRows.value.length;
+});
+const zeroTokenRows = computed(() => eventRows.value.filter(row => row.total_tokens != null && Number(row.total_tokens) === 0));
+const zeroTokenCalls = computed(() => loadedAllEvents.value ? zeroTokenRows.value.length : (summary.value.zero_token_calls ?? zeroTokenRows.value.length));
+const zeroTokenModels = computed(() => {
+  const models = loadedAllEvents.value ? unique(zeroTokenRows.value.map(row => row.model)) : (summary.value.zero_token_models || []);
+  return models.slice(0, 3).join(', ');
+});
 const summaryCards = computed(() => [
   {label:'总请求', value: summary.value.total_calls ?? 0, sub:`成功 ${fmtInt(summary.value.success_calls)} / 失败 ${fmtInt(summary.value.failure_calls)}`},
   {label:'成功率', value: fmtPct(summary.value.success_rate), sub:`任务成功 ${fmtPct(summary.value.approx_task_success_rate)}`},
@@ -242,11 +259,9 @@ const summaryCards = computed(() => [
   {label:'费用', value: fmtMoney(summary.value.total_cost), sub:`单次 ${fmtMoney(summary.value.average_cost_per_call)}`},
   {label:'平均延迟', value: fmtMs(summary.value.average_latency_ms), sub:`P95 ${fmtMs(summary.value.p95_latency_ms)}`},
   {label:'吞吐', value: `${fmtInt(summary.value.rpm_30m)} RPM`, sub:`${fmtInt(summary.value.tpm_30m)} TPM`},
-  {label:'零 Token', value: summary.value.zero_token_calls ?? 0, sub:(summary.value.zero_token_models || []).slice(0,3).join(', ')},
+  {label:'零 Token', value: zeroTokenCalls.value, sub: zeroTokenModels.value},
   {label:'近似任务', value: summary.value.approx_tasks ?? 0, sub:`失败 ${fmtInt(summary.value.approx_task_failures)}`},
 ]);
-
-const eventRows = computed(() => (data.value?.events?.items || []).map((row, idx) => ({...row, __id: idx})));
 const eventGroupMap = computed(() => buildEventGroupMap(eventRows.value, accountRows.value, apiKeyRows.value));
 const eventTableRows = computed(() => eventRows.value.map(row => buildEventTableRow(row, eventGroupMap.value)));
 const pagedEvents = computed(() => pageRows(eventTableRows.value, eventPage.value, eventPageSize.value));
@@ -288,7 +303,7 @@ const eventDetailCards = computed(() => selectedEvent.value ? [
   {label:'状态', value:selectedEvent.value.failed ? '失败' : '成功'},
   {label:'Token', value:selectedEvent.value.total_tokens ?? 0},
   {label:'延迟', value:fmtMs(selectedEvent.value.latency_ms)},
-  {label:'费用', value:fmtMoney(selectedEvent.value.cost || selectedEvent.value.total_cost)},
+  {label:'费用', value:fmtMoney(numberOrNull(selectedEvent.value.cost ?? selectedEvent.value.total_cost ?? selectedEvent.value.usage_cost))},
 ] : []);
 const eventBaseDetail = computed(() => selectedEvent.value ? pickObject(selectedEvent.value, ['request_id','event_hash','timestamp_ms','model','resolved_model','endpoint','method','path','auth_index','source','source_hash','api_key_hash','account_snapshot','auth_label_snapshot','auth_provider_snapshot','auth_project_id_snapshot','input_tokens','output_tokens','cached_tokens','cache_read_tokens','cache_creation_tokens','reasoning_tokens','total_tokens','latency_ms','ttft_ms','failed','fail_status_code','fail_summary']) : {});
 const eventHeaderDetail = computed(() => selectedEvent.value ? pickObject(selectedEvent.value, ['header_quota_recover_at_ms','header_quota_used_percent','header_quota_plan_type','header_error_kind','header_error_code','header_trace_id']) : {});
@@ -390,13 +405,11 @@ function buildEventGroupMap(events, accounts, apiKeys){
   for(const row of apiKeys || []){
     const calls = Number(row.calls ?? row.total_calls ?? 0);
     const success = Number(row.success_calls ?? Math.round(calls * Number(row.success_rate ?? 0)) ?? 0);
-    const cost = Number(row.cost ?? row.total_cost ?? 0);
     const group = {
       calls,
       successCalls: success,
       failureCalls: Number(row.failure_calls ?? Math.max(0, calls - success)),
       successRate: normalizeRate(row.success_rate, calls, success),
-      avgCostPerCall: calls > 0 ? cost / calls : 0,
     };
     put(row.api_key_hash, group);
     put(row.id, group);
@@ -404,13 +417,11 @@ function buildEventGroupMap(events, accounts, apiKeys){
   for(const row of accounts || []){
     const calls = Number(row.calls ?? row.total_calls ?? 0);
     const success = Number(row.success_calls ?? Math.round(calls * Number(row.success_rate ?? 0)) ?? 0);
-    const cost = Number(row.cost ?? row.total_cost ?? 0);
     const group = {
       calls,
       successCalls: success,
       failureCalls: Number(row.failure_calls ?? Math.max(0, calls - success)),
       successRate: normalizeRate(row.success_rate, calls, success),
-      avgCostPerCall: calls > 0 ? cost / calls : 0,
     };
     [row.id, row.source_hash, ...(row.source_hashes || []), ...(row.auth_indices || []), row.account_snapshot, row.auth_label_snapshot].forEach(key => put(key, group));
   }
@@ -432,7 +443,6 @@ function buildEventGroupMap(events, accounts, apiKeys){
       successCalls: existing.successCalls ?? group.successCalls,
       failureCalls: existing.failureCalls ?? group.failureCalls,
       successRate: existing.successRate ?? normalizeRate(null, group.calls, group.successCalls),
-      avgCostPerCall: existing.avgCostPerCall || 0,
       events: group.events,
     });
   }
@@ -465,7 +475,7 @@ function buildEventTableRow(row, groupMap){
     timestampMs: row.timestamp_ms,
     totalTokens: Number(row.total_tokens || 0),
     usageText: buildUsageText(row),
-    cost: Number(row.cost ?? row.total_cost ?? row.usage_cost ?? group.avgCostPerCall ?? 0),
+    cost: numberOrNull(row.cost ?? row.total_cost ?? row.usage_cost),
   };
 }
 function buildRecentStatus(events, current){

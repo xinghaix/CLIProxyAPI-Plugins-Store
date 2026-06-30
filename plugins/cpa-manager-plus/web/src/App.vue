@@ -4,9 +4,9 @@
       <nav class="tabs" aria-label="CPA Manager Plus tabs">
         <button v-for="tab in tabs" :key="tab.key" :class="['tab', {active: activeTab === tab.key}]" @click="selectTab(tab.key)">{{ tab.label }}</button>
       </nav>
-      <div class="row">
+      <div class="toolbar-actions" aria-label="Manager actions">
         <button class="btn" @click="checkHealth" :disabled="loading">检测 Manager</button>
-        <button class="btn primary" @click="refreshActive" :disabled="loading">{{ loading ? '加载中…' : '刷新当前 Tab' }}</button>
+        <button class="btn primary" @click="refreshActive" :disabled="loading">{{ loading ? '加载中…' : '刷新当前' }}</button>
       </div>
     </section>
 
@@ -25,16 +25,16 @@
       </div>
     </section>
 
+    <section class="panel" v-if="activeTab === 'monitoring'">
+      <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
+    </section>
+
     <section class="panel" v-if="activeTab === 'usage'">
       <MetricGrid :cards="usageCards" />
       <DataCard title="用量记录" subtitle="/v0/management/usage">
         <DataTable :rows="usageRows" :preferred-keys="['date','day','model','provider','authIndex','requests','tokens','cost','inputTokens','outputTokens']" />
       </DataCard>
       <pre>{{ pretty(usageData) }}</pre>
-    </section>
-
-    <section class="panel" v-if="activeTab === 'monitoring'">
-      <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
     </section>
 
     <section class="panel" v-if="activeTab === 'inspection'">
