@@ -94,10 +94,10 @@
               <th>来源 / API KEY</th>
               <th>模型</th>
               <th>强度</th>
-              <th>同组近况</th>
+              <th>最近状态</th>
               <th>请求状态</th>
-              <th>同组成功率</th>
-              <th>同组调用</th>
+              <th>成功率</th>
+              <th>总调用</th>
               <th>TPS</th>
               <th>首字 ｜ 耗时</th>
               <th>时间</th>
@@ -121,18 +121,16 @@
                 <div class="muted small-text">等级: {{ row.tier }}</div>
               </td>
               <td>
-                <div class="recent-status" :title="row.recentTitle">
-                  <button
-                    v-for="item in row.recent"
-                    :key="item.id"
-                    type="button"
-                    :class="['recent-bar', item.tone, {selected: item.event === row.raw}]"
-                    :title="item.title"
-                    @click.stop="selectedEvent = item.event"
-                  ></button>
+                <div class="recent-status" aria-hidden="true">
+                  <span v-for="(success, idx) in row.recentPattern" :key="idx" :class="['pattern-bar', success ? 'good' : 'bad']"></span>
                 </div>
               </td>
-              <td><span :class="['status-badge', row.failed ? 'bad' : 'good']"><i></i>{{ row.failed ? '失败' : '成功' }}</span></td>
+              <td>
+                <span v-if="row.failed" class="status-badge bad failure-trigger" tabindex="0" @click.stop="toggleFailureTooltip($event, row)" @mouseenter="showFailureTooltip($event, row)" @mouseleave="hideFailureTooltip">
+                  <i></i>失败
+                </span>
+                <span v-else class="status-badge good"><i></i>成功</span>
+              </td>
               <td><strong :class="successRateClass(row.successRate)">{{ fmtPct(row.successRate) }}</strong></td>
               <td>{{ fmtInt(row.totalCalls) }}</td>
               <td>{{ fmtTps(row.tps) }}</td>
@@ -157,6 +155,13 @@
         </table>
       </div>
       <PaginationBar :page="eventPage" :page-size="eventPageSize" :total="eventTableRows.length" @page="eventPage = $event" />
+      <Teleport to="body">
+        <div v-if="failureTooltip.visible" class="failure-tooltip-popover" :style="failureTooltip.style" @mouseenter="keepFailureTooltip" @mouseleave="hideFailureTooltip">
+          <button class="failure-tooltip-copy" @click.stop="copyFailureText" title="复制">⎘</button>
+          <div v-if="failureTooltip.row?.failStatusCode" class="failure-tooltip-status">HTTP {{ failureTooltip.row.failStatusCode }}</div>
+          <div v-if="failureTooltip.row?.failSummary" class="failure-tooltip-body">{{ failureTooltip.row.failSummary }}</div>
+        </div>
+      </Teleport>
     </DataCard>
 
     <DataCard v-if="activeDataTab === 'accounts'" title="账号维度" subtitle="account_stats">
@@ -169,22 +174,6 @@
 
     <DataCard v-if="activeDataTab === 'models'" title="模型维度" subtitle="model_stats / model_share">
       <SimpleTable :rows="modelRows" :columns="modelColumns" @select="setModelFilter" />
-    </DataCard>
-
-    <DataCard v-if="activeDataTab === 'channels'" title="渠道维度" subtitle="channel_share">
-      <SimpleTable :rows="channelRows" :columns="channelColumns" />
-    </DataCard>
-
-    <DataCard v-if="activeDataTab === 'failures'" title="失败来源" subtitle="failure_sources / recent_failures">
-      <SimpleTable :rows="failureRows" :columns="failureColumns" />
-    </DataCard>
-
-    <DataCard v-if="activeDataTab === 'tasks'" title="任务桶" subtitle="task_buckets">
-      <SimpleTable :rows="taskRows" :columns="taskColumns" />
-    </DataCard>
-
-    <DataCard v-if="activeDataTab === 'raw'" title="原始响应" subtitle="debug">
-      <pre>{{ pretty(data) }}</pre>
     </DataCard>
 
     <div v-if="selectedEvent" class="drawer-backdrop" @click.self="selectedEvent = null">
@@ -228,6 +217,8 @@ const selectedEvent = ref(null);
 const eventPage = ref(1);
 const eventPageSize = ref(50);
 const filters = ref(defaultFilters());
+const failureTooltip = ref({visible:false, row:null, style:{}});
+let failureHideTimer = null;
 let timer = null;
 
 const dataTabs = computed(() => [
@@ -235,10 +226,6 @@ const dataTabs = computed(() => [
   {key:'accounts', label:'账号', count:accountRows.value.length},
   {key:'apiKeys', label:'API Key', count:apiKeyRows.value.length},
   {key:'models', label:'模型', count:modelRows.value.length},
-  {key:'channels', label:'渠道', count:channelRows.value.length},
-  {key:'failures', label:'失败', count:failureRows.value.length},
-  {key:'tasks', label:'任务桶', count:taskRows.value.length},
-  {key:'raw', label:'原始', count:data.value ? 1 : 0},
 ]);
 
 const summary = computed(() => data.value?.summary || {});
@@ -409,6 +396,46 @@ function setApiKeyFilter(row){ filters.value.apiKeyHash = row.api_key_hash || ro
 function setModelFilter(row){ filters.value.model = row.model || 'all'; refresh(true); }
 function setupTimer(){ clearTimer(); if(autoRefreshMs.value > 0) timer = window.setInterval(() => refresh(false), autoRefreshMs.value); }
 function clearTimer(){ if(timer) window.clearInterval(timer); timer = null; }
+function showFailureTooltip(event, row){
+  if(failureHideTimer){ clearTimeout(failureHideTimer); failureHideTimer = null; }
+  const el = event.currentTarget;
+  const rect = el.getBoundingClientRect();
+  const left = Math.max(12, Math.min(rect.left, window.innerWidth - 440 - 12));
+  const spaceBelow = window.innerHeight - rect.bottom - 12;
+  const placement = spaceBelow >= 200 || spaceBelow >= rect.top ? 'below' : 'above';
+  failureTooltip.value = {
+    visible: true,
+    row,
+    style: placement === 'below'
+      ? {top: `${rect.bottom + 8}px`, left: `${left}px`, maxWidth: '420px'}
+      : {bottom: `${window.innerHeight - rect.top + 8}px`, left: `${left}px`, maxWidth: '420px'},
+  };
+}
+function toggleFailureTooltip(event, row){
+  if(failureTooltip.value.visible && failureTooltip.value.row?.id === row.id){
+    hideFailureTooltip();
+  }else{
+    showFailureTooltip(event, row);
+  }
+}
+function keepFailureTooltip(){
+  if(failureHideTimer){ clearTimeout(failureHideTimer); failureHideTimer = null; }
+}
+function hideFailureTooltip(){
+  if(failureHideTimer) clearTimeout(failureHideTimer);
+  failureHideTimer = setTimeout(() => { failureTooltip.value.visible = false; }, 120);
+}
+function copyFailureText(){
+  const row = failureTooltip.value.row;
+  if(!row) return;
+  const parts = [];
+  if(row.failStatusCode) parts.push(`HTTP ${row.failStatusCode}`);
+  if(row.failSummary) parts.push(row.failSummary);
+  const text = parts.join('\n');
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(text).then(() => {}).catch(() => {});
+  }
+}
 function exportEventsCsv(){
   const cols = ['timestamp_ms','failed','model','auth_index','account_snapshot','api_key_hash','method','path','total_tokens','latency_ms','fail_status_code','fail_summary','header_trace_id'];
   const csv = [cols.join(','), ...eventRows.value.map(row => cols.map(c => csvCell(row[c])).join(','))].join('\n');
@@ -474,7 +501,6 @@ function buildEventTableRow(row, groupMap){
   const group = groupMap.get(key) || {};
   const eventId = row.event_hash || row.request_id || `${row.timestamp_ms}-${row.__id}`;
   const sliding = groupMap._slidingWindow?.get(key)?.get(eventId);
-  const recent = buildRecentStatus(group.events || [row], row);
   const latencyMs = numberOrNull(row.latency_ms);
   const outputTokens = Number(row.output_tokens || 0);
   return {
@@ -487,8 +513,7 @@ function buildEventTableRow(row, groupMap){
     resolvedModel: row.resolved_model || '',
     intensity: row.reasoning_effort || row.service_tier || '-',
     tier: row.service_tier || (row.reasoning_effort && row.reasoning_effort !== '-' ? 'priority' : 'default'),
-    recent,
-    recentTitle: recent.map(item => item.title).join('\n'),
+    recentPattern: (sliding?.recentPattern || []).slice(-5),
     failed: Boolean(row.failed),
     successRate: sliding?.successRate ?? (row.failed ? 0 : 1),
     totalCalls: sliding?.requestCount ?? 1,
@@ -499,23 +524,15 @@ function buildEventTableRow(row, groupMap){
     totalTokens: Number(row.total_tokens || 0),
     usageText: buildUsageText(row),
     cost: calculateEventCost(row, modelPrices.value),
+    failStatusCode: numberOrNull(row.fail_status_code),
+    failSummary: row.fail_summary || '',
   };
 }
-function buildRecentStatus(events, current){
-  const list = (events || []).slice().sort((a,b) => Number(b.timestamp_ms || 0) - Number(a.timestamp_ms || 0)).slice(0, 5);
-  while(list.length < 5) list.push(null);
-  return list.map((event, idx) => {
-    if(!event) return {id:`empty-${idx}`, tone:'empty', event:null, title:'暂无记录'};
-    const title = `${formatDateTime(event.timestamp_ms)} · ${event.failed ? '失败' : '成功'}${event.fail_summary ? ' · ' + event.fail_summary : ''}${event.header_error_kind ? ' · ' + event.header_error_kind : ''}`;
-    return {id:event.event_hash || event.request_id || `${event.timestamp_ms}-${idx}`, tone:event.failed ? 'bad' : latencyTone(event.latency_ms), event, title};
-  });
-}
 function eventGroupKey(row){
-  const account = row.account_snapshot || row.auth_label_snapshot || row.source || row.auth_index || '';
+  const account = row.account_snapshot || row.auth_label_snapshot || row.source || '';
   const provider = row.auth_provider_snapshot || row.provider || '';
   const model = row.model || '';
-  const channel = row.auth_index || '';
-  return [account, provider, model, channel].join('::');
+  return [account, provider, model].join('::');
 }
 function normalizeRate(rate, calls, success){ if(rate != null && Number.isFinite(Number(rate))) return Number(rate) > 1 ? Number(rate) / 100 : Number(rate); return calls > 0 ? success / calls : null; }
 function numberOrNull(v){ const n = Number(v); return Number.isFinite(n) ? n : null; }
