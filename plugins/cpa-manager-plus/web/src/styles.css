@@ -1,9 +1,10 @@
 :root {
   /*
    * CPA Management Center theme bridge.
-   * The host defines --bg-*, --text-*, --border-color, --primary-color and --glass-bg.
-   * This plugin must consume those tokens instead of redefining them; fallbacks keep
-   * the Vite preview/standalone resource page usable when the host tokens are absent.
+   * The host defines --bg-*, --text-*, --border-color, --primary-color and --glass-bg
+   * on its own documentElement, but the plugin runs inside an iframe so those tokens
+   * do not cascade. We copy them from the parent at runtime (see themeBridge.js) and
+   * only use fallbacks for standalone/Vite-preview use.
    */
   --cpa-page-bg: var(--bg-secondary, #f6f8fa);
   --cpa-surface: var(--bg-primary, #ffffff);

@@ -80,6 +80,9 @@ import DataTable from './components/DataTable.vue';
 import MetricGrid from './components/MetricGrid.vue';
 import MonitoringView from './components/MonitoringView.vue';
 import { PROXY, HEALTH, SESSION_KEY, LEGACY_SESSION_KEY, readCPAAuthStoreKey, pick, findArray, formatCell, todayStartQuery } from './utils/data.js';
+import { initThemeBridge } from './themeBridge.js';
+
+initThemeBridge();
 
 const tabs = [
   {key:'dashboard', label:'仪表盘'},
