@@ -215,6 +215,7 @@ const props = defineProps({
 });
 
 const data = ref(null);
+const modelPrices = ref({});
 const loading = ref(false);
 const error = ref('');
 const timeRange = ref('today');
@@ -243,7 +244,7 @@ const dataTabs = computed(() => [
 const summary = computed(() => data.value?.summary || {});
 const eventRows = computed(() => (data.value?.events?.items || []).map((row, idx) => ({...row, __id: idx})));
 // loadedAllEvents removed — no longer needed after KPI card cleanup
-const hasPrices = computed(() => Number(summary.value.total_cost) > 0);
+const hasPrices = computed(() => Object.keys(modelPrices.value).length > 0);
 const summaryCards = computed(() => {
   const s = summary.value;
   const totalCacheTokens = Number(s.cached_tokens ?? 0) + Number(s.cache_read_tokens ?? 0) + Number(s.cache_creation_tokens ?? 0);
@@ -311,7 +312,7 @@ const eventDetailCards = computed(() => selectedEvent.value ? [
   {label:'状态', value:selectedEvent.value.failed ? '失败' : '成功'},
   {label:'Token', value:selectedEvent.value.total_tokens ?? 0},
   {label:'延迟', value:fmtMs(selectedEvent.value.latency_ms)},
-  {label:'费用', value:fmtMoney(numberOrNull(selectedEvent.value.cost ?? selectedEvent.value.total_cost ?? selectedEvent.value.usage_cost))},
+  {label:'费用', value:fmtMoney(calculateEventCost(selectedEvent.value, modelPrices.value))},
 ] : []);
 const eventBaseDetail = computed(() => selectedEvent.value ? pickObject(selectedEvent.value, ['request_id','event_hash','timestamp_ms','model','resolved_model','endpoint','method','path','auth_index','source','source_hash','api_key_hash','account_snapshot','auth_label_snapshot','auth_provider_snapshot','auth_project_id_snapshot','input_tokens','output_tokens','cached_tokens','cache_read_tokens','cache_creation_tokens','reasoning_tokens','total_tokens','latency_ms','ttft_ms','failed','fail_status_code','fail_summary']) : {});
 const eventHeaderDetail = computed(() => selectedEvent.value ? pickObject(selectedEvent.value, ['header_quota_recover_at_ms','header_quota_used_percent','header_quota_plan_type','header_error_kind','header_error_code','header_trace_id']) : {});
@@ -328,14 +329,26 @@ async function refresh(force=false){
   loading.value = true;
   error.value = '';
   try{
-    const request = buildAnalyticsRequest();
-    data.value = await props.proxyCall({method:'POST', path:'/v0/management/monitoring/analytics', body:request});
+    const [analyticsData, pricesData] = await Promise.all([
+      props.proxyCall({method:'POST', path:'/v0/management/monitoring/analytics', body:buildAnalyticsRequest()}),
+      loadModelPrices(),
+    ]);
+    data.value = analyticsData;
+    modelPrices.value = pricesData;
     selectedEvent.value = null;
     setupTimer();
   }catch(e){
     error.value = e.message || String(e);
   }finally{
     loading.value = false;
+  }
+}
+async function loadModelPrices(){
+  try{
+    const resp = await props.proxyCall({method:'GET', path:'/v0/management/model-prices'});
+    return resp?.prices || {};
+  }catch{
+    return {};
   }
 }
 function buildAnalyticsRequest(){
@@ -485,7 +498,7 @@ function buildEventTableRow(row, groupMap){
     timestampMs: row.timestamp_ms,
     totalTokens: Number(row.total_tokens || 0),
     usageText: buildUsageText(row),
-    cost: numberOrNull(row.cost ?? row.total_cost ?? row.usage_cost),
+    cost: calculateEventCost(row, modelPrices.value),
   };
 }
 function buildRecentStatus(events, current){
@@ -514,6 +527,55 @@ function buildUsageText(row){
   const cached = Number(row.cached_tokens || row.cache_read_tokens || row.cache_creation_tokens || 0);
   if(cached > 0) parts.push(`C ${fmtCompact(cached)}`);
   return parts.join(' · ');
+}
+const TOKENS_PER_PRICE_UNIT = 1000000;
+function calculateEventCost(row, prices){
+  if(!prices || Object.keys(prices).length === 0) return null;
+  const model = row.resolved_model || row.model || '';
+  const price = prices[model] || prices[row.model || ''];
+  if(!price) return null;
+  const inputTokens = Math.max(Number(row.input_tokens || 0), 0);
+  const outputTokens = Math.max(Number(row.output_tokens || 0), 0);
+  const cachedTokens = Math.max(Number(row.cached_tokens || 0), 0);
+  const cacheReadTokens = Math.max(Number(row.cache_read_tokens || 0), 0);
+  const cacheCreationTokens = Math.max(Number(row.cache_creation_tokens || 0), 0);
+  const promptPrice = Number(price.prompt) || 0;
+  const completionPrice = Number(price.completion) || 0;
+  let standardCost = 0;
+  if(cacheReadTokens > 0 || cacheCreationTokens > 0){
+    const cacheReadPrice = Number(price.cacheRead) || Number(price.cache) || 0;
+    const cacheCreationPrice = Number(price.cacheCreation) || promptPrice;
+    const promptTokens = Math.max(inputTokens - cachedTokens, 0);
+    standardCost =
+      (promptTokens / TOKENS_PER_PRICE_UNIT) * promptPrice +
+      (outputTokens / TOKENS_PER_PRICE_UNIT) * completionPrice +
+      (cachedTokens / TOKENS_PER_PRICE_UNIT) * (Number(price.cache) || 0) +
+      (cacheReadTokens / TOKENS_PER_PRICE_UNIT) * cacheReadPrice +
+      (cacheCreationTokens / TOKENS_PER_PRICE_UNIT) * cacheCreationPrice;
+  }else{
+    const promptTokens = Math.max(inputTokens - cachedTokens, 0);
+    standardCost =
+      (promptTokens / TOKENS_PER_PRICE_UNIT) * promptPrice +
+      (outputTokens / TOKENS_PER_PRICE_UNIT) * completionPrice +
+      (cachedTokens / TOKENS_PER_PRICE_UNIT) * (Number(price.cache) || 0);
+  }
+  const serviceTier = row.service_tier || '';
+  const multiplier = getServiceTierMultiplier(model || row.model, serviceTier);
+  const total = standardCost * multiplier;
+  return Number.isFinite(total) && total > 0 ? total : 0;
+}
+function getServiceTierMultiplier(model, tier){
+  if(!tier) return 1;
+  const t = String(tier).trim().toLowerCase();
+  if(!t || t === 'default' || t === 'standard') return 1;
+  const m = String(model || '').toLowerCase();
+  if(t === 'priority'){
+    if(m.includes('gpt-5.5')) return 2.5;
+    if(m.includes('gpt-5.4-mini')) return 2;
+    if(m.includes('gpt-5.4')) return 2;
+    return 2;
+  }
+  return 1;
 }
 function maskApiKey(value){ const s = String(value || '').trim(); if(!s) return '—'; if(s.startsWith('sk') && s.length > 8) return `${s.slice(0,2)}******${s.slice(-2)}`; return shortHash(s); }
 function barWidth(value){ return `${Math.max(2, Math.round((Number(value || 0) / maxTimelineCalls.value) * 100))}%`; }
