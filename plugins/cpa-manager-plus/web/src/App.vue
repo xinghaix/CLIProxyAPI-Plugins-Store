@@ -10,15 +10,7 @@
     <section v-if="activeError" class="notice error">{{ activeError }}</section>
 
     <section class="panel" v-if="activeTab === 'dashboard'">
-      <MetricGrid :cards="dashboardCards" />
-      <div class="split">
-        <DataCard title="今日概览" subtitle="/v0/management/dashboard/summary">
-          <DataTable :rows="dashboardRows" :preferred-keys="['key','value']" />
-        </DataCard>
-        <DataCard title="原始摘要" subtitle="调试视图" glass>
-          <pre>{{ pretty(dashboardData) }}</pre>
-        </DataCard>
-      </div>
+      <DashboardView ref="dashboardView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
     </section>
 
     <section class="panel" v-if="activeTab === 'monitoring'">
@@ -126,10 +118,10 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import DataCard from './components/DataCard.vue';
 import DataTable from './components/DataTable.vue';
-import MetricGrid from './components/MetricGrid.vue';
 import MonitoringView from './components/MonitoringView.vue';
 import UsageView from './components/UsageView.vue';
-import { PROXY, HEALTH, SESSION_KEY, LEGACY_SESSION_KEY, readCPAAuthStoreKey, pick, findArray, formatCell, todayStartQuery } from './utils/data.js';
+import DashboardView from './components/DashboardView.vue';
+import { PROXY, HEALTH, SESSION_KEY, LEGACY_SESSION_KEY, readCPAAuthStoreKey } from './utils/data.js';
 import { initThemeBridge } from './themeBridge.js';
 
 initThemeBridge();
@@ -146,10 +138,9 @@ const loading = ref(false);
 const health = reactive({state:'', text:'未检测 Manager'});
 const cpaKeyInput = ref((sessionStorage.getItem(SESSION_KEY) || '').trim());
 const errors = reactive({});
-const dashboardData = ref(null);
-const usageData = ref(null);
 const inspectionData = ref(null);
 const configData = ref(null);
+const dashboardView = ref(null);
 const monitoringView = ref(null);
 const usageView = ref(null);
 
@@ -200,32 +191,7 @@ const resolvedCPAKey = computed(() => {
 });
 const authNotice = computed(() => resolvedCPAKey.value ? '' : '未检测到可用的 CPA management key。若 CPA 管理台保存的是 enc::v1:: 加密密钥，插件页无法解密；请在「配置」Tab 临时输入 CPA remote-management.secret-key。本字段只保存在 sessionStorage，不写入插件 YAML。');
 const activeError = computed(() => errors[activeTab.value] || '');
-const dashboardRows = computed(() => Object.entries(dashboardData.value || {}).map(([key,value]) => ({key, value: formatCell(value)})));
-const usageRows = computed(() => findArray(usageData.value));
-const inspectionRows = computed(() => findArray(inspectionData.value));
-const configRows = computed(() => {
-  const d = configData.value && configData.value.config ? configData.value.config : (configData.value || {});
-  return Object.entries(d).map(([key,value]) => ({key, value: formatCell(value)}));
-});
-const dashboardCards = computed(() => {
-  const d = dashboardData.value || {};
-  return [
-    {label:'请求量', value: pick(d, ['requests','requestCount','totalRequests','total'])},
-    {label:'成功', value: pick(d, ['success','successCount','successfulRequests'])},
-    {label:'失败', value: pick(d, ['failed','failedCount','errors','errorCount'])},
-    {label:'Token / 用量', value: pick(d, ['tokens','totalTokens','usage','cost'])},
-  ];
-});
-const usageCards = computed(() => {
-  const d = usageData.value || {};
-  const rows = usageRows.value;
-  return [
-    {label:'记录数', value: rows.length},
-    {label:'总请求', value: pick(d, ['totalRequests','requests','total'])},
-    {label:'总 Token', value: pick(d, ['totalTokens','tokens'])},
-    {label:'费用', value: pick(d, ['totalCost','cost','amount'])},
-  ];
-});
+const inspectionRows = computed(() => Array.isArray(inspectionData.value) ? inspectionData.value : (inspectionData.value?.items || inspectionData.value?.runs || []));
 
 const inspectionCards = computed(() => {
   const rows = inspectionRows.value;
@@ -233,11 +199,10 @@ const inspectionCards = computed(() => {
   return [
     {label:'巡检批次', value: rows.length},
     {label:'最近状态', value: last.status || '—'},
-    {label:'禁用', value: pick(last, ['disabledCount','disableCount'])},
-    {label:'错误', value: pick(last, ['errorCount','failedCount']) || (last.error ? 1 : 0)},
+    {label:'禁用', value: last.disabledCount ?? last.disableCount ?? '—'},
+    {label:'错误', value: last.errorCount ?? last.failedCount ?? (last.error ? 1 : 0)},
   ];
 });
-
 function pretty(data){ return data == null ? '等待加载' : JSON.stringify(data, null, 2); }
 function authHeaders(json=true){
   const headers = json ? {'Content-Type':'application/json','Accept':'application/json'} : {'Accept':'application/json'};
@@ -282,7 +247,7 @@ async function refreshActive(){
   loading.value = true;
   errors[activeTab.value] = '';
   try{
-    if(activeTab.value === 'dashboard') await loadDashboard();
+    if(activeTab.value === 'dashboard') await (dashboardView.value ? dashboardView.value.refresh(true) : Promise.resolve());
     if(activeTab.value === 'usage') await (usageView.value ? usageView.value.refresh(true) : Promise.resolve());
     if(activeTab.value === 'monitoring') await (monitoringView.value ? monitoringView.value.refresh(true) : Promise.resolve());
     if(activeTab.value === 'inspection') await loadInspection();
@@ -290,8 +255,6 @@ async function refreshActive(){
   }catch(e){ errors[activeTab.value] = e.message || String(e); }
   finally{ loading.value = false; }
 }
-async function loadDashboard(){ dashboardData.value = await proxyCall({method:'GET', path:'/v0/management/dashboard/summary', query:todayStartQuery()}); }
-async function loadUsage(){ usageData.value = await proxyCall({method:'GET', path:'/v0/management/usage'}); }
 async function loadInspection(){ inspectionData.value = await proxyCall({method:'GET', path:'/v0/management/codex-inspection/runs'}); }
 async function loadConfig(){
   const resp = await proxyCall({method:'GET', path:'/usage-service/config'});
