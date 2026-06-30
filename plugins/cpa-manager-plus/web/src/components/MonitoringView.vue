@@ -163,13 +163,16 @@
       <div class="split">
         <div>
           <h3 style="margin:0 0 10px; font-size:14px; color:var(--cpa-text-secondary)">账号维度</h3>
-          <SimpleTable :rows="accountRows" :columns="accountColumns" @select="setAccountFilter" />
+          <SimpleTable :rows="accountRows" :columns="accountColumns" selectable :selected-id="selectedAccountId" @select="row => selectedAccountId = row.id || row.account_snapshot || row.account || ''" />
         </div>
         <div>
           <h3 style="margin:0 0 10px; font-size:14px; color:var(--cpa-text-secondary)">API Key 维度</h3>
           <SimpleTable :rows="apiKeyRows" :columns="apiKeyColumns" @select="setApiKeyFilter" />
         </div>
       </div>
+      <DataCard v-if="selectedAccount" title="账号详情" :subtitle="selectedAccount.account_snapshot || selectedAccount.auth_label_snapshot || selectedAccount.id || '—'">
+        <DetailGrid :items="buildAccountDetail(selectedAccount)" />
+      </DataCard>
     </DataCard>
 
     <DataCard v-if="activeDataTab === 'models'" title="模型维度" subtitle="model_stats / model_share">
@@ -216,6 +219,7 @@ const activeDataTab = ref('events');
 const selectedEvent = ref(null);
 const eventPage = ref(1);
 const eventPageSize = ref(50);
+const selectedAccountId = ref('');
 const filters = ref(defaultFilters());
 const failureTooltip = ref({visible:false, row:null, style:{}});
 let failureHideTimer = null;
@@ -647,21 +651,50 @@ function csvCell(v){ const s = v == null ? '' : String(v); return /[",\n]/.test(
 defineExpose({ refresh });
 
 const SimpleTable = defineComponent({
-  props: { rows:{type:Array, default:()=>[]}, columns:{type:Array, default:()=>[]} },
+  props: { rows:{type:Array, default:()=>[]}, columns:{type:Array, default:()=>[]}, selectable:{type:Boolean, default:false}, selectedId:{type:[String, Number], default:''} },
   emits: ['select'],
   setup(props, {emit}){
     return () => {
       if(!props.rows.length) return h('div', {class:'empty'}, '暂无数据');
       const head = h('thead', h('tr', props.columns.map(col => h('th', col[1]))));
-      const body = h('tbody', props.rows.slice(0, 250).map((row, idx) =>
-        h('tr', {class:'clickable', key:idx, onClick:()=>emit('select', row)},
-          props.columns.map(col => h('td', renderCell(row[col[0]], col[2])))
-        )
-      ));
+      const body = h('tbody', props.rows.slice(0, 250).map((row, idx) => {
+        const rowId = row.id || row.model || row.api_key_hash || row.account_snapshot || idx;
+        const isSelected = props.selectedId && String(props.selectedId) === String(rowId);
+        return h('tr', {
+          class: props.selectable ? ['clickable', isSelected ? 'selected-row' : ''].filter(Boolean).join(' ') : 'clickable',
+          key: idx,
+          onClick: () => emit('select', row)
+        }, props.columns.map(col => h('td', renderCell(row[col[0]], col[2])))
+      );
+      }));
       return h('div', {class:'table-wrap monitor-table'}, h('table', [head, body]));
     };
   }
 });
+const DetailGrid = defineComponent({
+  props: { items:{type:Array, default:()=>[]} },
+  setup(props){
+    return () => h('div', {class:'config-meta-grid'}, props.items.map((item, idx) =>
+      h('div', {key: idx}, [h('span', item.label), h('strong', item.value)])
+    ));
+  }
+});
+const selectedAccount = computed(() => accountRows.value.find(r => (r.id || r.account_snapshot || r.account || '') === selectedAccountId.value) || null);
+function buildAccountDetail(row){
+  if(!row) return [];
+  return [
+    {label:'账号', value: row.account_snapshot || row.auth_label_snapshot || row.id || '—'},
+    {label:'Provider', value: row.auth_provider_snapshot || '—'},
+    {label:'标签', value: row.auth_label_snapshot || '—'},
+    {label:'请求', value: fmtInt(row.calls)},
+    {label:'成功率', value: fmtPct(row.success_rate)},
+    {label:'Token', value: fmtCompact(row.total_tokens)},
+    {label:'费用', value: fmtMoney(row.cost)},
+    {label:'延迟', value: fmtMs(row.average_latency_ms)},
+    {label:'最后出现', value: row.last_seen_ms ? new Date(Number(row.last_seen_ms)).toLocaleString('zh-CN', {hour12:false}) : '—'},
+    {label:'Plan Type', value: (row.plan_type || row.planType || row.auth_provider_snapshot && (row.plan_type || row.planType) ? (row.plan_type || row.planType) : '—')},
+  ];
+}
 const PaginationBar = defineComponent({
   props: { page:Number, pageSize:Number, total:Number },
   emits: ['page'],

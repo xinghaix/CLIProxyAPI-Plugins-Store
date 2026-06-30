@@ -477,6 +477,8 @@ var allowedProxyPathRules = []func(string) bool{
 	exactPath("/v0/management/codex-inspection/run"),
 	exactPath("/v0/management/codex-inspection/runs"),
 	prefixPath("/v0/management/codex-inspection/runs/"),
+	exactPath("/v0/management/account-action-candidates"),
+	prefixPath("/v0/management/account-action-candidates/"),
 }
 
 func exactPath(want string) func(string) bool {
