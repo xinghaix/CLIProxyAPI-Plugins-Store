@@ -30,7 +30,9 @@
           <button class="btn" @click="checkHealth" :disabled="loading">检测 Manager</button>
           <button class="btn danger" @click="clearCPAKey">清除</button>
         </div>
-        <div :class="['health-pill', health.state]"><span class="dot"></span><span>{{ health.text }}</span></div>
+        <div class="config-health-row">
+          <div :class="['health-pill', health.state]"><span class="dot"></span><span>{{ health.text }}</span></div>
+        </div>
       </DataCard>
 
       <DataCard title="CPA 连接配置" subtitle="Manager Server → CPA">
@@ -88,11 +90,16 @@
         <div v-if="!canConfigureMonitoring" class="notice" style="margin-top:8px">需先填写 CPA Base URL 和 Management Key 才能配置监控。</div>
       </DataCard>
 
-      <div class="config-actions-bar">
-        <button class="btn primary" @click="saveManagerConfig" :disabled="mgrSaving || !mgrDirty">
-          {{ mgrSaving ? '保存中…' : '保存 Manager 配置' }}
-        </button>
-        <button class="btn" @click="loadConfig" :disabled="mgrSaving">重新加载</button>
+      <div class="config-save-block">
+        <p v-if="!mgrConfigLoaded && resolvedCPAKey" class="muted small-text">正在加载 Manager 配置…</p>
+        <p v-else-if="mgrConfigLoaded && !mgrDirty" class="muted small-text">当前与服务器配置一致，修改 CPA 连接或 Collector 后可保存。</p>
+        <p v-if="configSaveMessage" class="notice config-save-ok">{{ configSaveMessage }}</p>
+        <div class="config-actions-bar">
+          <button class="btn primary" @click="saveManagerConfig" :disabled="mgrSaving || !mgrConfigLoaded || !mgrDirty">
+            {{ mgrSaving ? '保存中…' : '保存 Manager 配置' }}
+          </button>
+          <button class="btn" @click="loadConfig" :disabled="mgrSaving || !resolvedCPAKey">重新加载</button>
+        </div>
       </div>
 
       <DataCard title="配置元信息" subtitle="status">
@@ -162,6 +169,8 @@ const mgrConfigSource = ref('');
 const mgrUsageEnabled = ref(false);
 const mgrRetentionSeconds = ref(60);
 const mgrLoadedConfig = ref(null);
+const mgrConfigLoaded = ref(false);
+const configSaveMessage = ref('');
 
 const mgrConfigSourceLabel = computed(() => {
   if(mgrConfigSource.value === 'env') return '环境变量';
@@ -170,15 +179,17 @@ const mgrConfigSourceLabel = computed(() => {
 });
 const canConfigureMonitoring = computed(() => Boolean(mgrCPABaseInput.value.trim() && (mgrCPAKeyInput.value.trim() || mgrHasBoundKey.value)));
 const mgrDirty = computed(() => {
-  if(!mgrLoadedConfig.value) return false;
-  const c = mgrLoadedConfig.value;
-  if(mgrCPABaseInput.value !== (c.cpaConnection?.cpaBaseUrl || '')) return true;
+  if(!mgrConfigLoaded.value) return false;
+  const c = mgrLoadedConfig.value || {};
+  const conn = c.cpaConnection || {};
+  const col = c.collector || {};
+  if(mgrCPABaseInput.value !== (conn.cpaBaseUrl || '')) return true;
   if(mgrCPAKeyInput.value.trim()) return true;
-  if(mgrMonitoringEnabled.value !== (c.collector?.enabled !== false)) return true;
-  if(mgrCollectorMode.value !== (c.collector?.collectorMode || 'auto')) return true;
-  if(mgrPollIntervalMs.value !== String(c.collector?.pollIntervalMs || 500)) return true;
-  if(mgrBatchSize.value !== String(c.collector?.batchSize || 100)) return true;
-  if(mgrQueryLimit.value !== String(c.collector?.queryLimit || 50000)) return true;
+  if(mgrMonitoringEnabled.value !== (col.enabled !== false)) return true;
+  if(mgrCollectorMode.value !== (col.collectorMode || 'auto')) return true;
+  if(mgrPollIntervalMs.value !== String(col.pollIntervalMs ?? 500)) return true;
+  if(mgrBatchSize.value !== String(col.batchSize ?? 100)) return true;
+  if(mgrQueryLimit.value !== String(col.queryLimit ?? 50000)) return true;
   return false;
 });
 
@@ -191,7 +202,7 @@ const resolvedCPAKey = computed(() => {
   if(store) return store;
   return (sessionStorage.getItem(LEGACY_SESSION_KEY) || '').trim();
 });
-const authNotice = computed(() => resolvedCPAKey.value ? '' : '未检测到可用的 CPA management key。若 CPA 管理台保存的是 enc::v1:: 加密密钥，插件页无法解密；请在「配置」Tab 临时输入 CPA remote-management.secret-key。本字段只保存在 sessionStorage，不写入插件 YAML。');
+const authNotice = computed(() => resolvedCPAKey.value ? '' : '未检测到可用的 CPA management key。请在 CPA 管理台登录并勾选「记住密码」，或在「配置」Tab 临时输入 CPA remote-management.secret-key（仅保存在本页 sessionStorage）。');
 const activeError = computed(() => errors[activeTab.value] || '');
 function authHeaders(json=true){
   const headers = json ? {'Content-Type':'application/json','Accept':'application/json'} : {'Accept':'application/json'};
@@ -208,10 +219,20 @@ async function readJSONResponse(res){
   try{ return JSON.parse(text); }catch{ return text; }
 }
 function formatError(status, body){
-  const msg = body && (body.error || body.message) ? (body.error || body.message) : '';
+  if (body && typeof body === 'object') {
+    const code = body.code ? `[${body.code}] ` : '';
+    const msg = body.error || body.message || body.msg || '';
+    if (msg) {
+      if (status === 401) return 'CPA 管理鉴权失败：' + code + msg;
+      if (status === 403) return '插件代理拒绝：' + code + msg;
+      if (status === 409) return '配置冲突：' + code + msg;
+      return code + msg;
+    }
+  }
+  if (typeof body === 'string' && body.trim()) return body.trim();
   if(status === 401) return 'CPA 管理鉴权失败：请登录管理台或在配置 Tab 输入 CPA remote-management.secret-key';
-  if(status === 403) return '插件代理拒绝：' + (msg || '路径或方法不在允许范围内');
-  return msg || ('HTTP ' + status);
+  if(status === 403) return '插件代理拒绝：路径或方法不在允许范围内';
+  return 'HTTP ' + status;
 }
 async function proxyCall(payload){
   if(!resolvedCPAKey.value) throw new Error('missing CPA management key');
@@ -246,6 +267,9 @@ async function refreshActive(){
   finally{ loading.value = false; }
 }
 async function loadConfig(){
+  if(!resolvedCPAKey.value) return;
+  mgrConfigLoaded.value = false;
+  configSaveMessage.value = '';
   const resp = await proxyCall({method:'GET', path:'/usage-service/config'});
   configData.value = resp;
   const cfg = resp?.config || resp || {};
@@ -263,29 +287,42 @@ async function loadConfig(){
   mgrQueryLimit.value = String(cfg.collector?.queryLimit || 50000);
   mgrUsageEnabled.value = Boolean(resp?.cpaUsage?.usageStatisticsEnabled);
   mgrRetentionSeconds.value = resp?.cpaUsage?.redisUsageQueueRetentionSeconds || 60;
+  mgrConfigLoaded.value = true;
 }
 async function saveManagerConfig(){
+  if(!mgrConfigLoaded.value){
+    errors.config = '配置尚未加载完成，请稍后或点击「重新加载」';
+    return;
+  }
   if(!mgrDirty.value) return;
   mgrSaving.value = true;
+  errors.config = '';
+  configSaveMessage.value = '';
   try{
     const c = mgrLoadedConfig.value || {};
-    const cpaConnection = {...(c.cpaConnection || {}), cpaBaseUrl: mgrCPABaseInput.value.trim()};
-    if(mgrCPAKeyInput.value.trim()) cpaConnection.managementKey = mgrCPAKeyInput.value.trim();
+    const cpaConnection = { cpaBaseUrl: mgrCPABaseInput.value.trim() };
+    const newMgmtKey = mgrCPAKeyInput.value.trim();
+    if (newMgmtKey) cpaConnection.managementKey = newMgmtKey;
     const nextConfig = {
-      ...c,
       cpaConnection,
       collector: {
-        ...(c.collector || {}),
         enabled: mgrMonitoringEnabled.value,
         collectorMode: mgrCollectorMode.value,
+        queue: c.collector?.queue || 'usage',
+        popSide: c.collector?.popSide || 'right',
         pollIntervalMs: Number(mgrPollIntervalMs.value) || 500,
         batchSize: Number(mgrBatchSize.value) || 100,
         queryLimit: Number(mgrQueryLimit.value) || 50000,
+        tlsSkipVerify: Boolean(c.collector?.tlsSkipVerify),
       },
-      externalUsageService: c.externalUsageService || {enabled:false, serviceBase:''},
+      codexInspection: c.codexInspection ?? c.codex_inspection ?? undefined,
+      externalUsageService: { enabled: false, serviceBase: '' },
     };
-    await proxyCall({method:'PUT', path:'/usage-service/config', body:nextConfig});
+    // Manager Server 要求外层 {"config": ManagerConfig}，见 managerconfig/handler.go
+    await proxyCall({ method: 'PUT', path: '/usage-service/config', body: { config: nextConfig } });
     await loadConfig();
+    configSaveMessage.value = 'Manager 配置已保存并应用';
+    checkHealth();
   }catch(e){
     errors.config = e.message || String(e);
   }finally{

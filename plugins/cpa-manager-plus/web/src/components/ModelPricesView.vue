@@ -14,7 +14,7 @@
     </DataCard>
 
     <div v-if="editingModel" class="drawer-backdrop" @click.self="editingModel = null">
-      <aside class="drawer card">
+      <div class="modal-dialog card drawer">
         <div class="drawer-head">
           <div><h2>{{ editingModel.isNew ? '新增单价' : '编辑单价' }}</h2><p class="muted">{{ editingModel.model || '新模型' }}</p></div>
           <button class="btn" @click="editingModel = null">关闭</button>
@@ -49,7 +49,7 @@
           <button class="btn primary" @click="savePrice" :disabled="saving">{{ saving ? '保存中…' : '保存' }}</button>
           <button class="btn" @click="editingModel = null">取消</button>
         </div>
-      </aside>
+      </div>
     </div>
   </section>
 </template>

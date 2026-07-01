@@ -1,6 +1,6 @@
 <template>
   <section class="monitoring-page inspection-page">
-    <div class="card filter-card inspection-status-card">
+    <div class="card inspection-status-card">
       <div class="inspection-status-bar">
         <div class="inspection-status-info">
           <span :class="['status-badge', toneClass(runTone)]">
@@ -48,7 +48,9 @@
         </div>
       </div>
 
-      <MetricGrid :cards="summaryCards" />
+      <div class="inspection-summary-shell">
+        <MetricGrid class="inspection-summary-grid" :cards="summaryCards" />
+      </div>
     </div>
 
     <section v-if="error" class="notice error">{{ error }}</section>
@@ -93,41 +95,45 @@
         >
           <template v-if="detail">
             <div class="inspection-results-toolbar">
-              <div class="segment-group">
-                <span class="segment-label">处理状态</span>
-                <div class="segmented-control">
-                  <button
-                    v-for="f in handlingFilters"
-                    :key="f"
-                    type="button"
-                    :class="['segment-btn', { active: handlingFilter === f }]"
-                    @click="handlingFilter = f"
-                  >
-                    {{ handlingLabel(f) }} <span class="segment-count">{{ handlingCounts[f] }}</span>
-                  </button>
+              <div class="inspection-filter-row">
+                <div class="segment-group">
+                  <span class="segment-label">处理状态</span>
+                  <div class="segmented-control">
+                    <button
+                      v-for="f in handlingFilters"
+                      :key="f"
+                      type="button"
+                      :class="['segment-btn', { active: handlingFilter === f }]"
+                      @click="handlingFilter = f"
+                    >
+                      {{ handlingLabel(f) }} <span class="segment-count">{{ handlingCounts[f] }}</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="segment-group">
+                  <span class="segment-label">建议动作</span>
+                  <div class="segmented-control">
+                    <button
+                      v-for="f in actionFilters"
+                      :key="f"
+                      type="button"
+                      :class="['segment-btn', { active: actionFilter === f }]"
+                      @click="actionFilter = f"
+                    >
+                      {{ actionLabel(f) }} <span class="segment-count">{{ actionCounts[f] }}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div class="segment-group">
-                <span class="segment-label">建议动作</span>
-                <div class="segmented-control">
-                  <button
-                    v-for="f in actionFilters"
-                    :key="f"
-                    type="button"
-                    :class="['segment-btn', { active: actionFilter === f }]"
-                    @click="actionFilter = f"
-                  >
-                    {{ actionLabel(f) }} <span class="segment-count">{{ actionCounts[f] }}</span>
-                  </button>
-                </div>
+              <div class="inspection-results-actions">
+                <button
+                  class="btn danger"
+                  :disabled="!canExecuteBulk || executingAll"
+                  @click="confirmExecuteBulk"
+                >
+                  {{ executingAll ? '执行中…' : `执行建议操作 (${executableResults.length})` }}
+                </button>
               </div>
-              <button
-                class="btn danger"
-                :disabled="!canExecuteBulk || executingAll"
-                @click="confirmExecuteBulk"
-              >
-                {{ executingAll ? '执行中…' : `执行建议操作 (${executableResults.length})` }}
-              </button>
             </div>
 
             <div class="table-wrap monitor-table">
@@ -222,7 +228,7 @@
     </div>
 
     <div v-if="configDrawerOpen" class="drawer-backdrop" @click.self="closeConfigDrawer">
-      <div class="card drawer inspection-drawer" role="dialog" aria-labelledby="inspection-config-title">
+      <div class="modal-dialog card drawer inspection-drawer" role="dialog" aria-labelledby="inspection-config-title">
         <div class="drawer-head">
           <div>
             <h2 id="inspection-config-title">服务端巡检配置</h2>
@@ -330,11 +336,23 @@
         </div>
       </div>
     </div>
+
+    <ConfirmModal
+      :open="confirmOpen"
+      :title="confirmTitle"
+      :message="confirmMessage"
+      :confirm-label="confirmOkLabel"
+      :cancel-label="confirmCancelLabel"
+      :variant="confirmVariant"
+      @confirm="finishConfirm(true)"
+      @cancel="finishConfirm(false)"
+    />
   </section>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import ConfirmModal from './ConfirmModal.vue';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import {
@@ -391,6 +409,39 @@ const executingAll = ref(false);
 const configDrawerOpen = ref(false);
 const configFocusField = ref(null);
 const actionInFlight = ref(false);
+
+const confirmOpen = ref(false);
+const confirmTitle = ref('确认');
+const confirmMessage = ref('');
+const confirmOkLabel = ref('确定');
+const confirmCancelLabel = ref('取消');
+const confirmVariant = ref('primary');
+let confirmResolve = null;
+
+function showConfirm({
+  title = '确认',
+  message = '',
+  confirmLabel = '确定',
+  cancelLabel = '取消',
+  variant = 'primary',
+} = {}) {
+  confirmTitle.value = title;
+  confirmMessage.value = message;
+  confirmOkLabel.value = confirmLabel;
+  confirmCancelLabel.value = cancelLabel;
+  confirmVariant.value = variant;
+  confirmOpen.value = true;
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+  });
+}
+
+function finishConfirm(ok) {
+  confirmOpen.value = false;
+  const resolve = confirmResolve;
+  confirmResolve = null;
+  resolve?.(ok);
+}
 
 let pollTimer = null;
 let refreshInFlight = false;
@@ -581,8 +632,13 @@ async function selectRun(id) {
   }
 }
 
-function confirmRunNow() {
-  if (!window.confirm('将立即在 Manager Server 上启动一次 Codex 账号巡检，是否继续？')) return;
+async function confirmRunNow() {
+  const ok = await showConfirm({
+    title: '立即巡检',
+    message: '将立即在 Manager Server 上启动一次 Codex 账号巡检，是否继续？',
+    confirmLabel: '开始巡检',
+  });
+  if (!ok) return;
   void runNow();
 }
 
@@ -602,18 +658,30 @@ async function runNow() {
   }
 }
 
-function confirmExecuteSingle(row) {
+async function confirmExecuteSingle(row) {
   const label = formatActionLabel(row.action);
-  if (!window.confirm(`确定对账号「${row.displayAccount}」执行「${label}」吗？`)) return;
+  const ok = await showConfirm({
+    title: '执行操作',
+    message: `确定对账号「${row.displayAccount}」执行「${label}」吗？`,
+    confirmLabel: label,
+    variant: row.action === 'delete' ? 'danger' : 'primary',
+  });
+  if (!ok) return;
   void executeActions([row.id]);
 }
 
-function confirmExecuteBulk() {
+async function confirmExecuteBulk() {
   const targets = executableResults.value;
   const del = targets.filter((t) => t.action === 'delete').length;
   const dis = targets.filter((t) => t.action === 'disable').length;
   const en = targets.filter((t) => t.action === 'enable').length;
-  if (!window.confirm(`即将执行 ${targets.length} 项：删除 ${del}、禁用 ${dis}、启用 ${en}。确认继续？`)) return;
+  const ok = await showConfirm({
+    title: '批量执行',
+    message: `即将执行 ${targets.length} 项：删除 ${del}、禁用 ${dis}、启用 ${en}。\n确认继续？`,
+    confirmLabel: '执行',
+    variant: del > 0 ? 'danger' : 'primary',
+  });
+  if (!ok) return;
   void executeActions(targets.map((t) => t.id), true);
 }
 
@@ -648,8 +716,16 @@ function openConfigDrawer(field) {
   configDrawerOpen.value = true;
 }
 
-function closeConfigDrawer() {
-  if (configDirty.value && !window.confirm('有未保存的更改，确定关闭？')) return;
+async function closeConfigDrawer() {
+  if (configDirty.value) {
+    const ok = await showConfirm({
+      title: '放弃更改',
+      message: '有未保存的更改，确定关闭配置面板吗？',
+      confirmLabel: '放弃并关闭',
+      variant: 'danger',
+    });
+    if (!ok) return;
+  }
   configDrawerOpen.value = false;
 }
 

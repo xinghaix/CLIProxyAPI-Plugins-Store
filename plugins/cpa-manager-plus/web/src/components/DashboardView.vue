@@ -25,11 +25,16 @@
       </div>
     </div>
 
-    <!-- ====== Today's usage KPI ====== -->
+    <!-- ====== 今日概览（Plus 仪表盘） ====== -->
+    <section class="dashboard-zone">
+      <div class="dashboard-zone-head">
+        <h2 class="dashboard-zone-title">今日概览</h2>
+        <span class="muted small-text">dashboard/summary · 今日 0 点至今</span>
+      </div>
     <MetricGrid :cards="dashboardKpi" />
 
     <!-- ====== Traffic overview (dashboard) ====== -->
-    <DataCard title="流量概览" subtitle="30 分钟趋势">
+    <DataCard title="近 30 分钟流量" subtitle="滚动窗口 · 与下方用量分析时间线不同">
       <div class="timeline-bars" v-if="trafficTimeline.length">
         <div v-for="point in trafficTimeline" :key="point.bucket_ms || point.label" class="timeline-row">
           <span class="timeline-label">{{ formatTimelineLabel(point) }}</span>
@@ -54,19 +59,6 @@
             <div class="rank-value">
               <div class="rank-cost">{{ fmtMoney(model.cost) }}</div>
               <div class="rank-share">{{ ((model.cost_share || 0) * 100).toFixed(1) }}%</div>
-            </div>
-          </div>
-        </div>
-        <div v-else-if="topModels.length" class="rank-list">
-          <div v-for="(model, idx) in topModels" :key="model.model" class="rank-item">
-            <div class="rank-index">{{ idx + 1 }}</div>
-            <div class="rank-info">
-              <div class="rank-model-name">{{ model.model }}</div>
-              <div class="rank-track"><div class="rank-bar" :style="{width: `${model.tokens / Math.max(...topModels.map(m => m.tokens), 1) * 100}%`}"></div></div>
-            </div>
-            <div class="rank-value">
-              <div class="rank-cost">{{ fmtMoney(model.cost) }}</div>
-              <div class="rank-share">{{ fmtCompact(model.tokens) }} tok</div>
             </div>
           </div>
         </div>
@@ -122,7 +114,7 @@
     </div>
 
     <!-- ====== Config summary ====== -->
-    <DataCard v-if="configSummary.length" title="当前配置摘要" subtitle="config.yaml">
+    <DataCard v-if="configSummary.length" title="CPA 配置摘要" subtitle="来自 Manager 快照">
       <div class="config-summary-grid">
         <div v-for="item in configSummary" :key="item.label" class="config-summary-item">
           <span class="config-summary-label">{{ item.label }}</span>
@@ -130,9 +122,14 @@
         </div>
       </div>
     </DataCard>
+    </section>
 
-    <!-- ====== Analytics section (merged from UsageView) ====== -->
-    <div class="analytics-divider"></div>
+    <!-- ====== 用量分析（Plus 用量分析，可筛选时间范围） ====== -->
+    <section class="dashboard-zone dashboard-zone-analytics">
+      <div class="dashboard-zone-head">
+        <h2 class="dashboard-zone-title">用量分析</h2>
+        <span class="muted small-text">monitoring/analytics · 下方筛选器控制本区数据</span>
+      </div>
 
     <!-- Analytics filter bar -->
     <div class="card filter-card usage-filterbar">
@@ -178,7 +175,7 @@
 
     <section v-if="analyticsError" class="notice error">{{ analyticsError }}</section>
 
-    <!-- Analytics KPI -->
+    <!-- Analytics KPI（所选时间范围） -->
     <MetricGrid :cards="analyticsKpi" />
 
     <!-- Analytics tabs -->
@@ -304,6 +301,7 @@
         <DataCard v-if="selectedHeatmapCell.cell.provider_contributors?.length" title="Provider 贡献者" subtitle="Top"><SimpleTable :rows="selectedHeatmapCell.cell.provider_contributors" :columns="heatContributorColumns" /></DataCard>
       </DataCard>
     </div>
+    </section>
   </section>
 </template>
 
@@ -427,15 +425,16 @@ const analyticsKpi = computed(() => {
   const s = aSummary.value;
   const cacheTokens = Number(s.cached_tokens ?? 0) + Number(s.cache_read_tokens ?? 0) + Number(s.cache_creation_tokens ?? 0);
   const totalTokens = Math.max(Number(s.total_tokens ?? 0), 0);
+  const rangeLabel = filters.value.timeRange === 'today' ? '今日' : filters.value.timeRange === '24h' ? '24h' : filters.value.timeRange;
   return [
-    {label:'分析·请求数', value: fmtCompact(s.total_calls), sub:`${fmtInt(s.success_calls)} 成功 / ${fmtInt(s.failure_calls)} 失败`},
-    {label:'分析·成功率', value: fmtPct(s.success_rate), sub: fmtDuration(s.average_latency_ms)},
-    {label:'分析·失败数', value: fmtInt(s.failure_calls), sub: `${anomalyRows.value.length} 异常点`},
-    {label:'分析·花费', value: fmtMoney(s.total_cost), sub:`单次 ${fmtMoney(s.average_cost_per_call)}`},
-    {label:'分析·总Token', value: fmtCompact(s.total_tokens), sub:`推理 ${fmtCompact(s.reasoning_tokens ?? 0)}`},
-    {label:'分析·输入', value: fmtCompact(s.input_tokens), sub:`占比 ${fmtPct(totalTokens > 0 ? Number(s.input_tokens ?? 0) / totalTokens : 0)}`},
-    {label:'分析·输出', value: fmtCompact(s.output_tokens), sub:`占比 ${fmtPct(totalTokens > 0 ? Number(s.output_tokens ?? 0) / totalTokens : 0)}`},
-    {label:'分析·缓存', value: fmtCompact(cacheTokens), sub:`命中率 ${fmtPct(computeCacheHitRate(s))}`},
+    {label:'请求数', value: fmtCompact(s.total_calls), sub:`${rangeLabel} · ${fmtInt(s.success_calls)} 成功 / ${fmtInt(s.failure_calls)} 失败`},
+    {label:'成功率', value: fmtPct(s.success_rate), sub: fmtDuration(s.average_latency_ms)},
+    {label:'失败 / 异常', value: fmtInt(s.failure_calls), sub: `${anomalyRows.value.length} 风险时段`},
+    {label:'花费', value: fmtMoney(s.total_cost), sub:`均次 ${fmtMoney(s.average_cost_per_call)}`},
+    {label:'总 Token', value: fmtCompact(s.total_tokens), sub:`推理 ${fmtCompact(s.reasoning_tokens ?? 0)}`},
+    {label:'输入 Token', value: fmtCompact(s.input_tokens), sub:`占比 ${fmtPct(totalTokens > 0 ? Number(s.input_tokens ?? 0) / totalTokens : 0)}`},
+    {label:'输出 Token', value: fmtCompact(s.output_tokens), sub:`占比 ${fmtPct(totalTokens > 0 ? Number(s.output_tokens ?? 0) / totalTokens : 0)}`},
+    {label:'缓存 Token', value: fmtCompact(cacheTokens), sub:`命中率 ${fmtPct(computeCacheHitRate(s))}`},
   ];
 });
 
