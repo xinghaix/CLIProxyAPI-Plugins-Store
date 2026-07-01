@@ -83,7 +83,7 @@ const (
 	maxProxyBodyBytes       = 8 << 20
 )
 
-var pluginVersion = "0.3.0"
+var pluginVersion = "0.3.1"
 
 var activeConfig atomic.Value
 

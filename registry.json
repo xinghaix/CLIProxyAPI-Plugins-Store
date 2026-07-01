@@ -18,7 +18,7 @@
       "name": "CPA Manager Plus",
       "description": "Embeds Manager Plus dashboard, usage, monitoring, and inspection in CPA via reverse proxy to Manager Server (host.http.do).",
       "author": "xinghaix",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
       "logo": "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/refs/heads/main/plugins/cpa-manager-plus/assets/logo.png",
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/cpa-manager-plus",
