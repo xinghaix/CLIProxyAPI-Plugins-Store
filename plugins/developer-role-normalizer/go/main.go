@@ -42,12 +42,23 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 	"gopkg.in/yaml.v3"
 )
 
-// enabled controls whether the developer-to-system role normalization is active.
-var enabled atomic.Bool
+const (
+	defaultMatchMode = "contains"
+	defaultStrategy  = "role_to_system"
+)
+
+var pluginVersion = "0.2.0"
+
+var activeConfig atomic.Value
+
+func init() {
+	activeConfig.Store(defaultPluginConfig())
+}
+
+func main() {}
 
 // --- Envelope types ---
 
@@ -69,7 +80,68 @@ type lifecycleRequest struct {
 }
 
 type pluginConfig struct {
-	Enabled bool `yaml:"enabled"`
+	// Enabled is kept as a backwards-compatible alias for normalize_enabled.
+	// CPA also stores the host-managed plugin switch at this key; when present,
+	// false disables normalization and true leaves it enabled.
+	Enabled          *bool            `yaml:"enabled"`
+	NormalizeEnabled *bool            `yaml:"normalize_enabled"`
+	TargetFormats    configurableList `yaml:"target_formats"`
+	ModelMatch       modelMatchConfig `yaml:"model_match"`
+	Strategy         string           `yaml:"strategy"`
+}
+
+type normalizerConfig struct {
+	NormalizeEnabled bool
+	TargetFormats    []string
+	ModelMatch       modelMatchRule
+	Strategy         string
+}
+
+type modelMatchConfig struct {
+	Mode    string           `yaml:"mode"`
+	Include configurableList `yaml:"include"`
+	Exclude configurableList `yaml:"exclude"`
+}
+
+type modelMatchRule struct {
+	Mode    string
+	Include []string
+	Exclude []string
+}
+
+type configurableList struct {
+	Set    bool
+	Values []string
+}
+
+func (l *configurableList) UnmarshalYAML(node *yaml.Node) error {
+	l.Set = true
+	l.Values = nil
+	switch node.Kind {
+	case yaml.SequenceNode:
+		for _, item := range node.Content {
+			var value string
+			if errDecode := item.Decode(&value); errDecode != nil {
+				return errDecode
+			}
+			l.Values = append(l.Values, splitConfigListValue(value)...)
+		}
+	case yaml.ScalarNode:
+		var value string
+		if errDecode := node.Decode(&value); errDecode != nil {
+			return errDecode
+		}
+		l.Values = splitConfigListValue(value)
+	case yaml.MappingNode:
+		var values []string
+		if errDecode := node.Decode(&values); errDecode != nil {
+			return errDecode
+		}
+		l.Values = values
+	default:
+		return nil
+	}
+	return nil
 }
 
 // --- Registration types ---
@@ -83,10 +155,6 @@ type registration struct {
 type registrationCapability struct {
 	RequestNormalizer bool `json:"request_normalizer"`
 }
-
-var pluginVersion = "0.1.5"
-
-func main() {}
 
 //export cliproxy_plugin_init
 func cliproxy_plugin_init(_ *C.cliproxy_host_api, plugin *C.cliproxy_plugin_api) C.int {
@@ -124,7 +192,7 @@ func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t,
 }
 
 //export cliproxyPluginFree
-func cliproxyPluginFree(ptr unsafe.Pointer, len C.size_t) {
+func cliproxyPluginFree(ptr unsafe.Pointer, _ C.size_t) {
 	if ptr != nil {
 		C.free(ptr)
 	}
@@ -155,17 +223,80 @@ func configure(raw []byte) error {
 		}
 	}
 
-	cfg := pluginConfig{}
+	cfg := defaultPluginConfig()
 	if len(req.ConfigYAML) > 0 {
-		if errUnmarshal := yaml.Unmarshal(req.ConfigYAML, &cfg); errUnmarshal != nil {
+		var decoded pluginConfig
+		if errUnmarshal := yaml.Unmarshal(req.ConfigYAML, &decoded); errUnmarshal != nil {
 			return errUnmarshal
 		}
+		cfg = mergeConfig(cfg, decoded)
 	}
-	// The host sets plugins.configs.<id>.enabled, but the plugin can also
-	// use its own "enabled" field for fine-grained control. Either being
-	// true means normalization is active.
-	enabled.Store(cfg.Enabled)
+	activeConfig.Store(normalizeConfig(cfg))
 	return nil
+}
+
+func defaultPluginConfig() normalizerConfig {
+	return normalizerConfig{
+		NormalizeEnabled: true,
+		TargetFormats:    []string{"openai", "codex"},
+		ModelMatch: modelMatchRule{
+			Mode:    defaultMatchMode,
+			Include: []string{"deepseek"},
+			Exclude: nil,
+		},
+		Strategy: defaultStrategy,
+	}
+}
+
+func mergeConfig(base normalizerConfig, override pluginConfig) normalizerConfig {
+	if override.Enabled != nil {
+		base.NormalizeEnabled = *override.Enabled
+	}
+	if override.NormalizeEnabled != nil {
+		base.NormalizeEnabled = *override.NormalizeEnabled
+	}
+	if override.TargetFormats.Set {
+		base.TargetFormats = override.TargetFormats.Values
+	}
+	if strings.TrimSpace(override.ModelMatch.Mode) != "" {
+		base.ModelMatch.Mode = override.ModelMatch.Mode
+	}
+	if override.ModelMatch.Include.Set {
+		base.ModelMatch.Include = override.ModelMatch.Include.Values
+	}
+	if override.ModelMatch.Exclude.Set {
+		base.ModelMatch.Exclude = override.ModelMatch.Exclude.Values
+	}
+	if strings.TrimSpace(override.Strategy) != "" {
+		base.Strategy = override.Strategy
+	}
+	return base
+}
+
+func normalizeConfig(cfg normalizerConfig) normalizerConfig {
+	cfg.TargetFormats = normalizeConfigList(cfg.TargetFormats, true)
+	if len(cfg.TargetFormats) == 0 {
+		cfg.TargetFormats = []string{"openai", "codex"}
+	}
+
+	cfg.ModelMatch.Mode = normalizeMatchMode(cfg.ModelMatch.Mode)
+	cfg.ModelMatch.Include = normalizeConfigList(cfg.ModelMatch.Include, true)
+	cfg.ModelMatch.Exclude = normalizeConfigList(cfg.ModelMatch.Exclude, true)
+
+	strategy := strings.ToLower(strings.TrimSpace(cfg.Strategy))
+	if strategy != defaultStrategy {
+		strategy = defaultStrategy
+	}
+	cfg.Strategy = strategy
+	return cfg
+}
+
+func currentConfig() normalizerConfig {
+	raw := activeConfig.Load()
+	if cfg, ok := raw.(normalizerConfig); ok {
+		return cfg
+	}
+	return defaultPluginConfig()
 }
 
 func pluginRegistration() registration {
@@ -175,12 +306,30 @@ func pluginRegistration() registration {
 			Name:             "developer-role-normalizer",
 			Version:          pluginVersion,
 			Author:           "xinghaix",
-			GitHubRepository: "https://github.com/xinghaix/CLIProxyAPI",
-			ConfigFields: []pluginapi.ConfigField{{
-				Name:        "enabled",
-				Type:        pluginapi.ConfigFieldTypeBoolean,
-				Description: "When true, convert developer message roles to system before sending to OpenAI-compatible providers.",
-			}},
+			GitHubRepository: "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
+			ConfigFields: []pluginapi.ConfigField{
+				{
+					Name:        "normalize_enabled",
+					Type:        pluginapi.ConfigFieldTypeBoolean,
+					Description: "When true, normalize developer messages for matched target models. Default: true.",
+				},
+				{
+					Name:        "target_formats",
+					Type:        pluginapi.ConfigFieldTypeArray,
+					Description: "Target formats to normalize. Default: [openai, codex].",
+				},
+				{
+					Name:        "model_match",
+					Type:        pluginapi.ConfigFieldTypeObject,
+					Description: "Model matching rule, for example {mode: contains, include: [deepseek], exclude: []}. Matching is case-insensitive. Default only matches models containing deepseek.",
+				},
+				{
+					Name:        "strategy",
+					Type:        pluginapi.ConfigFieldTypeEnum,
+					EnumValues:  []string{defaultStrategy},
+					Description: "How to rewrite developer messages. role_to_system converts developer role to system.",
+				},
+			},
 		},
 		Capabilities: registrationCapability{
 			RequestNormalizer: true,
@@ -205,18 +354,108 @@ func normalizeRequest(raw []byte) ([]byte, error) {
 }
 
 // shouldNormalize decides whether to apply the developer-to-system conversion.
-// The plugin only acts on OpenAI-compatible target formats where the provider
-// may not recognize the "developer" role.
+// By default it only acts on OpenAI-compatible targets whose model identifier
+// contains "deepseek", because those provider models do not support the
+// developer role in Chat Completions-compatible payloads.
 func shouldNormalize(req pluginapi.RequestTransformRequest) bool {
-	if !enabled.Load() {
+	cfg := currentConfig()
+	if !cfg.NormalizeEnabled {
 		return false
 	}
-	// Apply when the target format is openai or codex (OpenAI-compatible protocols).
-	to := strings.ToLower(strings.TrimSpace(req.ToFormat))
-	if to == "openai" || to == "codex" {
+	if cfg.Strategy != defaultStrategy {
+		return false
+	}
+	if !matchesAny("exact", strings.ToLower(strings.TrimSpace(req.ToFormat)), cfg.TargetFormats) {
+		return false
+	}
+	model := strings.TrimSpace(req.Model)
+	if model == "" {
+		model = gjson.GetBytes(req.Body, "model").String()
+	}
+	return matchesModel(cfg.ModelMatch, model)
+}
+
+func matchesModel(rule modelMatchRule, model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if len(rule.Exclude) > 0 && matchesAny(rule.Mode, model, rule.Exclude) {
+		return false
+	}
+	if len(rule.Include) == 0 {
 		return true
 	}
+	return matchesAny(rule.Mode, model, rule.Include)
+}
+
+func matchesAny(mode, value string, patterns []string) bool {
+	if strings.TrimSpace(value) == "" {
+		return false
+	}
+	for _, pattern := range patterns {
+		if matchesPattern(mode, value, pattern) {
+			return true
+		}
+	}
 	return false
+}
+
+func matchesPattern(mode, value, pattern string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	pattern = strings.ToLower(strings.TrimSpace(pattern))
+	if value == "" || pattern == "" {
+		return false
+	}
+	if pattern == "*" {
+		return true
+	}
+	switch normalizeMatchMode(mode) {
+	case "exact":
+		return value == pattern
+	case "prefix":
+		return strings.HasPrefix(value, pattern)
+	case "suffix":
+		return strings.HasSuffix(value, pattern)
+	default:
+		return strings.Contains(value, pattern)
+	}
+}
+
+func normalizeMatchMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "exact", "prefix", "suffix", "contains":
+		return strings.ToLower(strings.TrimSpace(mode))
+	default:
+		return defaultMatchMode
+	}
+}
+
+func splitConfigListValue(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func normalizeConfigList(values []string, lower bool) []string {
+	out := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		for _, part := range splitConfigListValue(value) {
+			if lower {
+				part = strings.ToLower(part)
+			}
+			if _, ok := seen[part]; ok {
+				continue
+			}
+			seen[part] = struct{}{}
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // normalizeDeveloperRole converts any "developer" message role to "system"
@@ -285,7 +524,3 @@ func writeResponse(response *C.cliproxy_buffer, raw []byte) {
 	response.ptr = ptr
 	response.len = C.size_t(len(raw))
 }
-
-// Ensure sjson and gjson imports are used even when the build configuration
-// varies. sjson is available for future header injection extensions.
-var _ = sjson.Set
