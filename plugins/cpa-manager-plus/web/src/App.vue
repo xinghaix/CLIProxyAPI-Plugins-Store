@@ -17,10 +17,6 @@
       <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
     </section>
 
-    <section class="panel" v-if="activeTab === 'usage'">
-      <UsageView ref="usageView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
-    </section>
-
     <section class="panel" v-if="activeTab === 'inspection'">
       <MetricGrid :cards="inspectionCards" />
       <DataCard title="巡检批次" subtitle="/v0/management/codex-inspection/runs">
@@ -31,7 +27,7 @@
 
     <section class="panel" v-if="activeTab === 'config'">
       <DataCard title="访问凭据" subtitle="仅浏览器缓存">
-        <p class="muted">这里输入的是 CPA <code>remote-management.secret-key</code>，用于浏览器访问 CPA 的 <code>/v0/management/*</code>。它不是插件 YAML 里的 Plus <code>management_key</code>。</p>
+        <p class="muted">这里输入的是 CPA <code>management key</code>，用于浏览器访问 CPA 的 <code>/v0/management/*</code>接口</p>
         <div class="keybar">
           <input v-model.trim="cpaKeyInput" type="password" autocomplete="off" placeholder="CPA management key（当前会话临时保存）" @keyup.enter="saveCPAKey" />
           <button class="btn primary" @click="saveCPAKey">保存并检测</button>
@@ -126,7 +122,6 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import DataCard from './components/DataCard.vue';
 import DataTable from './components/DataTable.vue';
 import MonitoringView from './components/MonitoringView.vue';
-import UsageView from './components/UsageView.vue';
 import DashboardView from './components/DashboardView.vue';
 import ModelPricesView from './components/ModelPricesView.vue';
 import AccountActionsView from './components/AccountActionsView.vue';
@@ -138,7 +133,6 @@ initThemeBridge();
 const tabs = [
   {key:'dashboard', label:'仪表盘'},
   {key:'monitoring', label:'请求监控'},
-  {key:'usage', label:'用量分析'},
   {key:'inspection', label:'账号巡检'},
   {key:'config', label:'配置'},
 ];
@@ -151,7 +145,6 @@ const inspectionData = ref(null);
 const configData = ref(null);
 const dashboardView = ref(null);
 const monitoringView = ref(null);
-const usageView = ref(null);
 const modelPricesView = ref(null);
 const accountActionsView = ref(null);
 
@@ -259,7 +252,6 @@ async function refreshActive(){
   errors[activeTab.value] = '';
   try{
     if(activeTab.value === 'dashboard') await (dashboardView.value ? dashboardView.value.refresh(true) : Promise.resolve());
-    if(activeTab.value === 'usage') await (usageView.value ? usageView.value.refresh(true) : Promise.resolve());
     if(activeTab.value === 'monitoring') await (monitoringView.value ? monitoringView.value.refresh(true) : Promise.resolve());
     if(activeTab.value === 'inspection') await loadInspection();
     if(activeTab.value === 'config') await loadConfig();

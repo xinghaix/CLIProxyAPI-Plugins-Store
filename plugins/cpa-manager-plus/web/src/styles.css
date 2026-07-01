@@ -197,6 +197,7 @@ h2 { margin: 0; }
 .detail-card-head-action { display:flex; justify-content:flex-end; margin-bottom:10px; }
 
 /* Dashboard styles */
+.analytics-divider { height: 1px; background: var(--cpa-border); margin: 20px 0; }
 .dashboard-header { display:flex; justify-content:space-between; gap:12px; align-items:center; }
 .dashboard-header-left, .dashboard-header-right { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
 .connection-status { display:flex; gap:8px; align-items:center; }
