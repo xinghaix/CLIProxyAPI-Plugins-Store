@@ -342,6 +342,10 @@ pre { margin: 0; max-height: 380px; overflow: auto; border: 1px solid var(--cpa-
 .failure-tooltip-status { color: var(--cpa-error); font-weight: 700; margin-bottom: 4px; padding-right: 28px; }
 .failure-tooltip-body { overflow-wrap: anywhere; white-space: pre-wrap; padding-right: 28px; }
 .pager { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 12px; color: var(--cpa-text-secondary); font-size: 13px; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(15,23,42,.40); display: flex; justify-content: center; align-items: center; padding: 24px; }
+.modal-dialog { width: min(820px, 92vw); max-height: calc(100vh - 48px); overflow: auto; box-shadow: var(--cpa-shadow-md); border-radius: var(--cpa-radius-lg); }
+.modal-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+.modal-head h2 { margin: 0 0 4px; }
 .drawer-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(15,23,42,.34); display: flex; justify-content: flex-end; padding: 18px max(18px, env(safe-area-inset-right)) 18px 18px; }
 .drawer { width: min(980px, 96vw); max-height: calc(100vh - 36px); overflow: auto; box-shadow: var(--cpa-shadow-md); }
 .drawer-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 14px; }

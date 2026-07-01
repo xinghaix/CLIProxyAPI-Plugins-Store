@@ -222,7 +222,7 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 			Resources: []pluginapi.ResourceRoute{{
 				Path:        "/app",
 				Menu:        "CPA Manager Plus",
-				Description: "Manager Plus 仪表盘 / 用量 / 监控 / 巡检（经插件反向代理 Manager Server）",
+				Description: "Manager Plus 仪表盘 / 监控 / 巡检（经插件反向代理 CPA Manager Server）",
 			}},
 		})
 	case pluginabi.MethodManagementHandle:

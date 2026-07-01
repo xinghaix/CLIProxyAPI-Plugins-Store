@@ -99,7 +99,7 @@
               <th>成功率</th>
               <th>总调用</th>
               <th>TPS</th>
-              <th>首字</th><th>耗时</th>
+              <th>首字/耗时</th>
               <th>时间</th>
               <th>本次用量</th>
               <th>本次花费</th>
@@ -134,8 +134,10 @@
               <td><strong :class="successRateClass(row.successRate)">{{ fmtPct(row.successRate) }}</strong></td>
               <td>{{ fmtInt(row.totalCalls) }}</td>
               <td>{{ fmtTps(row.tps) }}</td>
-              <td><span :class="latencyClass(row.ttftMs)">{{ fmtSeconds(row.ttftMs) }}</span></td>
-              <td><span :class="latencyClass(row.latencyMs)">{{ fmtSeconds(row.latencyMs) }}</span></td>
+              <td>
+                <div :class="latencyClass(row.ttftMs)">{{ fmtSeconds(row.ttftMs) }}</div>
+                <div :class="latencyClass(row.latencyMs)">{{ fmtSeconds(row.latencyMs) }}</div>
+              </td>
               <td>
                 <div>{{ formatDate(row.timestampMs) }}</div>
                 <div>{{ formatTime(row.timestampMs) }}</div>
@@ -170,18 +172,21 @@
           <SimpleTable :rows="apiKeyRows" :columns="apiKeyColumns" @select="setApiKeyFilter" />
         </div>
       </div>
-      <DataCard v-if="selectedAccount" title="账号详情" :subtitle="selectedAccount.account_snapshot || selectedAccount.auth_label_snapshot || selectedAccount.id || '—'">
+    </DataCard>
+
+    <div v-if="activeDataTab === 'accounts' && selectedAccount" style="margin-top:16px">
+      <DataCard title="账号详情" :subtitle="selectedAccount.account_snapshot || selectedAccount.auth_label_snapshot || selectedAccount.id || '—'">
         <DetailGrid :items="buildAccountDetail(selectedAccount)" />
       </DataCard>
-    </DataCard>
+    </div>
 
     <DataCard v-if="activeDataTab === 'models'" title="模型维度" subtitle="model_stats / model_share">
       <SimpleTable :rows="modelRows" :columns="modelColumns" @select="setModelFilter" />
     </DataCard>
 
-    <div v-if="selectedEvent" class="drawer-backdrop" @click.self="selectedEvent = null">
-      <aside class="drawer card">
-        <div class="drawer-head">
+    <div v-if="selectedEvent" class="modal-backdrop" @click.self="selectedEvent = null">
+      <div class="modal-dialog card">
+        <div class="modal-head">
           <div><h2>请求详情</h2><p class="muted">{{ formatDateTime(selectedEvent.timestamp_ms) }} · {{ selectedEvent.event_hash || selectedEvent.request_id || '—' }}</p></div>
           <button class="btn" @click="selectedEvent = null">关闭</button>
         </div>
@@ -191,7 +196,7 @@
           <div><h3>响应 Metadata</h3><pre>{{ pretty(selectedEvent.response_metadata || {}) }}</pre></div>
           <div><h3>错误 / Quota / Trace</h3><pre>{{ pretty(eventHeaderDetail) }}</pre></div>
         </div>
-      </aside>
+      </div>
     </div>
   </section>
 </template>
@@ -266,7 +271,7 @@ const accountCount = computed(() => accountRows.value.length);
 const eventTableRows = computed(() => eventRows.value.map(row => buildEventTableRow(row, eventGroupMap.value)));
 const pagedEvents = computed(() => pageRows(eventTableRows.value, eventPage.value, eventPageSize.value));
 // eventsSubtitle removed — debug paging info no longer shown in card header
-const timelineRows = computed(() => data.value?.timeline || []);
+const timelineRows = computed(() => [...(data.value?.timeline || [])].sort((a,b) => Number(b.bucket_ms || 0) - Number(a.bucket_ms || 0)));
 const maxTimelineCalls = computed(() => Math.max(1, ...timelineRows.value.map(p => Number(p.calls || p.requests || 0))));
 const modelRows = computed(() => data.value?.model_stats || data.value?.model_share || []);
 const channelRows = computed(() => data.value?.channel_share || []);

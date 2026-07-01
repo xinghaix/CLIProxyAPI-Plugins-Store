@@ -133,6 +133,8 @@ initThemeBridge();
 const tabs = [
   {key:'dashboard', label:'仪表盘'},
   {key:'monitoring', label:'请求监控'},
+  {key:'model-prices', label:'模型单价'},
+  {key:'account-actions', label:'认证异常'},
   {key:'inspection', label:'账号巡检'},
   {key:'config', label:'配置'},
 ];
