@@ -331,7 +331,7 @@ plugins:
 Build the dynamic library for your target platform and place it in the CPA plugin directory using the versioned artifact naming convention used by your deployment, for example:
 
 ```text
-plugins/linux/amd64/developer-role-normalizer-v0.2.0.so
+plugins/linux/amd64/developer-role-normalizer-v0.3.0.so
 ```
 
 Then enable it in CPA config:
