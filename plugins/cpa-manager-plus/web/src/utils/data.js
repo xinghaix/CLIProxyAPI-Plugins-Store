@@ -4,15 +4,40 @@ export const SESSION_KEY = 'cpa_manager_plus_mgmt_key';
 export const LEGACY_SESSION_KEY = 'cpa_mgmt_key';
 
 export function readCPAAuthStoreKey(){
+  // 1. Try iframe's own localStorage (same-origin as parent CPA host)
   try{
     const raw = localStorage.getItem('cli-proxy-auth');
-    if(!raw) return '';
-    const parsed = JSON.parse(raw);
-    const st = parsed && parsed.state ? parsed.state : parsed;
-    const key = (st && st.managementKey) || '';
-    if(typeof key !== 'string' || !key || key.startsWith('enc::v1::')) return '';
-    return key.trim();
-  }catch(_){ return ''; }
+    if(raw){
+      const parsed = JSON.parse(raw);
+      const st = parsed && parsed.state ? parsed.state : parsed;
+      const key = (st && st.managementKey) || '';
+      if(typeof key === 'string' && key && !key.startsWith('enc::v1::')) return key.trim();
+    }
+  }catch(_){ }
+
+  // 2. Try parent window's localStorage (same-origin iframe shares it,
+  //    but the store name or key nesting may differ between versions)
+  try{
+    const pRaw = window.parent.localStorage.getItem('cli-proxy-auth');
+    if(pRaw){
+      const parsed = JSON.parse(pRaw);
+      const st = parsed && parsed.state ? parsed.state : parsed;
+      const key = (st && st.managementKey) || '';
+      if(typeof key === 'string' && key && !key.startsWith('enc::v1::')) return key.trim();
+    }
+  }catch(_){ }
+
+  // 3. Try reading from parent window's runtime state (zustand store).
+  //    CPA management center may expose the auth store on window object.
+  try{
+    const parentStore = window.parent.__CPA_AUTH_STORE__ || window.parent.cpaAuthStore;
+    if(parentStore && typeof parentStore === 'object'){
+      const key = parentStore.getState ? parentStore.getState().managementKey : parentStore.managementKey;
+      if(typeof key === 'string' && key && !key.startsWith('enc::v1::')) return key.trim();
+    }
+  }catch(_){ }
+
+  return '';
 }
 
 export function num(v){
