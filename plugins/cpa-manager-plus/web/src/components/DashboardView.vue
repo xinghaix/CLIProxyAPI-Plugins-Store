@@ -103,7 +103,7 @@
     <section class="dashboard-zone dashboard-zone-analytics">
       <div class="dashboard-zone-head">
         <h2 class="dashboard-zone-title">用量分析</h2>
-        <span class="muted small-text">monitoring/analytics · 下方筛选器控制本区数据</span>
+        <span class="muted small-text">monitoring/analytics</span>
       </div>
 
     <!-- Analytics filter bar -->

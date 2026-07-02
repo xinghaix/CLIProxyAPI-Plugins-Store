@@ -23,7 +23,7 @@
 
     <section class="panel" v-if="activeTab === 'config'">
       <DataCard title="访问凭据" subtitle="仅浏览器缓存">
-        <p class="muted">这里输入的是 CPA <code>management key</code>，用于浏览器访问 CPA 的 <code>/v0/management/*</code>接口</p>
+        <p class="muted">这里输入的是 CPA <code>management key</code>，用于在浏览器访问 CPA 的 <code>/v0/management/*</code>接口</p>
         <div class="keybar">
           <input v-model.trim="cpaKeyInput" type="password" autocomplete="off" placeholder="CPA management key（当前会话临时保存）" @keyup.enter="saveCPAKey" />
           <button class="btn primary" @click="saveCPAKey">保存并检测</button>
@@ -300,9 +300,14 @@ async function saveManagerConfig(){
   configSaveMessage.value = '';
   try{
     const c = mgrLoadedConfig.value || {};
-    const cpaConnection = { cpaBaseUrl: mgrCPABaseInput.value.trim() };
+    const oldConn = c.cpaConnection || {};
+    const newBase = mgrCPABaseInput.value.trim();
     const newMgmtKey = mgrCPAKeyInput.value.trim();
-    if (newMgmtKey) cpaConnection.managementKey = newMgmtKey;
+    const cpaConnection = {};
+    if (newBase !== (oldConn.cpaBaseUrl || '') || newMgmtKey) {
+      cpaConnection.cpaBaseUrl = newBase;
+      cpaConnection.managementKey = newMgmtKey || oldConn.managementKey || '';
+    }
     const nextConfig = {
       cpaConnection,
       collector: {
