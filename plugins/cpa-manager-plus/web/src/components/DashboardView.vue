@@ -535,7 +535,8 @@ function defaultFilters(){ return {timeRange:'24h',granularity:'auto',model:'all
 function unique(values){ return Array.from(new Set(values.map(v=>String(v||'').trim()).filter(Boolean))).sort(); }
 function formatTimelineLabel(point){ if(point.label) return point.label; const d=new Date(point.bucket_ms); return d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false}); }
 function formatTime(ms){ if(!ms) return '—'; return new Date(Number(ms)).toLocaleTimeString('zh-CN',{hour12:false}); }
-function maskSummary(s){ if(!s) return '—'; return s.length>80?s.slice(0,80)+'…':s; }
+function decodeHtmlEntities(str){ if(!str) return ''; const txt=document.createElement('textarea'); txt.innerHTML=str; return txt.value; }
+function maskSummary(s){ if(!s) return '—'; const d=decodeHtmlEntities(s); return d.length>80?d.slice(0,80)+'…':d; }
 const maxTrafficCalls = computed(() => Math.max(1, ...trafficTimeline.value.map(p => Number(p.calls||p.requests||0))));
 function trafficBarWidth(point){ return `${Math.max(2, Math.round((Number(point.calls||point.requests||0) / maxTrafficCalls.value) * 100))}%`; }
 function fmtInt(v){ const n=Number(v||0); return Number.isFinite(n)?new Intl.NumberFormat('zh-CN').format(n):'—'; }
