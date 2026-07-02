@@ -23,15 +23,6 @@
         </select>
         <input v-model.trim="searchQuery" class="control wide"
                placeholder="全文搜索：模型 / 账号 / API Key / 路径 / trace / 错误" @keyup.enter="refresh(true)"/>
-        <select v-model="filters.status" class="control compact">
-          <option value="all">全部状态</option>
-          <option value="success">仅成功</option>
-          <option value="failed">仅失败</option>
-        </select>
-        <select v-model="filters.provider" class="control compact">
-          <option value="all">全部 Provider</option>
-          <option v-for="item in optionProviders" :key="item" :value="item">{{ item }}</option>
-        </select>
       </div>
       <div class="filterbar-actions">
         <button class="btn primary" @click="refresh(true)" :disabled="loading || !ready">{{
@@ -42,6 +33,15 @@
         <button class="btn" @click="resetFilters">重置</button>
       </div>
       <div class="filterbar-controls secondary-filters">
+        <select v-model="filters.status" class="control compact">
+          <option value="all">全部状态</option>
+          <option value="success">仅成功</option>
+          <option value="failed">仅失败</option>
+        </select>
+        <select v-model="filters.provider" class="control compact">
+          <option value="all">全部 Provider</option>
+          <option v-for="item in optionProviders" :key="item" :value="item">{{ item }}</option>
+        </select>
         <select v-model="filters.model" class="control compact">
           <option value="all">全部模型</option>
           <option v-for="item in optionModels" :key="item" :value="item">{{ item }}</option>
