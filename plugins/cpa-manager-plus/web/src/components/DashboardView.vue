@@ -1,30 +1,5 @@
 <template>
   <section class="monitoring-page">
-    <!-- ====== Dashboard header ====== -->
-    <div class="card dashboard-header">
-      <div class="dashboard-header-left">
-        <div class="connection-status">
-          <span :class="['status-dot', healthOk ? 'connected' : 'disconnected']"></span>
-          <span class="status-label">{{ healthOk ? 'Manager 可达' : '未检测' }}</span>
-        </div>
-      </div>
-      <div class="dashboard-header-right">
-        <span class="dashboard-time">{{ currentTime }}</span>
-        <button class="btn" @click="refreshAll" :disabled="dashLoading || analyticsLoading">{{ (dashLoading || analyticsLoading) ? '刷新中…' : '刷新' }}</button>
-        <button class="btn" @click="openTab('config')">配置</button>
-      </div>
-    </div>
-
-    <!-- ====== Version & collector status ====== -->
-    <div class="card dashboard-version-card">
-      <div class="version-grid">
-        <div><span>Manager Base URL</span><strong>{{ managerBase || '—' }}</strong></div>
-        <div><span>CPA Base</span><strong>{{ cpaBase || '—' }}</strong></div>
-        <div><span>Collector</span><strong :class="collectorStatus ? 'good-text' : 'muted'">{{ collectorStatusText }}</strong></div>
-        <div><span>事件总数</span><strong>{{ fmtInt(collectorEvents) }}</strong></div>
-      </div>
-    </div>
-
     <!-- ====== 今日概览（Plus 仪表盘） ====== -->
     <section class="dashboard-zone">
       <div class="dashboard-zone-head">
@@ -34,7 +9,7 @@
     <MetricGrid :cards="dashboardKpi" />
 
     <!-- ====== Traffic overview (dashboard) ====== -->
-    <DataCard title="近 30 分钟流量" subtitle="滚动窗口 · 与下方用量分析时间线不同">
+    <DataCard title="近 30 分钟流量" subtitle="滚动窗口">
       <div class="timeline-bars" v-if="trafficTimeline.length">
         <div v-for="point in trafficTimeline" :key="point.bucket_ms || point.label" class="timeline-row">
           <span class="timeline-label">{{ formatTimelineLabel(point) }}</span>
@@ -306,7 +281,7 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineComponent, h, onMounted, ref, watch } from 'vue';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 
@@ -321,30 +296,14 @@ const HOUR_MS = 3600000;
 // ===== Dashboard state =====
 const dashData = ref(null);
 const dashLoading = ref(false);
-const currentTime = ref('');
-let timer = null;
-
 const dSummary = computed(() => dashData.value?.today || {});
 const rolling = computed(() => dashData.value?.rolling_30m || {});
 const topModelsDash = computed(() => dashData.value?.top_models_today || []);
 const modelCostRank = computed(() => dashData.value?.model_cost_rank || []);
-const trafficTimeline = computed(() => dashData.value?.traffic_timeline || []);
+const trafficTimeline = computed(() => [...(dashData.value?.traffic_timeline || [])].sort((a,b) => Number(b.bucket_ms||0) - Number(a.bucket_ms||0)));
 const recentFailures = computed(() => dashData.value?.recent_failures || []);
 const channelHealth = computed(() => dashData.value?.channel_health || []);
 const tokenMix = computed(() => dashData.value?.token_mix || []);
-const managerBase = computed(() => dashData.value?.window?.manager_base_url || '');
-const cpaBase = computed(() => dashData.value?.window?.cpa_base_url || '');
-const collectorStatus = computed(() => dashData.value?.collector || null);
-const collectorEvents = computed(() => collectorStatus.value?.events ?? 0);
-const healthOk = computed(() => Boolean(collectorStatus.value || dashData.value));
-const collectorStatusText = computed(() => {
-  if(!collectorStatus.value) return '未检测';
-  const c = collectorStatus.value;
-  if(c.dead_letters > 0) return `${c.dead_letters} 死信`;
-  if(c.events != null) return `${fmtInt(c.events)} 事件`;
-  return c.collector || '活跃';
-});
-
 const dashboardKpi = computed(() => {
   const s = dSummary.value; const r = rolling.value;
   return [
@@ -407,7 +366,7 @@ const trendMetrics = [
 ];
 
 const aSummary = computed(() => analyticsData.value?.summary || {});
-const timelineRows = computed(() => analyticsData.value?.timeline || []);
+const timelineRows = computed(() => [...(analyticsData.value?.timeline || [])].sort((a,b) => Number(b.bucket_ms||0) - Number(a.bucket_ms||0)));
 const modelRows = computed(() => analyticsData.value?.model_stats || analyticsData.value?.model_share || []);
 const apiKeyRows = computed(() => analyticsData.value?.api_key_stats || []);
 const credentialRows = computed(() => analyticsData.value?.credential_stats || []);
@@ -468,19 +427,15 @@ const selectedCredentialTimelineRows = computed(() => {
   return (analyticsData.value?.credential_timeline || [])
     .filter(p => (p.id || p.auth_file_snapshot || p.auth_index || p.source_hash || '-') === id)
     .map(p => ({ bucket_ms: p.bucket_ms, label: p.bucket_label || (p.bucket_ms ? new Date(Number(p.bucket_ms)).toLocaleString('zh-CN', {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false}) : '—'), calls: p.calls, total_tokens: p.total_tokens ?? p.tokens, cost: p.cost }))
-    .sort((a,b) => Number(a.bucket_ms || 0) - Number(b.bucket_ms || 0));
+    .sort((a,b) => Number(b.bucket_ms || 0) - Number(a.bucket_ms || 0));
 });
 
 // ===== Lifecycle =====
 onMounted(() => {
-  updateClock();
-  timer = setInterval(updateClock, 60000);
   if(props.ready) refreshAll();
 });
-onBeforeUnmount(() => { if(timer) clearInterval(timer); });
 watch(() => props.ready, (ready) => { if(ready && !dashData.value) refreshAll(); });
 
-function updateClock(){ currentTime.value = new Date().toLocaleString('zh-CN', {hour12:false}); }
 function openTab(tab){ window.dispatchEvent(new CustomEvent('cpa-manager-plus:open-tab', { detail: { tab } })); }
 
 async function refreshAll(){
@@ -554,7 +509,7 @@ async function loadSelectedApiKeyTimeline(){
     if(filters.value.cacheStatus !== 'all') f.cache_status = filters.value.cacheStatus;
     f.api_key_hashes = [hash];
     const resp = await props.proxyCall({method:'POST', path:'/v0/management/monitoring/analytics', body:{from_ms:bounds.fromMs, to_ms:bounds.toMs, now_ms:now, time_zone:Intl.DateTimeFormat().resolvedOptions().timeZone||'', ...(filters.value.searchQuery?{search_query:filters.value.searchQuery}:{}), filters:f, include:{timeline:true, granularity:resolveGranularity()}}});
-    selectedApiKeyTimeline.value = resp?.timeline || [];
+    selectedApiKeyTimeline.value = [...(resp?.timeline || [])].sort((a,b) => Number(b.bucket_ms||0) - Number(a.bucket_ms||0));
   }catch{ selectedApiKeyTimeline.value = []; }
 }
 function buildModelDetail(row){ if(!row) return []; return [{label:'模型',value:row.model||'—'},{label:'Provider',value:row.provider||'—'},{label:'请求',value:fmtInt(row.calls)},{label:'成功率',value:fmtPct(row.success_rate)},{label:'失败',value:fmtInt(row.failure_calls)},{label:'Token',value:fmtCompact(row.total_tokens)},{label:'费用',value:fmtMoney(row.cost)}]; }

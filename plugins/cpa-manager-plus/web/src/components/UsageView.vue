@@ -280,7 +280,7 @@ const trendMetrics = [
 ];
 
 const summary = computed(() => data.value?.summary || {});
-const timelineRows = computed(() => data.value?.timeline || []);
+const timelineRows = computed(() => [...(data.value?.timeline || [])].sort((a,b) => Number(b.bucket_ms||0) - Number(a.bucket_ms||0)));
 const modelRows = computed(() => data.value?.model_stats || data.value?.model_share || []);
 const apiKeyRows = computed(() => data.value?.api_key_stats || []);
 const credentialRows = computed(() => data.value?.credential_stats || []);
@@ -393,7 +393,7 @@ const selectedCredentialTimelineRows = computed(() => {
       total_tokens: p.total_tokens ?? p.tokens,
       cost: p.cost,
     }))
-    .sort((a,b) => Number(a.bucket_ms || 0) - Number(b.bucket_ms || 0));
+    .sort((a,b) => Number(b.bucket_ms || 0) - Number(a.bucket_ms || 0));
 });
 
 watch(filters, () => {}, {deep:true});
@@ -517,7 +517,7 @@ async function loadSelectedApiKeyTimeline(){
       filters: f,
       include: {timeline: true, granularity: resolveGranularity()},
     }});
-    selectedApiKeyTimeline.value = resp?.timeline || [];
+    selectedApiKeyTimeline.value = [...(resp?.timeline || [])].sort((a,b) => Number(b.bucket_ms||0) - Number(a.bucket_ms||0));
   }catch{
     selectedApiKeyTimeline.value = [];
   }finally{
