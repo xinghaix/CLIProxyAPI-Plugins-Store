@@ -59,11 +59,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
@@ -83,7 +85,7 @@ const (
 	maxProxyBodyBytes       = 8 << 20
 )
 
-var pluginVersion = "0.3.5"
+var pluginVersion = "0.3.6"
 
 var activeConfig atomic.Value
 
@@ -112,6 +114,7 @@ type pluginConfig struct {
 	ManagerBaseURL string `yaml:"manager_base_url"`
 	ManagementKey  string `yaml:"management_key"`
 	AdminKey       string `yaml:"admin_key"` // deprecated: use management_key
+	ProxyURL       string `yaml:"proxy_url"`
 }
 
 type registration struct {
@@ -265,6 +268,9 @@ func mergeConfig(base, override pluginConfig) pluginConfig {
 	if strings.TrimSpace(override.AdminKey) != "" && base.ManagementKey == "" {
 		base.ManagementKey = override.AdminKey
 	}
+	if strings.TrimSpace(override.ProxyURL) != "" {
+		base.ProxyURL = override.ProxyURL
+	}
 	return base
 }
 
@@ -277,6 +283,7 @@ func normalizeConfig(cfg pluginConfig) pluginConfig {
 	if cfg.ManagementKey == "" {
 		cfg.ManagementKey = strings.TrimSpace(cfg.AdminKey)
 	}
+	cfg.ProxyURL = strings.TrimSpace(cfg.ProxyURL)
 	cfg.AdminKey = ""
 	return cfg
 }
@@ -300,6 +307,7 @@ func pluginRegistration() registration {
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "manager_base_url", Type: pluginapi.ConfigFieldTypeString, Description: "Manager Server base URL (default http://127.0.0.1:18317)"},
 				{Name: "management_key", Type: pluginapi.ConfigFieldTypeString, Description: "Manager Plus admin Bearer token for proxy to Manager Server (optional if Manager allows unauthenticated local access)"},
+				{Name: "proxy_url", Type: pluginapi.ConfigFieldTypeString, Description: "Optional proxy for Manager Server calls; empty, direct, or none bypasses CPA global proxy-url"},
 			},
 		},
 		Capabilities: registrationCapabilities{ManagementAPI: true},
@@ -429,7 +437,7 @@ func proxyToManager(cfg pluginConfig, req pluginapi.ManagementRequest, method, p
 	if len(body) > 0 {
 		headers.Set("Content-Type", "application/json")
 	}
-	resp, errDo := callHostHTTP(method, target, headers, body)
+	resp, errDo := callConfiguredHTTP(cfg, method, target, headers, body)
 	if errDo != nil {
 		return 0, nil, nil, errDo
 	}
@@ -553,6 +561,61 @@ func callHostHTTP(method, target string, headers http.Header, body []byte) (host
 		return hostHTTPResult{}, fmt.Errorf("decode host.http.do: %w", errUnmarshal)
 	}
 	return resp, nil
+}
+
+func callConfiguredHTTP(cfg pluginConfig, method, target string, headers http.Header, body []byte) (hostHTTPResult, error) {
+	proxyURL := strings.TrimSpace(cfg.ProxyURL)
+	if proxyURL == "" || strings.EqualFold(proxyURL, "direct") || strings.EqualFold(proxyURL, "none") {
+		return callHTTPWithTransport(directTransport(), "direct", method, target, headers, body)
+	}
+	transport, errTransport := proxyTransport(proxyURL)
+	if errTransport != nil {
+		return hostHTTPResult{}, errTransport
+	}
+	return callHTTPWithTransport(transport, "proxied", method, target, headers, body)
+}
+
+func callHTTPWithTransport(transport http.RoundTripper, mode, method, target string, headers http.Header, body []byte) (hostHTTPResult, error) {
+	req, errNewRequest := http.NewRequest(method, target, bytes.NewReader(bytes.Clone(body)))
+	if errNewRequest != nil {
+		return hostHTTPResult{}, fmt.Errorf("create %s http request: %w", mode, errNewRequest)
+	}
+	req.Header = headers.Clone()
+	client := &http.Client{Timeout: 30 * time.Second, Transport: transport}
+	resp, errDo := client.Do(req)
+	if errDo != nil {
+		return hostHTTPResult{}, fmt.Errorf("execute %s http request: %w", mode, errDo)
+	}
+	defer resp.Body.Close()
+	bodyBytes, errRead := io.ReadAll(resp.Body)
+	if errRead != nil {
+		return hostHTTPResult{}, fmt.Errorf("read %s http response: %w", mode, errRead)
+	}
+	return hostHTTPResult{StatusCode: resp.StatusCode, Headers: map[string][]string(resp.Header), Body: bodyBytes}, nil
+}
+
+func directTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return transport
+}
+
+func proxyTransport(proxyURL string) (*http.Transport, error) {
+	parsed, errParse := url.Parse(strings.TrimSpace(proxyURL))
+	if errParse != nil {
+		return nil, fmt.Errorf("parse proxy_url: %w", errParse)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return nil, fmt.Errorf("proxy_url missing scheme or host")
+	}
+	transport := directTransport()
+	switch parsed.Scheme {
+	case "http", "https":
+		transport.Proxy = http.ProxyURL(parsed)
+		return transport, nil
+	default:
+		return nil, fmt.Errorf("unsupported proxy_url scheme %s; use http, https, direct, or empty", parsed.Scheme)
+	}
 }
 
 func callHost(method string, payload any) (json.RawMessage, error) {

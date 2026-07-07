@@ -24,7 +24,10 @@ func TestNormalizeConfig(t *testing.T) {
 		t.Fatalf("AdminKey was not cleared: %q", cfg.AdminKey)
 	}
 
-	cfg = normalizeConfig(pluginConfig{ManagementKey: " next-key ", AdminKey: "legacy-key"})
+	cfg = normalizeConfig(pluginConfig{ManagementKey: " next-key ", AdminKey: "legacy-key", ProxyURL: " direct "})
+	if cfg.ProxyURL != "direct" {
+		t.Fatalf("ProxyURL = %q, want direct", cfg.ProxyURL)
+	}
 	if cfg.ManagerBaseURL != defaultManagerBaseURL {
 		t.Fatalf("default ManagerBaseURL = %q", cfg.ManagerBaseURL)
 	}
@@ -92,6 +95,22 @@ func TestValidateProxyTarget(t *testing.T) {
 		if err := validateProxyTarget(tc.method, tc.path); err == nil {
 			t.Fatalf("validateProxyTarget(%s, %s) expected error", tc.method, tc.path)
 		}
+	}
+}
+
+func TestProxyTransport(t *testing.T) {
+	if transport := directTransport(); transport.Proxy != nil {
+		t.Fatal("directTransport should bypass proxy")
+	}
+	proxied, err := proxyTransport("http://127.0.0.1:8888")
+	if err != nil {
+		t.Fatalf("proxyTransport unexpected error: %v", err)
+	}
+	if proxied.Proxy == nil {
+		t.Fatal("proxyTransport should configure http proxy")
+	}
+	if _, err := proxyTransport("socks5://127.0.0.1:1080"); err == nil {
+		t.Fatal("expected unsupported socks5 proxy_url error")
 	}
 }
 
