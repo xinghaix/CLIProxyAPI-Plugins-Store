@@ -429,6 +429,17 @@ func normalizeMatchMode(mode string) string {
 }
 
 func splitConfigListValue(value string) []string {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
+		var jsonValues []string
+		if errUnmarshal := json.Unmarshal([]byte(value), &jsonValues); errUnmarshal == nil {
+			out := make([]string, 0, len(jsonValues))
+			for _, item := range jsonValues {
+				out = append(out, splitConfigListValue(item)...)
+			}
+			return out
+		}
+	}
 	parts := strings.Split(value, ",")
 	out := make([]string, 0, len(parts))
 	for _, part := range parts {

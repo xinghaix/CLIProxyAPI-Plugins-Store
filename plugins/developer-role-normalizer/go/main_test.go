@@ -43,6 +43,28 @@ func TestShouldNormalizeUsesBodyModelFallback(t *testing.T) {
 	}
 }
 
+func TestShouldNormalizeAcceptsJSONStringListConfig(t *testing.T) {
+	cfg := normalizeConfig(normalizerConfig{
+		NormalizeEnabled: true,
+		TargetFormats:    []string{`["openai", "codex"]`},
+		ModelMatch: modelMatchRule{
+			Mode:    "contains",
+			Include: []string{"deepseek"},
+		},
+		Strategy: defaultStrategy,
+	})
+	activeConfig.Store(cfg)
+
+	req := pluginapi.RequestTransformRequest{
+		ToFormat: "codex",
+		Model:    "deepseek-reasoner",
+		Body:     []byte(`{"messages":[{"role":"developer","content":"rules"}]}`),
+	}
+	if !shouldNormalize(req) {
+		t.Fatalf("expected JSON-string list target_formats config to match codex")
+	}
+}
+
 func TestMatchesModelIncludeExclude(t *testing.T) {
 	rule := modelMatchRule{
 		Mode:    "contains",

@@ -2,7 +2,9 @@
   <main class="page">
     <section class="toolbar">
       <nav class="tabs" aria-label="CPA Manager Plus tabs">
-        <button v-for="tab in tabs" :key="tab.key" :class="['tab', {active: activeTab === tab.key}]" @click="selectTab(tab.key)">{{ tab.label }}</button>
+        <button v-for="tab in tabs" :key="tab.key" :class="['tab', {active: activeTab === tab.key}]"
+                @click="selectTab(tab.key)">{{ tab.label }}
+        </button>
       </nav>
     </section>
 
@@ -10,22 +12,24 @@
     <section v-if="activeError" class="notice error">{{ activeError }}</section>
 
     <section class="panel" v-if="activeTab === 'dashboard'">
-      <DashboardView ref="dashboardView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
+      <DashboardView ref="dashboardView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
 
     <section class="panel" v-if="activeTab === 'monitoring'">
-      <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
+      <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
 
     <section class="panel" v-if="activeTab === 'inspection'">
-      <InspectionView ref="inspectionView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
+      <InspectionView ref="inspectionView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
 
     <section class="panel" v-if="activeTab === 'config'">
       <DataCard title="访问凭据" subtitle="仅浏览器缓存">
-        <p class="muted">这里输入的是 CPA <code>management key</code>，用于在浏览器访问 CPA 的 <code>/v0/management/*</code>接口</p>
+        <p class="muted">这里输入的是 CPA <code>management key</code>，用于在浏览器访问 CPA （而非CPA Manager Plus） 的
+          <code>/v0/management/*</code> 接口</p>
         <div class="keybar">
-          <input v-model.trim="cpaKeyInput" type="password" autocomplete="off" placeholder="CPA management key（当前会话临时保存）" @keyup.enter="saveCPAKey" />
+          <input v-model.trim="cpaKeyInput" type="password" autocomplete="off"
+                 placeholder="CPA management key（当前会话临时保存）" @keyup.enter="saveCPAKey"/>
           <button class="btn primary" @click="saveCPAKey">保存并检测</button>
           <button class="btn" @click="checkHealth" :disabled="loading">检测 Manager</button>
           <button class="btn danger" @click="clearCPAKey">清除</button>
@@ -39,34 +43,44 @@
         <div class="config-form-grid">
           <label class="config-field">
             <span class="config-field-label">CPA Base URL</span>
-            <input v-model.trim="mgrCPABaseInput" class="control" placeholder="http://127.0.0.1:8317" :disabled="mgrSaving" />
+            <input v-model.trim="mgrCPABaseInput" class="control" placeholder="http://127.0.0.1:8317"
+                   :disabled="mgrSaving"/>
             <small class="muted">当前绑定: {{ mgrBoundCPABase || '未绑定' }}</small>
           </label>
           <label class="config-field">
             <span class="config-field-label">CPA Management Key</span>
             <div class="keybar">
-              <input v-model.trim="mgrCPAKeyInput" :type="mgrCPAKeyVisible ? 'text' : 'password'" autocomplete="new-password" placeholder="留空保持不变" :disabled="mgrSaving" />
-              <button class="btn" @click="mgrCPAKeyVisible = !mgrCPAKeyVisible" :disabled="mgrSaving">{{ mgrCPAKeyVisible ? '隐藏' : '显示' }}</button>
-              <button class="btn" @click="mgrCPAKeyInput = ''; mgrCPAKeyVisible = false" :disabled="mgrSaving || !mgrCPAKeyInput">清除</button>
+              <input v-model.trim="mgrCPAKeyInput" :type="mgrCPAKeyVisible ? 'text' : 'password'"
+                     autocomplete="new-password" placeholder="留空保持不变" :disabled="mgrSaving"/>
+              <button class="btn" @click="mgrCPAKeyVisible = !mgrCPAKeyVisible" :disabled="mgrSaving">
+                {{ mgrCPAKeyVisible ? '隐藏' : '显示' }}
+              </button>
+              <button class="btn" @click="mgrCPAKeyInput = ''; mgrCPAKeyVisible = false"
+                      :disabled="mgrSaving || !mgrCPAKeyInput">清除
+              </button>
             </div>
             <small class="muted">{{ mgrHasBoundKey ? '已绑定密钥（留空不修改）' : '未绑定密钥' }}</small>
           </label>
         </div>
-        <p class="muted small-text" style="margin-top:8px">修改 CPA 连接可能导致 Manager Server 与 CPA 断开，请确认后保存。</p>
+        <p class="muted small-text" style="margin-top:8px">修改 CPA 连接可能导致 Manager Server 与 CPA
+          断开，请确认后保存。</p>
       </DataCard>
 
       <DataCard title="请求监控配置" subtitle="Collector">
         <div class="config-form-grid">
           <label class="config-field config-field-toggle">
             <span class="config-field-label">请求监控</span>
-            <button :class="['toggle-switch', {on: mgrMonitoringEnabled}]" @click="mgrMonitoringEnabled = !mgrMonitoringEnabled" :disabled="mgrSaving || !canConfigureMonitoring">
+            <button :class="['toggle-switch', {on: mgrMonitoringEnabled}]"
+                    @click="mgrMonitoringEnabled = !mgrMonitoringEnabled"
+                    :disabled="mgrSaving || !canConfigureMonitoring">
               <span class="toggle-knob"></span>
             </button>
             <small class="muted">{{ mgrMonitoringEnabled ? '已启用' : '已关闭' }}</small>
           </label>
           <label class="config-field">
             <span class="config-field-label">Collector 模式</span>
-            <select v-model="mgrCollectorMode" class="control" :disabled="mgrSaving || !mgrMonitoringEnabled || !canConfigureMonitoring">
+            <select v-model="mgrCollectorMode" class="control"
+                    :disabled="mgrSaving || !mgrMonitoringEnabled || !canConfigureMonitoring">
               <option value="auto">自动</option>
               <option value="http">HTTP</option>
               <option value="resp">RESP</option>
@@ -75,24 +89,30 @@
           </label>
           <label class="config-field">
             <span class="config-field-label">轮询间隔 (ms)</span>
-            <input v-model.trim="mgrPollIntervalMs" type="number" min="1" class="control" placeholder="500" :disabled="mgrSaving || !mgrMonitoringEnabled || !canConfigureMonitoring" />
+            <input v-model.trim="mgrPollIntervalMs" type="number" min="1" class="control" placeholder="500"
+                   :disabled="mgrSaving || !mgrMonitoringEnabled || !canConfigureMonitoring"/>
             <small class="muted">须 ≤ CPA retention ({{ mgrRetentionSeconds }}s)</small>
           </label>
           <label class="config-field">
             <span class="config-field-label">批量大小</span>
-            <input v-model.trim="mgrBatchSize" type="number" min="1" class="control" placeholder="100" :disabled="mgrSaving || !mgrMonitoringEnabled || !canConfigureMonitoring" />
+            <input v-model.trim="mgrBatchSize" type="number" min="1" class="control" placeholder="100"
+                   :disabled="mgrSaving || !mgrMonitoringEnabled || !canConfigureMonitoring"/>
           </label>
           <label class="config-field">
             <span class="config-field-label">查询限制</span>
-            <input v-model.trim="mgrQueryLimit" type="number" min="1" class="control" placeholder="50000" :disabled="mgrSaving || !mgrMonitoringEnabled || !canConfigureMonitoring" />
+            <input v-model.trim="mgrQueryLimit" type="number" min="1" class="control" placeholder="50000"
+                   :disabled="mgrSaving || !mgrMonitoringEnabled || !canConfigureMonitoring"/>
           </label>
         </div>
-        <div v-if="!canConfigureMonitoring" class="notice" style="margin-top:8px">需先填写 CPA Base URL 和 Management Key 才能配置监控。</div>
+        <div v-if="!canConfigureMonitoring" class="notice" style="margin-top:8px">需先填写 CPA Base URL 和 Management
+          Key 才能配置监控。
+        </div>
       </DataCard>
 
       <div class="config-save-block">
         <p v-if="!mgrConfigLoaded && resolvedCPAKey" class="muted small-text">正在加载 Manager 配置…</p>
-        <p v-else-if="mgrConfigLoaded && !mgrDirty" class="muted small-text">当前与服务器配置一致，修改 CPA 连接或 Collector 后可保存。</p>
+        <p v-else-if="mgrConfigLoaded && !mgrDirty" class="muted small-text">当前与服务器配置一致，修改 CPA 连接或
+          Collector 后可保存。</p>
         <p v-if="configSaveMessage" class="notice config-save-ok">{{ configSaveMessage }}</p>
         <div class="config-actions-bar">
           <button class="btn primary" @click="saveManagerConfig" :disabled="mgrSaving || !mgrConfigLoaded || !mgrDirty">
@@ -112,38 +132,38 @@
     </section>
 
     <section class="panel" v-if="activeTab === 'model-prices'">
-      <ModelPricesView ref="modelPricesView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
+      <ModelPricesView ref="modelPricesView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
     <section class="panel" v-if="activeTab === 'account-actions'">
-      <AccountActionsView ref="accountActionsView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" />
+      <AccountActionsView ref="accountActionsView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
   </main>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import {computed, onBeforeUnmount, onMounted, reactive, ref} from 'vue';
 import DataCard from './components/DataCard.vue';
 import MonitoringView from './components/MonitoringView.vue';
 import DashboardView from './components/DashboardView.vue';
 import ModelPricesView from './components/ModelPricesView.vue';
 import AccountActionsView from './components/AccountActionsView.vue';
 import InspectionView from './components/InspectionView.vue';
-import { PROXY, HEALTH, SESSION_KEY, LEGACY_SESSION_KEY, readCPAAuthStoreKey } from './utils/data.js';
-import { initThemeBridge } from './themeBridge.js';
+import {HEALTH, LEGACY_SESSION_KEY, PROXY, readCPAAuthStoreKey, SESSION_KEY} from './utils/data.js';
+import {initThemeBridge} from './themeBridge.js';
 
 initThemeBridge();
 
 const tabs = [
-  {key:'dashboard', label:'仪表盘'},
-  {key:'monitoring', label:'请求监控'},
-  {key:'model-prices', label:'模型单价'},
-  {key:'account-actions', label:'认证异常'},
-  {key:'inspection', label:'账号巡检'},
-  {key:'config', label:'配置'},
+  {key: 'dashboard', label: '仪表盘'},
+  {key: 'monitoring', label: '请求监控'},
+  {key: 'model-prices', label: '模型单价'},
+  {key: 'account-actions', label: '认证异常'},
+  {key: 'inspection', label: '账号巡检'},
+  {key: 'config', label: '配置'},
 ];
 const activeTab = ref('dashboard');
 const loading = ref(false);
-const health = reactive({state:'', text:'未检测 Manager'});
+const health = reactive({state: '', text: '未检测 Manager'});
 const cpaKeyInput = ref((sessionStorage.getItem(SESSION_KEY) || '').trim());
 const errors = reactive({});
 const configData = ref(null);
@@ -173,52 +193,62 @@ const mgrConfigLoaded = ref(false);
 const configSaveMessage = ref('');
 
 const mgrConfigSourceLabel = computed(() => {
-  if(mgrConfigSource.value === 'env') return '环境变量';
-  if(mgrConfigSource.value === 'db') return '数据库';
+  if (mgrConfigSource.value === 'env') return '环境变量';
+  if (mgrConfigSource.value === 'db') return '数据库';
   return '未配置';
 });
 const canConfigureMonitoring = computed(() => Boolean(mgrCPABaseInput.value.trim() && (mgrCPAKeyInput.value.trim() || mgrHasBoundKey.value)));
 const mgrDirty = computed(() => {
-  if(!mgrConfigLoaded.value) return false;
+  if (!mgrConfigLoaded.value) return false;
   const c = mgrLoadedConfig.value || {};
   const conn = c.cpaConnection || {};
   const col = c.collector || {};
-  if(mgrCPABaseInput.value !== (conn.cpaBaseUrl || '')) return true;
-  if(mgrCPAKeyInput.value.trim()) return true;
-  if(mgrMonitoringEnabled.value !== (col.enabled !== false)) return true;
-  if(mgrCollectorMode.value !== (col.collectorMode || 'auto')) return true;
-  if(mgrPollIntervalMs.value !== String(col.pollIntervalMs ?? 500)) return true;
-  if(mgrBatchSize.value !== String(col.batchSize ?? 100)) return true;
-  if(mgrQueryLimit.value !== String(col.queryLimit ?? 50000)) return true;
+  if (mgrCPABaseInput.value !== (conn.cpaBaseUrl || '')) return true;
+  if (mgrCPAKeyInput.value.trim()) return true;
+  if (mgrMonitoringEnabled.value !== (col.enabled !== false)) return true;
+  if (mgrCollectorMode.value !== (col.collectorMode || 'auto')) return true;
+  if (mgrPollIntervalMs.value !== String(col.pollIntervalMs ?? 500)) return true;
+  if (mgrBatchSize.value !== String(col.batchSize ?? 100)) return true;
+  if (mgrQueryLimit.value !== String(col.queryLimit ?? 50000)) return true;
   return false;
 });
 
 const resolvedCPAKey = computed(() => {
   const input = (cpaKeyInput.value || '').trim();
-  if(input) return input;
+  if (input) return input;
   const session = (sessionStorage.getItem(SESSION_KEY) || '').trim();
-  if(session) return session;
+  if (session) return session;
   const store = readCPAAuthStoreKey();
-  if(store) return store;
+  if (store) return store;
   return (sessionStorage.getItem(LEGACY_SESSION_KEY) || '').trim();
 });
 const authNotice = computed(() => resolvedCPAKey.value ? '' : '未检测到可用的 CPA management key。请在 CPA 管理台登录并勾选「记住密码」，或在「配置」Tab 临时输入 CPA remote-management.secret-key（仅保存在本页 sessionStorage）。');
 const activeError = computed(() => errors[activeTab.value] || '');
-function authHeaders(json=true){
-  const headers = json ? {'Content-Type':'application/json','Accept':'application/json'} : {'Accept':'application/json'};
+
+function authHeaders(json = true) {
+  const headers = json ? {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  } : {'Accept': 'application/json'};
   const key = resolvedCPAKey.value;
-  if(!key) return headers;
-  const clean = key.replace(/^Bearer\s+/i,'');
+  if (!key) return headers;
+  const clean = key.replace(/^Bearer\s+/i, '');
   headers.Authorization = 'Bearer ' + clean;
   headers['X-Management-Key'] = clean;
   return headers;
 }
-async function readJSONResponse(res){
+
+async function readJSONResponse(res) {
   const text = await res.text();
-  if(!text) return null;
-  try{ return JSON.parse(text); }catch{ return text; }
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
-function formatError(status, body){
+
+function formatError(status, body) {
   if (body && typeof body === 'object') {
     const code = body.code ? `[${body.code}] ` : '';
     const msg = body.error || body.message || body.msg || '';
@@ -230,47 +260,71 @@ function formatError(status, body){
     }
   }
   if (typeof body === 'string' && body.trim()) return body.trim();
-  if(status === 401) return 'CPA 管理鉴权失败：请登录管理台或在配置 Tab 输入 CPA remote-management.secret-key';
-  if(status === 403) return '插件代理拒绝：路径或方法不在允许范围内';
+  if (status === 401) return 'CPA 管理鉴权失败：请登录管理台或在配置 Tab 输入 CPA remote-management.secret-key';
+  if (status === 403) return '插件代理拒绝：路径或方法不在允许范围内';
   return 'HTTP ' + status;
 }
-async function proxyCall(payload){
-  if(!resolvedCPAKey.value) throw new Error('missing CPA management key');
-  const res = await fetch(PROXY, {method:'POST', headers:authHeaders(true), body:JSON.stringify(payload)});
+
+async function proxyCall(payload) {
+  if (!resolvedCPAKey.value) throw new Error('missing CPA management key');
+  const res = await fetch(PROXY, {method: 'POST', headers: authHeaders(true), body: JSON.stringify(payload)});
   const body = await readJSONResponse(res);
-  if(!res.ok) throw new Error(formatError(res.status, body));
+  if (!res.ok) throw new Error(formatError(res.status, body));
   return body;
 }
-async function checkHealth(){
-  if(!resolvedCPAKey.value){ health.state = 'err'; health.text = '缺少 CPA management key'; return; }
-  health.state = ''; health.text = '检测中…';
-  try{
-    const res = await fetch(HEALTH, {headers:authHeaders(false)});
+
+async function checkHealth() {
+  if (!resolvedCPAKey.value) {
+    health.state = 'err';
+    health.text = '缺少 CPA management key';
+    return;
+  }
+  health.state = '';
+  health.text = '检测中…';
+  try {
+    const res = await fetch(HEALTH, {headers: authHeaders(false)});
     const body = await readJSONResponse(res);
-    if(res.ok && body && body.ok){ health.state = 'ok'; health.text = 'Manager 可达 · ' + (body.manager_base_url || ''); }
-    else { health.state = 'err'; health.text = formatError(res.status, body); }
-  }catch(e){ health.state = 'err'; health.text = e.message || '检测失败'; }
+    if (res.ok && body && body.ok) {
+      health.state = 'ok';
+      health.text = 'Manager 可达 · ' + (body.manager_base_url || '');
+    } else {
+      health.state = 'err';
+      health.text = formatError(res.status, body);
+    }
+  } catch (e) {
+    health.state = 'err';
+    health.text = e.message || '检测失败';
+  }
 }
-function selectTab(tab){ activeTab.value = tab; refreshActive(); }
-async function refreshActive(){
-  if(loading.value) return;
+
+function selectTab(tab) {
+  activeTab.value = tab;
+  refreshActive();
+}
+
+async function refreshActive() {
+  if (loading.value) return;
   loading.value = true;
   errors[activeTab.value] = '';
-  try{
-    if(activeTab.value === 'dashboard') await (dashboardView.value ? dashboardView.value.refresh(true) : Promise.resolve());
-    if(activeTab.value === 'monitoring') await (monitoringView.value ? monitoringView.value.refresh(true) : Promise.resolve());
-    if(activeTab.value === 'inspection') await (inspectionView.value ? inspectionView.value.refresh(true) : Promise.resolve());
-    if(activeTab.value === 'config') await loadConfig();
-    if(activeTab.value === 'model-prices') await (modelPricesView.value ? modelPricesView.value.refresh(true) : Promise.resolve());
-    if(activeTab.value === 'account-actions') await (accountActionsView.value ? accountActionsView.value.refresh(true) : Promise.resolve());
-  }catch(e){ errors[activeTab.value] = e.message || String(e); }
-  finally{ loading.value = false; }
+  try {
+    if (activeTab.value === 'dashboard') await (dashboardView.value ? dashboardView.value.refresh(true) : Promise.resolve());
+    if (activeTab.value === 'monitoring') await (monitoringView.value ? monitoringView.value.refresh(true) : Promise.resolve());
+    if (activeTab.value === 'inspection') await (inspectionView.value ? inspectionView.value.refresh(true) : Promise.resolve());
+    if (activeTab.value === 'config') await loadConfig();
+    if (activeTab.value === 'model-prices') await (modelPricesView.value ? modelPricesView.value.refresh(true) : Promise.resolve());
+    if (activeTab.value === 'account-actions') await (accountActionsView.value ? accountActionsView.value.refresh(true) : Promise.resolve());
+  } catch (e) {
+    errors[activeTab.value] = e.message || String(e);
+  } finally {
+    loading.value = false;
+  }
 }
-async function loadConfig(){
-  if(!resolvedCPAKey.value) return;
+
+async function loadConfig() {
+  if (!resolvedCPAKey.value) return;
   mgrConfigLoaded.value = false;
   configSaveMessage.value = '';
-  const resp = await proxyCall({method:'GET', path:'/usage-service/config'});
+  const resp = await proxyCall({method: 'GET', path: '/usage-service/config'});
   configData.value = resp;
   const cfg = resp?.config || resp || {};
   mgrLoadedConfig.value = cfg;
@@ -289,16 +343,17 @@ async function loadConfig(){
   mgrRetentionSeconds.value = resp?.cpaUsage?.redisUsageQueueRetentionSeconds || 60;
   mgrConfigLoaded.value = true;
 }
-async function saveManagerConfig(){
-  if(!mgrConfigLoaded.value){
+
+async function saveManagerConfig() {
+  if (!mgrConfigLoaded.value) {
     errors.config = '配置尚未加载完成，请稍后或点击「重新加载」';
     return;
   }
-  if(!mgrDirty.value) return;
+  if (!mgrDirty.value) return;
   mgrSaving.value = true;
   errors.config = '';
   configSaveMessage.value = '';
-  try{
+  try {
     const c = mgrLoadedConfig.value || {};
     const oldConn = c.cpaConnection || {};
     const newBase = mgrCPABaseInput.value.trim();
@@ -321,41 +376,50 @@ async function saveManagerConfig(){
         tlsSkipVerify: Boolean(c.collector?.tlsSkipVerify),
       },
       codexInspection: c.codexInspection ?? c.codex_inspection ?? undefined,
-      externalUsageService: { enabled: false, serviceBase: '' },
+      externalUsageService: {enabled: false, serviceBase: ''},
     };
     // Manager Server 要求外层 {"config": ManagerConfig}，见 managerconfig/handler.go
-    await proxyCall({ method: 'PUT', path: '/usage-service/config', body: { config: nextConfig } });
+    await proxyCall({method: 'PUT', path: '/usage-service/config', body: {config: nextConfig}});
     await loadConfig();
     configSaveMessage.value = 'Manager 配置已保存并应用';
     checkHealth();
-  }catch(e){
+  } catch (e) {
     errors.config = e.message || String(e);
-  }finally{
+  } finally {
     mgrSaving.value = false;
   }
 }
-function saveCPAKey(){
-  const key = (cpaKeyInput.value || '').trim().replace(/^Bearer\s+/i,'');
-  if(key) sessionStorage.setItem(SESSION_KEY, key);
+
+function saveCPAKey() {
+  const key = (cpaKeyInput.value || '').trim().replace(/^Bearer\s+/i, '');
+  if (key) sessionStorage.setItem(SESSION_KEY, key);
   cpaKeyInput.value = key;
   checkHealth();
   refreshActive();
 }
-function clearCPAKey(){
+
+function clearCPAKey() {
   cpaKeyInput.value = '';
   sessionStorage.removeItem(SESSION_KEY);
   sessionStorage.removeItem(LEGACY_SESSION_KEY);
-  health.state = ''; health.text = '未检测 Manager';
+  health.state = '';
+  health.text = '未检测 Manager';
 }
-function handleOpenMonitoring(){
+
+function handleOpenMonitoring() {
   activeTab.value = 'monitoring';
-  setTimeout(() => { refreshActive(); }, 0);
+  setTimeout(() => {
+    refreshActive();
+  }, 0);
 }
-function handleOpenTab(event){
+
+function handleOpenTab(event) {
   const tab = event?.detail?.tab;
-  if(!tab) return;
+  if (!tab) return;
   activeTab.value = tab;
-  setTimeout(() => { refreshActive(); }, 0);
+  setTimeout(() => {
+    refreshActive();
+  }, 0);
 }
 
 onMounted(() => {
