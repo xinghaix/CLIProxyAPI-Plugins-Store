@@ -1,20 +1,28 @@
 # developer-role-normalizer
 
-`developer-role-normalizer` is a CPA request normalizer plugin for OpenAI-compatible model providers that do not support the `developer` message role. It rewrites matched request payloads from `developer` role messages to `system` role messages before CPA sends the request upstream.
+中文 | [English](README.en.md)
 
-The default configuration follows **scheme B**: normalization is enabled, but it only applies to OpenAI-compatible target formats (`openai`, `codex`) and models whose identifier contains `deepseek`.
+`developer-role-normalizer` 是一个 CPA request normalizer 插件，用于兼容不支持 `developer` 消息角色的 OpenAI-compatible 上游。插件会在 CPA 转发请求前，把命中的 `messages[*].role == "developer"` 改写为 `system`。
 
-## Problem
+默认策略是保守的：只处理目标格式为 `openai` / `codex`，且模型名包含 `deepseek` 的请求。
 
-Some OpenAI-compatible providers expose Chat Completions-style APIs but do not accept the newer `developer` role. For example, DeepSeek-compatible targets commonly support roles such as `system`, `user`, `assistant`, and `tool`, but may reject requests containing:
+## 解决的问题
+
+部分 OpenAI-compatible 服务虽然暴露 Chat Completions 风格接口，但不接受新角色 `developer`。例如某些 DeepSeek-compatible 目标只接受：
+
+```text
+system / user / assistant / tool
+```
+
+如果请求中包含：
 
 ```json
 {"role":"developer","content":"Follow these rules..."}
 ```
 
-When CPA translates or forwards a request to those providers without role normalization, the upstream provider can return HTTP 400 or an equivalent validation error. This plugin provides a narrow compatibility layer for those targets without changing requests for models that already support `developer`.
+上游可能返回 400 或类似校验错误。本插件只在指定目标上做最小兼容改写，不影响原生支持 `developer` 的模型。
 
-## Architecture
+## 架构
 
 ```text
 client request
@@ -25,10 +33,10 @@ CPA protocol translation / routing
     ▼
 request.normalize hook
     │
-    ├─ load plugin-owned config
-    ├─ check target format: openai/codex by default
-    ├─ check target model: contains deepseek by default
-    ├─ check rewrite strategy: role_to_system
+    ├─ 读取插件配置
+    ├─ 检查目标格式：默认 openai/codex
+    ├─ 检查模型名：默认包含 deepseek
+    ├─ 检查策略：role_to_system
     │
     ▼
 rewrite messages[*].role == "developer" to "system"
@@ -37,36 +45,19 @@ rewrite messages[*].role == "developer" to "system"
 upstream OpenAI-compatible provider
 ```
 
-### Runtime flow
+## 运行流程
 
-1. CPA loads the dynamic plugin and calls `plugin.register`.
-2. The plugin declares the `request_normalizer` capability.
-3. CPA calls `plugin.reconfigure` with `plugins.configs.developer-role-normalizer` YAML whenever configuration changes.
-4. For each request normalization call, the plugin receives a `RequestTransformRequest` containing:
-   - `ToFormat`: target protocol format.
-   - `Model`: selected target model when available.
-   - `Body`: provider-bound JSON payload.
-5. The plugin applies all gates before rewriting:
-   - `normalize_enabled` must be true.
-   - `ToFormat` must match `target_formats`.
-   - `Model` or `body.model` must match `model_match.include` and must not match `model_match.exclude`.
-   - `strategy` must be `role_to_system`.
-6. If matched, the plugin scans the JSON `messages` array and replaces every exact message role value `"developer"` with `"system"`.
-7. If no gate matches or no developer messages exist, the original payload is returned unchanged.
+1. CPA 加载动态库并调用 `plugin.register`。
+2. 插件声明 `request_normalizer` capability。
+3. CPA 配置变化时调用 `plugin.reconfigure`，传入 `plugins.configs.developer-role-normalizer`。
+4. 每次请求规范化时，CPA 传入目标格式、模型名和请求 body。
+5. 插件按配置检查目标格式、模型名、启用状态和策略。
+6. 命中后只改写顶层 `messages` 数组里的精确角色值 `developer`。
+7. 未命中或 body 不符合预期时，原样返回。
 
-### Rewrite strategy
+## 配置
 
-Current supported strategy:
-
-| Strategy | Behavior |
-| --- | --- |
-| `role_to_system` | Converts each `messages[*].role == "developer"` value to `"system"`. Message order and content are preserved. |
-
-The strategy field is intentionally explicit so future versions can add alternatives such as merging developer content into an existing system message if a provider requires stricter system-message structure.
-
-## Configuration
-
-### Recommended configuration
+### 最小配置
 
 ```yaml
 plugins:
@@ -75,7 +66,32 @@ plugins:
     developer-role-normalizer:
       enabled: true
       priority: 1
+```
 
+默认行为等价于：
+
+```yaml
+normalize_enabled: true
+target_formats:
+  - openai
+  - codex
+model_match:
+  mode: contains
+  include:
+    - deepseek
+  exclude: []
+strategy: role_to_system
+```
+
+### 完整配置示例
+
+```yaml
+plugins:
+  enabled: true
+  configs:
+    developer-role-normalizer:
+      enabled: true
+      priority: 1
       normalize_enabled: true
       target_formats:
         - openai
@@ -84,148 +100,36 @@ plugins:
         mode: contains
         include:
           - deepseek
-        exclude: []
+          - qwen
+        exclude:
+          - deepseek-official-compatible
       strategy: role_to_system
 ```
 
-### Minimal DeepSeek-only configuration
+### 字段说明
 
-Because scheme B is the default, this is enough after the plugin is installed:
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `enabled` | boolean | CPA 控制 | CPA 插件启用开关。 |
+| `normalize_enabled` | boolean | `true` | 插件逻辑开关；设为 `false` 时不改写。 |
+| `target_formats` | array/string | `[openai, codex]` | 允许处理的目标协议格式。 |
+| `model_match.mode` | enum | `contains` | 支持 `contains`、`exact`、`prefix`、`suffix`。 |
+| `model_match.include` | array/string | `[deepseek]` | 模型必须命中至少一个 include；空数组表示全部包含。 |
+| `model_match.exclude` | array/string | `[]` | 排除规则，优先级高于 include。 |
+| `strategy` | enum | `role_to_system` | 当前只支持 `role_to_system`。 |
 
-```yaml
-plugins:
-  enabled: true
-  configs:
-    developer-role-normalizer:
-      enabled: true
-      priority: 1
-```
-
-With defaults, the plugin normalizes only when:
-
-```text
-normalize_enabled = true
-ToFormat          = openai or codex
-model             contains deepseek, case-insensitive
-strategy          = role_to_system
-```
-
-### Configuration reference
-
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `enabled` | boolean | controlled by CPA | Host-managed plugin enable switch. For backward compatibility, when this value is passed to the plugin config, `false` also disables normalization and `true` leaves normalization enabled. Prefer `normalize_enabled` for plugin logic. |
-| `normalize_enabled` | boolean | `true` | Plugin-owned logic switch. Set to `false` to keep the plugin loaded but return all request bodies unchanged. |
-| `target_formats` | array or comma-separated string | `[openai, codex]` | Target protocol formats eligible for normalization. Matching is exact and case-insensitive after trimming. |
-| `model_match.mode` | enum string | `contains` | Model matching mode. Supported values: `contains`, `exact`, `prefix`, `suffix`. Unknown values fall back to `contains`. |
-| `model_match.include` | array or comma-separated string | `[deepseek]` | Include patterns. The model must match at least one include pattern. If explicitly set to an empty list, all models are included unless excluded. |
-| `model_match.exclude` | array or comma-separated string | `[]` | Exclude patterns. Exclude has higher priority than include. |
-| `strategy` | enum string | `role_to_system` | Rewrite behavior. Currently only `role_to_system` is supported. |
-
-### Array and string forms
-
-For easier management UI input, list fields accept both YAML arrays and comma-separated strings.
-
-Array form:
-
-```yaml
-target_formats:
-  - openai
-  - codex
-model_match:
-  include:
-    - deepseek
-    - qwen
-  exclude:
-    - qwen-official-compatible
-```
-
-Comma-separated form:
+数组字段也支持逗号分隔字符串，例如：
 
 ```yaml
 target_formats: openai,codex
 model_match:
   include: deepseek,qwen
-  exclude: qwen-official-compatible
+  exclude: deepseek-official-compatible
 ```
 
-### Matching examples
+## 行为示例
 
-#### Only DeepSeek models, default behavior
-
-```yaml
-model_match:
-  mode: contains
-  include:
-    - deepseek
-  exclude: []
-```
-
-Matches:
-
-- `deepseek-chat`
-- `deepseek-reasoner`
-- `provider/deepseek-v3`
-- `deepseek/deepseek-r1`
-
-Does not match:
-
-- `gpt-4.1`
-- `claude-sonnet-4-6`
-- `qwen-plus`
-
-#### Multiple incompatible OpenAI-compatible providers
-
-```yaml
-model_match:
-  mode: contains
-  include:
-    - deepseek
-    - qwen
-    - kimi
-  exclude: []
-```
-
-#### Exclude a known compatible model family
-
-```yaml
-model_match:
-  mode: contains
-  include:
-    - deepseek
-  exclude:
-    - deepseek-official-compatible
-```
-
-A model named `deepseek-official-compatible-v1` will be skipped even though it contains `deepseek`.
-
-#### Prefix matching
-
-```yaml
-model_match:
-  mode: prefix
-  include:
-    - deepseek-
-```
-
-Matches `deepseek-chat`, but not `provider/deepseek-chat`.
-
-#### Apply to every OpenAI-compatible target model
-
-Use this only if every upstream behind the target formats rejects `developer` roles:
-
-```yaml
-model_match:
-  mode: contains
-  include: []
-  exclude: []
-```
-
-## Behavior examples
-
-### Matched request
-
-Input body:
+输入：
 
 ```json
 {
@@ -237,7 +141,7 @@ Input body:
 }
 ```
 
-Output body:
+输出：
 
 ```json
 {
@@ -249,57 +153,29 @@ Output body:
 }
 ```
 
-### Unmatched model
+如果模型不匹配，例如 `gpt-4.1`，请求会原样返回。
 
-With default config, this request is returned unchanged because the model does not contain `deepseek`:
+## 安装
 
-```json
-{
-  "model": "gpt-4.1",
-  "messages": [
-    {"role": "developer", "content": "You are concise."},
-    {"role": "user", "content": "Hello"}
-  ]
-}
-```
-
-## Management UI metadata
-
-The plugin registration exposes these `ConfigFields` for CPA management clients:
-
-- `normalize_enabled` (`boolean`)
-- `target_formats` (`array`)
-- `model_match` (`object`)
-- `strategy` (`enum`, currently `role_to_system`)
-
-These fields describe plugin-owned configuration under:
+### 推荐：CPA v7.2.46+ 使用 CDN v2 registry
 
 ```yaml
 plugins:
-  configs:
-    developer-role-normalizer:
-      # plugin-owned fields here
+  enabled: true
+  store-sources:
+    - "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2.json"
 ```
 
-## Build
+### GitHub raw 备用入口
 
-```bash
-cd plugins/developer-role-normalizer/go
-CGO_ENABLED=1 go build -buildmode=c-shared -o developer-role-normalizer.so .
+```yaml
+plugins:
+  enabled: true
+  store-sources:
+    - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry-v2.json"
 ```
 
-The plugin must be compiled with `CGO_ENABLED=1` because it exports the CPA C ABI with cgo.
-
-## Test
-
-```bash
-cd plugins/developer-role-normalizer/go
-go test ./...
-```
-
-## Install via Plugin Store
-
-Register this store in your CPA config:
+### 老 CPA 兼容入口
 
 ```yaml
 plugins:
@@ -308,14 +184,14 @@ plugins:
     - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
 ```
 
-Then install via the Management API:
+安装：
 
 ```bash
 curl -X POST http://localhost:8317/v0/management/plugin-store/developer-role-normalizer/install \
-  -H "Authorization: Bearer <management-key>"
+  -H "Authorization: Bearer ***"
 ```
 
-After installation, enable the plugin:
+启用：
 
 ```yaml
 plugins:
@@ -326,32 +202,35 @@ plugins:
       priority: 1
 ```
 
-## Manual install
+## 构建与验证
 
-Build the dynamic library for your target platform and place it in the CPA plugin directory using the versioned artifact naming convention used by your deployment, for example:
+```bash
+cd plugins/developer-role-normalizer/go
+go test ./...
+go vet ./...
+CGO_ENABLED=1 go build -buildmode=c-shared -o developer-role-normalizer.dylib .
+nm developer-role-normalizer.dylib | grep cliproxy_plugin_init
+```
+
+插件必须使用 `CGO_ENABLED=1` 编译，因为它通过 cgo 导出 CPA C ABI。
+
+## 手动安装
+
+将动态库放入 CPA 插件目录，例如：
 
 ```text
-plugins/linux/amd64/developer-role-normalizer-v0.3.0.so
+plugins/linux/amd64/developer-role-normalizer-v0.3.8.so
 ```
 
-Then enable it in CPA config:
+安装或升级后需要重启 CPA 进程，已加载的动态库不会热替换。
 
-```yaml
-plugins:
-  enabled: true
-  configs:
-    developer-role-normalizer:
-      enabled: true
-      priority: 1
-```
+## 兼容性说明
 
-## Compatibility notes
-
-- The default is intentionally narrow: only `openai`/`codex` target formats and models containing `deepseek` are normalized.
-- Matching is case-insensitive.
-- The plugin uses `RequestTransformRequest.Model` first and falls back to `body.model` when the request transform model field is empty.
-- The plugin does not parse or merge message contents; it only replaces exact `developer` role values inside the top-level `messages` array.
-- Requests without a valid top-level `messages` array are returned unchanged.
+- 默认只处理 `openai` / `codex` 目标格式和模型名包含 `deepseek` 的请求。
+- 模型匹配大小写不敏感。
+- 插件优先使用 transform request 的 `Model` 字段，缺失时回退到 `body.model`。
+- 插件不合并消息内容，只替换顶层 `messages` 数组中的角色字段。
+- 没有有效顶层 `messages` 数组的请求原样返回。
 
 ## License
 

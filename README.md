@@ -1,53 +1,35 @@
-# CLIProxyAPI Plugins Store
+# CLIProxyAPI 插件商店
 
-Custom plugin store registry for [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI).
+中文 | [English](README.en.md)
 
-## Structure
+这是给 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 使用的第三方插件商店仓库。仓库同时维护兼容老版本 CPA 的 schema v1 registry，以及推荐给新版 CPA 的 schema v2 direct-install registry，并把 registry 与 release 资产镜像到 jsDelivr CDN。
 
-```
-.
-├── registry.json                          # Plugin store registry (consumed by CPA)
-├── README.md                              # This file
-└── plugins/
-    ├── cpa-manager-plus/                 # CPA Manager Plus plugin mirror
-    │   ├── README.md
-    │   ├── Makefile
-    │   ├── embed.go
-    │   ├── go.mod
-    │   ├── go.sum
-    │   ├── main.go
-    │   └── web/
-    │       └── index.html
-    └── developer-role-normalizer/         # One subdirectory per plugin
-        ├── README.md                      # Plugin documentation
-        └── go/                            # Plugin source code
-            ├── go.mod
-            ├── go.sum
-            └── main.go
-```
+## 可用插件
 
-## Available Plugins
+| 插件 | 说明 |
+|------|------|
+| [developer-role-normalizer](plugins/developer-role-normalizer/) | 将不兼容上游里的 `developer` 消息角色转换为 `system`，主要面向 DeepSeek 等 OpenAI-compatible provider。 |
+| [cpa-manager-plus](plugins/cpa-manager-plus/) | 在 CPA 管理端提供 Manager Plus 风格的仪表盘、用量分析、请求监控、账号巡检与配置页，并反向代理到 Manager Server。 |
 
-| Plugin | Description |
-|--------|-------------|
-| [developer-role-normalizer](plugins/developer-role-normalizer/) | Converts `developer` message roles to `system` for OpenAI-compatible providers that don't recognize the `developer` role. |
-| [cpa-manager-plus](plugins/cpa-manager-plus/) | Embeds CPA Manager Plus inside CPA and proxies panel calls to a Manager Server. |
+## 推荐安装入口
 
-## Using This Store
-
-### 1. Register the store in CPA config
-
-Add this registry URL to your `config.yaml`:
+### CPA v7.2.46+：推荐 CDN + schema v2
 
 ```yaml
 plugins:
   enabled: true
   store-sources:
-    - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
+    - "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2.json"
 ```
 
-`registry.json` stays on `schema_version: 1` for maximum compatibility with older CPA builds.
-For CPA v7.2.46 and newer, use the schema v2 direct-install registry instead:
+这是当前主推入口：
+
+- registry 本身走 jsDelivr CDN。
+- `registry-v2.json` 使用 `install.type = direct`。
+- 每个插件固定到自己的版本和平台资产 URL，不再依赖 GitHub `releases/latest`。
+- CDN 分支里的 v2 registry 会把插件 zip 指向 jsDelivr CDN 资产 URL。
+
+### CPA v7.2.46+：GitHub raw 备用入口
 
 ```yaml
 plugins:
@@ -56,152 +38,167 @@ plugins:
     - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry-v2.json"
 ```
 
-The built-in official store is always included; this adds a third-party source alongside it.
+这个入口同样是 schema v2 direct install，但 artifact URL 指向 GitHub Release。适合排查 CDN 问题。
 
-### 2. Browse and install via Management API
+### 老版本 CPA：schema v1 兼容入口
 
-```bash
-# List available plugins from all stores
-curl http://localhost:8317/v0/management/plugin-store \
-  -H "Authorization: Bearer ***"
-
-# Install a specific plugin
-curl -X POST http://localhost:8317/v0/management/plugin-store/cpa-manager-plus/install \
-  -H "Authorization: Bearer ***"
+```yaml
+plugins:
+  enabled: true
+  store-sources:
+    - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
 ```
 
-### 3. Verify installation
+schema v1 仍然保留给老 CPA 使用。注意：v1 使用 GitHub `releases/latest` 模型，多个插件共用一个仓库时会受到 latest release 的限制。
 
-```bash
-curl http://localhost:8317/v0/management/plugins \
-  -H "Authorization: Bearer ***"
-```
+## CPA 版本建议
 
-Check that `registered: true` and `effective_enabled: true` for the installed plugin.
+| CPA 版本 | 推荐 registry | 说明 |
+|----------|---------------|------|
+| `< v7.2.44` | `registry.json` | 这些版本早于 schema v2 direct install。 |
+| `v7.2.44` - `v7.2.45` | `registry.json`，或谨慎测试 `registry-v2.json` | 已有 direct install 初版，但缺少后续下载/auth/错误处理修复。 |
+| `>= v7.2.46` | `registry-v2.json`，优先 CDN URL | 推荐路径。包含 direct install 及后续 plugin-store 修复。 |
 
-## Registry schemas
+证据：CPA upstream commit `1f16e87` 从 `v7.2.44` 起包含 direct install；`3ea7f18`、`8970873`、`caf7052` 从 `v7.2.46` 起包含后续 plugin-store 修复。
 
-This repository publishes two registry entry points:
-
-| File | Schema | Install model | Use case |
-|------|--------|---------------|----------|
-| `registry.json` | v1 | GitHub Release `latest` | Maximum compatibility with older CPA builds, especially `< v7.2.44`. |
-| `registry-v2.json` | v2 | Direct install artifacts | Recommended for CPA `>= v7.2.46`, independent plugin versions, and fewer `releases/latest` failure modes. |
-
-Detailed local strategy notes: [`docs/registry-schema-strategy.md`](docs/registry-schema-strategy.md).
-
-### Schema v1 compatibility registry
-
-`registry.json` keeps the legacy GitHub Release model. CPA resolves each plugin by calling GitHub `releases/latest` on the plugin's `repository`, then downloads `{plugin-id}_{release-version}_{goos}_{goarch}.zip` and `checksums.txt` from that latest release.
-
-Because all plugins currently share this store repository, v1 has a hard limitation: the latest release must contain the assets for every plugin that users may install from this repository. If a release only includes one changed plugin, v1 installs for unchanged plugins can fail because their zip is absent from `releases/latest`.
-
-### Schema v2 direct registry
-
-Use this registry for CPA v7.2.46+. Tags v7.2.44-v7.2.45 contain the first direct-install implementation, but v7.2.46 includes the follow-up plugin-store asset download/auth/error-handling fixes, so that is the practical minimum recommendation.
-
-`registry-v2.json` uses schema v2 direct install entries:
-
-```json
-{
-  "install": {
-    "type": "direct",
-    "artifacts": [
-      {
-        "goos": "linux",
-        "goarch": "amd64",
-        "url": "https://github.com/.../releases/download/v0.3.7/cpa-manager-plus_0.3.7_linux_amd64.zip",
-        "sha256": "...",
-        "size": 5364606
-      }
-    ]
-  }
-}
-```
-
-CPA selects the artifact matching its runtime `GOOS/GOARCH`, downloads the pinned URL directly, and verifies the inline `sha256`. This avoids the v1 shared-`latest` problem and lets each plugin keep its own version in one shared store.
-
-`registry-v2.json` is generated, not hand-maintained:
-
-```bash
-scripts/generate-registry-v2.py
-```
-
-The release workflow runs this script after a successful release and commits `registry-v2.json` back to `main` when artifact URLs/checksums change.
-
-## Publishing a release
-
-Store releases use **standard semver tags** (e.g. `v1.2.0`). One tag = one release, and only plugins whose hardcoded `var pluginVersion` matches the tag version are built. Schema v2 pins each plugin to its own versioned assets after release; schema v1 users still depend on `releases/latest`.
-
-### Tag format
+## 架构
 
 ```text
-v<version>
+CPA
+ └─ plugin store registry
+     ├─ registry.json       schema v1，兼容老 CPA，GitHub Release latest 模型
+     └─ registry-v2.json    schema v2，新 CPA 推荐，direct install 模型
+
+GitHub Actions
+ ├─ 按 tag 发现版本匹配的插件
+ ├─ 构建 linux/darwin/windows × amd64/arm64 动态库 zip
+ ├─ 发布 GitHub Release
+ ├─ 刷新 main 分支 registry-v2.json（GitHub Release URL）
+ └─ 发布 cdn 分支
+     ├─ registry.json
+     ├─ registry-v2.json（jsDelivr artifact URL）
+     ├─ latest/
+     └─ vX.Y.Z/
+
+jsDelivr
+ └─ https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/...
 ```
 
-Example:
+## CDN URL 规则
+
+GitHub raw 文件 URL：
 
 ```text
-v1.2.0
+https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}
 ```
 
-This builds every plugin whose `go/main.go` declares `var pluginVersion = "1.2.0"`. If no plugin matches, CI fails with a list of available plugin versions.
+可转换为 jsDelivr：
 
-### Release checklist (order matters)
-
-1. **Change the plugin** (if this release includes code or metadata fixes).
-2. **Choose the new version** (e.g. `1.2.0`).
-3. **Bump version everywhere** for the plugin(s) you are releasing (same string, no `v` prefix):
-   - `plugins/<plugin-id>/go/main.go` → `var pluginVersion = "…"`
-   - `registry.json` → that plugin's `"version"`
-   - `plugins/<plugin-id>/Makefile` → `VERSION := …` (if the plugin has a Makefile)
-4. **Commit and push to `main`** so the tag points at sources that already declare that version.
-5. **Create and push the tag manually** (tag push triggers CI):
-
-   ```bash
-   git tag -a v1.2.0 -m "v1.2.0"
-   git push origin v1.2.0
-   ```
-
-6. **Watch the workflow** [Build and Release Matching Plugins](https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/actions) until `discover`, all `build` matrix jobs, and `release` succeed.
-
-### What CI does (after the tag)
-
-- Parses `VERSION` from the tag (`v1.2.0` → `1.2.0`).
-- Scans every `plugins/*/go/main.go` for `var pluginVersion` and builds only plugins whose version matches the tag.
-- Each matching plugin is built for linux/darwin/windows × amd64/arm64 (6 platform zips each).
-- If a plugin has `web/package.json`, runs `npm ci && npm run build` before Go build.
-- Names artifacts `<plugin-id>_<version>_<goos>_<goarch>.zip` with `<plugin-id>-v<version>.{so,dylib,dll}` inside.
-- Merges all checksums into one `checksums.txt` and uploads with the release.
-- Regenerates `registry-v2.json` from `registry.json` plus GitHub release assets and commits it back to `main` if changed.
-
-### Schema v2 maintenance rules
-
-- Do not edit `registry-v2.json` by hand. Edit `registry.json` and plugin source versions, publish the release, then run or let CI run `scripts/generate-registry-v2.py`.
-- Every plugin listed in `registry.json` must have a release matching its own `version` field, with all six standard platform zips.
-- A plugin can stay on an older version while another plugin advances. The v2 registry will keep the unchanged plugin pinned to its older artifact URLs.
-- For v1 compatibility, be aware that CPA still uses the repository latest release. If supporting old CPA builds is required, either keep latest releases complete for all plugins or direct old users to a release that contains the plugin they need.
-
-
-### Adding a new plugin (first time)
-
-1. Add `plugins/<plugin-id>/` with `go/go.mod` and source.
-2. Add a `registry.json` entry (`repository` = this store repo for v1 compatibility; `version` = the plugin's own current version).
-3. Publish a standard semver tag matching that plugin version.
-4. Confirm `registry-v2.json` has a direct `install.artifacts` block for the new plugin after CI refreshes it.
-
-### Zip / checksums examples
-
-```
-cpa-manager-plus_1.2.0_linux_amd64.zip
-└── cpa-manager-plus-v1.2.0.so
+```text
+https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}
 ```
 
-```
-<sha256>  cpa-manager-plus_1.2.0_linux_amd64.zip
+本仓库不建议用 `@main` 作为主要 CDN 入口；推荐使用专门生成的 `cdn` 分支：
+
+```text
+https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2.json
+https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/cpa-manager-plus_0.3.8_linux_amd64.zip
+https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/latest/checksums.txt
 ```
 
-The registry `repository` field must be `https://github.com/{owner}/{repo}` so CPA can call the GitHub Releases API.
+原因：`cdn` 分支只放分发产物和生成后的 registry，结构稳定，适合被 jsDelivr 缓存。
+
+## jsDelivr 缓存与刷新
+
+- 版本路径如 `@cdn/v0.3.8/...` 应视为不可变路径，适合生产使用。
+- `@cdn/latest/...` 和 `@cdn/registry-v2.json` 是可变路径，可能存在 CDN 缓存传播延迟。
+- workflow 会自动 purge 这些可变路径：
+  - `registry.json`
+  - `registry-v2.json`
+  - `latest/checksums.txt`
+  - `latest/*.zip`
+
+手动刷新示例：
+
+```text
+https://purge.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2.json
+```
+
+## 发布流程
+
+发布使用标准 semver tag，例如 `v0.3.8`。不要使用插件后缀 tag，例如 `v0.3.8-cpa-manager-plus`。
+
+1. 修改插件代码。
+2. 选择新版本号，例如 `0.3.9`。
+3. 同步版本号：
+   - `plugins/<plugin-id>/go/main.go` → `var pluginVersion = "0.3.9"`
+   - `registry.json` → 对应插件的 `"version"`
+   - `plugins/<plugin-id>/Makefile` → `VERSION := 0.3.9`（如存在）
+4. commit 并 push 到 `main`。
+5. 创建并推送 tag：
+
+```bash
+git tag -a v0.3.9 -m "v0.3.9"
+git push origin v0.3.9
+```
+
+6. GitHub Actions 自动执行：
+   - 只构建源码版本等于 tag 版本的插件。
+   - 每个插件生成 6 平台 zip。
+   - 发布 GitHub Release。
+   - 生成 main 分支 `registry-v2.json`。
+   - 发布/刷新 `cdn` 分支。
+   - purge jsDelivr 可变路径。
+
+## artifact 规范
+
+每个发布版本必须包含 6 个平台：
+
+- `linux/amd64`
+- `linux/arm64`
+- `darwin/amd64`
+- `darwin/arm64`
+- `windows/amd64`
+- `windows/arm64`
+
+Release asset 名称：
+
+```text
+{plugin-id}_{version}_{goos}_{goarch}.zip
+```
+
+zip 根目录必须包含动态库：
+
+```text
+{plugin-id}-v{version}.{so|dylib|dll}
+```
+
+示例：
+
+```text
+cpa-manager-plus_0.3.8_linux_amd64.zip
+└── cpa-manager-plus-v0.3.8.so
+```
+
+## 本地验证
+
+```bash
+python3 -m py_compile scripts/generate-registry-v2.py
+scripts/generate-registry-v2.py --check
+python3 - <<'PY'
+import json
+for f in ['registry.json', 'registry-v2.json']:
+    j = json.load(open(f))
+    print(f, j['schema_version'], len(j['plugins']))
+PY
+```
+
+## 详细文档
+
+- [registry / CDN 分发策略](docs/registry-schema-strategy.md)
+- [Registry / CDN distribution strategy](docs/registry-schema-strategy.en.md)
+- [developer-role-normalizer](plugins/developer-role-normalizer/)
+- [cpa-manager-plus](plugins/cpa-manager-plus/)
 
 ## License
 

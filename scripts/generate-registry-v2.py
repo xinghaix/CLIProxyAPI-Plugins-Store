@@ -149,7 +149,36 @@ def artifact_sha256(asset: dict[str, Any], checksums: dict[str, str]) -> str:
     raise ValueError(f"missing sha256 for asset {name}")
 
 
-def direct_artifacts(plugin: dict[str, Any], required_platforms: set[tuple[str, str]]) -> list[dict[str, Any]]:
+def format_artifact_url(
+    template: str,
+    *,
+    asset_name: str,
+    release_tag: str,
+    plugin_id: str,
+    version: str,
+    goos: str,
+    goarch: str,
+    repository: str,
+) -> str:
+    if not template:
+        return ""
+    return template.format(
+        asset_name=asset_name,
+        tag=release_tag,
+        release_tag=release_tag,
+        plugin_id=plugin_id,
+        version=version,
+        goos=goos,
+        goarch=goarch,
+        repository=repository,
+    )
+
+
+def direct_artifacts(
+    plugin: dict[str, Any],
+    required_platforms: set[tuple[str, str]],
+    artifact_url_template: str = "",
+) -> list[dict[str, Any]]:
     plugin_id = plugin["id"].strip()
     version = normalize_version(plugin["version"])
     repository = plugin.get("repository", "").strip()
@@ -169,7 +198,16 @@ def direct_artifacts(plugin: dict[str, Any], required_platforms: set[tuple[str, 
         if not match:
             continue
         goos, goarch = match.groups()
-        url = str(asset.get("browser_download_url") or asset.get("url") or "").strip()
+        url = format_artifact_url(
+            artifact_url_template,
+            asset_name=name,
+            release_tag=str(release.get("tag_name") or release_tag_for(version)),
+            plugin_id=plugin_id,
+            version=version,
+            goos=goos,
+            goarch=goarch,
+            repository=repository,
+        ) or str(asset.get("browser_download_url") or asset.get("url") or "").strip()
         if not url:
             raise ValueError(f"{plugin_id}: asset {name} missing download URL")
         artifacts.append(
@@ -196,23 +234,34 @@ def direct_artifacts(plugin: dict[str, Any], required_platforms: set[tuple[str, 
     return artifacts
 
 
-def convert_plugin(plugin: dict[str, Any], required_platforms: set[tuple[str, str]]) -> dict[str, Any]:
+def convert_plugin(
+    plugin: dict[str, Any],
+    required_platforms: set[tuple[str, str]],
+    artifact_url_template: str = "",
+) -> dict[str, Any]:
     converted = {key: plugin[key] for key in COPY_PLUGIN_FIELDS if key in plugin}
     converted["version"] = normalize_version(str(plugin.get("version") or ""))
     if not converted["version"]:
         raise ValueError(f"{plugin.get('id', '<unknown>')}: version is required for schema v2 direct install")
     converted["install"] = {
         "type": "direct",
-        "artifacts": direct_artifacts(plugin, required_platforms),
+        "artifacts": direct_artifacts(plugin, required_platforms, artifact_url_template),
     }
     return converted
 
 
-def generate(source: Path, required_platforms: set[tuple[str, str]]) -> dict[str, Any]:
+def generate(
+    source: Path,
+    required_platforms: set[tuple[str, str]],
+    artifact_url_template: str = "",
+) -> dict[str, Any]:
     registry = json.loads(source.read_text(encoding="utf-8"))
     return {
         "schema_version": 2,
-        "plugins": [convert_plugin(plugin, required_platforms) for plugin in registry.get("plugins", [])],
+        "plugins": [
+            convert_plugin(plugin, required_platforms, artifact_url_template)
+            for plugin in registry.get("plugins", [])
+        ],
     }
 
 
@@ -220,6 +269,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Generate schema_version=2 direct-install registry.")
     parser.add_argument("--source", default="registry.json", help="source v1 registry path")
     parser.add_argument("--output", default="registry-v2.json", help="output v2 registry path")
+    parser.add_argument(
+        "--artifact-url-template",
+        default="",
+        help=(
+            "optional artifact URL template; supports {asset_name}, {tag}, {release_tag}, "
+            "{plugin_id}, {version}, {goos}, {goarch}, {repository}. If omitted, uses GitHub release URLs."
+        ),
+    )
     parser.add_argument(
         "--allow-missing-platforms",
         action="store_true",
@@ -231,7 +288,7 @@ def main() -> int:
     required_platforms = set() if args.allow_missing_platforms else set(DEFAULT_PLATFORMS)
     source = Path(args.source)
     output = Path(args.output)
-    generated = generate(source, required_platforms)
+    generated = generate(source, required_platforms, args.artifact_url_template)
     content = json.dumps(generated, ensure_ascii=False, indent=2) + "\n"
 
     if args.check:
