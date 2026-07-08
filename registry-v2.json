@@ -6,7 +6,7 @@
       "name": "Developer Role Normalizer",
       "description": "Converts developer message roles to system for OpenAI-compatible providers (e.g. DeepSeek) that do not recognize the developer role.",
       "author": "xinghaix",
-      "version": "0.3.0",
+      "version": "0.3.8",
       "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
       "logo": "",
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/developer-role-normalizer",
@@ -22,44 +22,44 @@
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.0/developer-role-normalizer_0.3.0_linux_amd64.zip",
-            "sha256": "e361e48973c5f204c2563749b303ff94859a7d3059a7a425ea697896cf43beb4",
-            "size": 3713051
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.8/developer-role-normalizer_0.3.8_linux_amd64.zip",
+            "sha256": "f8837c93e97b718a9dde2b98b0420579633d2767696380384bec76d17ab62959",
+            "size": 3713743
           },
           {
             "goos": "linux",
             "goarch": "arm64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.0/developer-role-normalizer_0.3.0_linux_arm64.zip",
-            "sha256": "be1eb13b6cc6a662853897ee24bfa31d2531f6e179c217d0c9619fac544d4335",
-            "size": 3371481
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.8/developer-role-normalizer_0.3.8_linux_arm64.zip",
+            "sha256": "edbfd3c85ce901096dcd7146a755e2740a952854cf624c3e6f96250058f63b73",
+            "size": 3372131
           },
           {
             "goos": "darwin",
             "goarch": "amd64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.0/developer-role-normalizer_0.3.0_darwin_amd64.zip",
-            "sha256": "f22068c4f89511bb8a902dd8aaa32be54d008cfb00a66aad70387f5bf61c4cc3",
-            "size": 2070413
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.8/developer-role-normalizer_0.3.8_darwin_amd64.zip",
+            "sha256": "e1ba6e5ebc6dbfb221bedeef92fcf4a2f873a6551941666a5e4d62359e67d6b2",
+            "size": 2070897
           },
           {
             "goos": "darwin",
             "goarch": "arm64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.0/developer-role-normalizer_0.3.0_darwin_arm64.zip",
-            "sha256": "651265a040706e36b4c2a9127dbb10e9d52fd961c284326a8c85165474b77649",
-            "size": 1913632
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.8/developer-role-normalizer_0.3.8_darwin_arm64.zip",
+            "sha256": "f78cafc5aa0eff0e238835c38ca4fcaa6e0ba659b689cf5cc0576f138c1f102a",
+            "size": 1913880
           },
           {
             "goos": "windows",
             "goarch": "amd64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.0/developer-role-normalizer_0.3.0_windows_amd64.zip",
-            "sha256": "9568fe2cc4803b37d06e00a622bb1ba11308b3f914f910a61c72376b88c0b455",
-            "size": 3609157
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.8/developer-role-normalizer_0.3.8_windows_amd64.zip",
+            "sha256": "e19ced45cf263ab1dd63c5fed8799cd8ee87c0104f15d6bc3d5f62f6415896d0",
+            "size": 3611531
           },
           {
             "goos": "windows",
             "goarch": "arm64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.0/developer-role-normalizer_0.3.0_windows_arm64.zip",
-            "sha256": "e0054565edf6f54a1efc71af8475815368dbf2f6e12a31fecc7cd4e34a5bfb41",
-            "size": 3231691
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.8/developer-role-normalizer_0.3.8_windows_arm64.zip",
+            "sha256": "4ec00019cc95582e5d7641902c063302590f82275b8a42a28528063365cf5210",
+            "size": 3231116
           }
         ]
       }
@@ -69,7 +69,7 @@
       "name": "CPA Manager Plus",
       "description": "Embeds Manager Plus dashboard, usage, monitoring, and inspection in CPA via reverse proxy to Manager Server (host.http.do).",
       "author": "xinghaix",
-      "version": "0.3.7",
+      "version": "0.3.8",
       "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
       "logo": "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/refs/heads/main/plugins/cpa-manager-plus/assets/logo.png",
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/cpa-manager-plus",
@@ -86,44 +86,44 @@
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.7/cpa-manager-plus_0.3.7_linux_amd64.zip",
-            "sha256": "bc2a7ef53dd0f067047e606d7a2a7b6efe86c1b305e36d7a09f5b197a22d9ee4",
-            "size": 5364606
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.8/cpa-manager-plus_0.3.8_linux_amd64.zip",
+            "sha256": "d80a90852f34e9ee28571c080dbb1984352f69532c6013e350112c48afcfdc88",
+            "size": 5364589
           },
           {
             "goos": "linux",
             "goarch": "arm64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.7/cpa-manager-plus_0.3.7_linux_arm64.zip",
-            "sha256": "9791b76c3b0b940a27f772a0921ab9d3e265bddbea603337c27032962c443445",
-            "size": 4859778
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.8/cpa-manager-plus_0.3.8_linux_arm64.zip",
+            "sha256": "e2bf4a45565867e3f8b5eb830255e7e1966b91af76cb59cf50dc97b7d90af5ee",
+            "size": 4859786
           },
           {
             "goos": "darwin",
             "goarch": "amd64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.7/cpa-manager-plus_0.3.7_darwin_amd64.zip",
-            "sha256": "5eb831ae7278c9f49f543476d0ada27c0d43db6bd35cab274407725c2206d57e",
-            "size": 2996537
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.8/cpa-manager-plus_0.3.8_darwin_amd64.zip",
+            "sha256": "cf23429a17d4b350b02c6c0d5f8b2e12f1e07693d28815c394f3c088e9bd3690",
+            "size": 2996468
           },
           {
             "goos": "darwin",
             "goarch": "arm64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.7/cpa-manager-plus_0.3.7_darwin_arm64.zip",
-            "sha256": "fa163d985584079534b11e5ea5e396957ca26f2b5ac1929b344c5ff0effda97d",
-            "size": 2760304
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.8/cpa-manager-plus_0.3.8_darwin_arm64.zip",
+            "sha256": "cf6327938ebf84c341779e4701249b83cc45b57c82a68be6b1d1087a0616b8b9",
+            "size": 2760312
           },
           {
             "goos": "windows",
             "goarch": "amd64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.7/cpa-manager-plus_0.3.7_windows_amd64.zip",
-            "sha256": "eeb2c43a9097b6bbcd5e3cb99a858a7f660e233fcf53d00a7be2a4fe4b246f6e",
-            "size": 5155938
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.8/cpa-manager-plus_0.3.8_windows_amd64.zip",
+            "sha256": "9b42fdb708dc9b91cf7fb3097c0fdf7cbc16d26a22cf2fed81acb60eb588d14d",
+            "size": 5155598
           },
           {
             "goos": "windows",
             "goarch": "arm64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.7/cpa-manager-plus_0.3.7_windows_arm64.zip",
-            "sha256": "f07c5ccba26d079765bcfc087957036186e6028724e8a7c250c826eb65c59022",
-            "size": 4542022
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.3.8/cpa-manager-plus_0.3.8_windows_arm64.zip",
+            "sha256": "c2899c24b15ce98d50b464448d4f2a83b38eca61b0db9c02ca1264b5878aa2b6",
+            "size": 4542030
           }
         ]
       }
