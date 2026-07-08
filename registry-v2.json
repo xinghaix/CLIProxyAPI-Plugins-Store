@@ -1,0 +1,132 @@
+{
+  "schema_version": 2,
+  "plugins": [
+    {
+      "id": "developer-role-normalizer",
+      "name": "Developer Role Normalizer",
+      "description": "Converts developer message roles to system for OpenAI-compatible providers (e.g. DeepSeek) that do not recognize the developer role.",
+      "author": "xinghaix",
+      "version": "0.3.8",
+      "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
+      "logo": "",
+      "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/developer-role-normalizer",
+      "license": "MIT",
+      "tags": [
+        "request-normalizer",
+        "openai-compat",
+        "role-normalization"
+      ],
+      "install": {
+        "type": "direct",
+        "artifacts": [
+          {
+            "goos": "linux",
+            "goarch": "amd64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/developer-role-normalizer_0.3.8_linux_amd64.zip",
+            "sha256": "f8837c93e97b718a9dde2b98b0420579633d2767696380384bec76d17ab62959",
+            "size": 3713743
+          },
+          {
+            "goos": "linux",
+            "goarch": "arm64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/developer-role-normalizer_0.3.8_linux_arm64.zip",
+            "sha256": "edbfd3c85ce901096dcd7146a755e2740a952854cf624c3e6f96250058f63b73",
+            "size": 3372131
+          },
+          {
+            "goos": "darwin",
+            "goarch": "amd64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/developer-role-normalizer_0.3.8_darwin_amd64.zip",
+            "sha256": "e1ba6e5ebc6dbfb221bedeef92fcf4a2f873a6551941666a5e4d62359e67d6b2",
+            "size": 2070897
+          },
+          {
+            "goos": "darwin",
+            "goarch": "arm64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/developer-role-normalizer_0.3.8_darwin_arm64.zip",
+            "sha256": "f78cafc5aa0eff0e238835c38ca4fcaa6e0ba659b689cf5cc0576f138c1f102a",
+            "size": 1913880
+          },
+          {
+            "goos": "windows",
+            "goarch": "amd64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/developer-role-normalizer_0.3.8_windows_amd64.zip",
+            "sha256": "e19ced45cf263ab1dd63c5fed8799cd8ee87c0104f15d6bc3d5f62f6415896d0",
+            "size": 3611531
+          },
+          {
+            "goos": "windows",
+            "goarch": "arm64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/developer-role-normalizer_0.3.8_windows_arm64.zip",
+            "sha256": "4ec00019cc95582e5d7641902c063302590f82275b8a42a28528063365cf5210",
+            "size": 3231116
+          }
+        ]
+      }
+    },
+    {
+      "id": "cpa-manager-plus",
+      "name": "CPA Manager Plus",
+      "description": "Embeds Manager Plus dashboard, usage, monitoring, and inspection in CPA via reverse proxy to Manager Server (host.http.do).",
+      "author": "xinghaix",
+      "version": "0.3.8",
+      "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
+      "logo": "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/refs/heads/main/plugins/cpa-manager-plus/assets/logo.png",
+      "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/cpa-manager-plus",
+      "license": "MIT",
+      "tags": [
+        "management-ui",
+        "monitoring",
+        "usage",
+        "proxy"
+      ],
+      "install": {
+        "type": "direct",
+        "artifacts": [
+          {
+            "goos": "linux",
+            "goarch": "amd64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/cpa-manager-plus_0.3.8_linux_amd64.zip",
+            "sha256": "d80a90852f34e9ee28571c080dbb1984352f69532c6013e350112c48afcfdc88",
+            "size": 5364589
+          },
+          {
+            "goos": "linux",
+            "goarch": "arm64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/cpa-manager-plus_0.3.8_linux_arm64.zip",
+            "sha256": "e2bf4a45565867e3f8b5eb830255e7e1966b91af76cb59cf50dc97b7d90af5ee",
+            "size": 4859786
+          },
+          {
+            "goos": "darwin",
+            "goarch": "amd64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/cpa-manager-plus_0.3.8_darwin_amd64.zip",
+            "sha256": "cf23429a17d4b350b02c6c0d5f8b2e12f1e07693d28815c394f3c088e9bd3690",
+            "size": 2996468
+          },
+          {
+            "goos": "darwin",
+            "goarch": "arm64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/cpa-manager-plus_0.3.8_darwin_arm64.zip",
+            "sha256": "cf6327938ebf84c341779e4701249b83cc45b57c82a68be6b1d1087a0616b8b9",
+            "size": 2760312
+          },
+          {
+            "goos": "windows",
+            "goarch": "amd64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/cpa-manager-plus_0.3.8_windows_amd64.zip",
+            "sha256": "9b42fdb708dc9b91cf7fb3097c0fdf7cbc16d26a22cf2fed81acb60eb588d14d",
+            "size": 5155598
+          },
+          {
+            "goos": "windows",
+            "goarch": "arm64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/cpa-manager-plus_0.3.8_windows_arm64.zip",
+            "sha256": "c2899c24b15ce98d50b464448d4f2a83b38eca61b0db9c02ca1264b5878aa2b6",
+            "size": 4542030
+          }
+        ]
+      }
+    }
+  ]
+}

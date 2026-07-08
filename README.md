@@ -1,0 +1,14 @@
+# CLIProxyAPI Plugins Store CDN branch
+
+This branch is generated for jsDelivr distribution. Do not edit it manually.
+
+- `registry.json` is the schema v1 compatibility registry.
+- `registry-v2.json` is the schema v2 direct-install registry with jsDelivr artifact URLs.
+- `vX.Y.Z/` contains immutable release assets for that tag.
+- `latest/` contains the most recently published release assets.
+
+Recommended jsDelivr registry for CPA v7.2.46+:
+
+```text
+https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2.json
+```
