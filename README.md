@@ -46,6 +46,16 @@ plugins:
     - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
 ```
 
+`registry.json` stays on `schema_version: 1` for maximum compatibility with older CPA builds.
+For CPA v7.2.46 and newer, use the schema v2 direct-install registry instead:
+
+```yaml
+plugins:
+  enabled: true
+  store-sources:
+    - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry-v2.json"
+```
+
 The built-in official store is always included; this adds a third-party source alongside it.
 
 ### 2. Browse and install via Management API
@@ -69,9 +79,59 @@ curl http://localhost:8317/v0/management/plugins \
 
 Check that `registered: true` and `effective_enabled: true` for the installed plugin.
 
+## Registry schemas
+
+This repository publishes two registry entry points:
+
+| File | Schema | Install model | Use case |
+|------|--------|---------------|----------|
+| `registry.json` | v1 | GitHub Release `latest` | Maximum compatibility with older CPA builds, especially `< v7.2.44`. |
+| `registry-v2.json` | v2 | Direct install artifacts | Recommended for CPA `>= v7.2.46`, independent plugin versions, and fewer `releases/latest` failure modes. |
+
+Detailed local strategy notes: [`docs/registry-schema-strategy.md`](docs/registry-schema-strategy.md).
+
+### Schema v1 compatibility registry
+
+`registry.json` keeps the legacy GitHub Release model. CPA resolves each plugin by calling GitHub `releases/latest` on the plugin's `repository`, then downloads `{plugin-id}_{release-version}_{goos}_{goarch}.zip` and `checksums.txt` from that latest release.
+
+Because all plugins currently share this store repository, v1 has a hard limitation: the latest release must contain the assets for every plugin that users may install from this repository. If a release only includes one changed plugin, v1 installs for unchanged plugins can fail because their zip is absent from `releases/latest`.
+
+### Schema v2 direct registry
+
+Use this registry for CPA v7.2.46+. Tags v7.2.44-v7.2.45 contain the first direct-install implementation, but v7.2.46 includes the follow-up plugin-store asset download/auth/error-handling fixes, so that is the practical minimum recommendation.
+
+`registry-v2.json` uses schema v2 direct install entries:
+
+```json
+{
+  "install": {
+    "type": "direct",
+    "artifacts": [
+      {
+        "goos": "linux",
+        "goarch": "amd64",
+        "url": "https://github.com/.../releases/download/v0.3.7/cpa-manager-plus_0.3.7_linux_amd64.zip",
+        "sha256": "...",
+        "size": 5364606
+      }
+    ]
+  }
+}
+```
+
+CPA selects the artifact matching its runtime `GOOS/GOARCH`, downloads the pinned URL directly, and verifies the inline `sha256`. This avoids the v1 shared-`latest` problem and lets each plugin keep its own version in one shared store.
+
+`registry-v2.json` is generated, not hand-maintained:
+
+```bash
+scripts/generate-registry-v2.py
+```
+
+The release workflow runs this script after a successful release and commits `registry-v2.json` back to `main` when artifact URLs/checksums change.
+
 ## Publishing a release
 
-Store releases use **standard semver tags** (e.g. `v1.2.0`). One tag = one release, and only plugins whose hardcoded `var pluginVersion` matches the tag version are built. CPA picks assets from `releases/latest` on the repo URL in `registry.json`.
+Store releases use **standard semver tags** (e.g. `v1.2.0`). One tag = one release, and only plugins whose hardcoded `var pluginVersion` matches the tag version are built. Schema v2 pins each plugin to its own versioned assets after release; schema v1 users still depend on `releases/latest`.
 
 ### Tag format
 
@@ -113,13 +173,22 @@ This builds every plugin whose `go/main.go` declares `var pluginVersion = "1.2.0
 - If a plugin has `web/package.json`, runs `npm ci && npm run build` before Go build.
 - Names artifacts `<plugin-id>_<version>_<goos>_<goarch>.zip` with `<plugin-id>-v<version>.{so,dylib,dll}` inside.
 - Merges all checksums into one `checksums.txt` and uploads with the release.
+- Regenerates `registry-v2.json` from `registry.json` plus GitHub release assets and commits it back to `main` if changed.
+
+### Schema v2 maintenance rules
+
+- Do not edit `registry-v2.json` by hand. Edit `registry.json` and plugin source versions, publish the release, then run or let CI run `scripts/generate-registry-v2.py`.
+- Every plugin listed in `registry.json` must have a release matching its own `version` field, with all six standard platform zips.
+- A plugin can stay on an older version while another plugin advances. The v2 registry will keep the unchanged plugin pinned to its older artifact URLs.
+- For v1 compatibility, be aware that CPA still uses the repository latest release. If supporting old CPA builds is required, either keep latest releases complete for all plugins or direct old users to a release that contains the plugin they need.
 
 
 ### Adding a new plugin (first time)
 
 1. Add `plugins/<plugin-id>/` with `go/go.mod` and source.
-2. Add a `registry.json` entry (`repository` = this store repo).
-3. Follow the **Release checklist** above with a standard semver tag.
+2. Add a `registry.json` entry (`repository` = this store repo for v1 compatibility; `version` = the plugin's own current version).
+3. Publish a standard semver tag matching that plugin version.
+4. Confirm `registry-v2.json` has a direct `install.artifacts` block for the new plugin after CI refreshes it.
 
 ### Zip / checksums examples
 

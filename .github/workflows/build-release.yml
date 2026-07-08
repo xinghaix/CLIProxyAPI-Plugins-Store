@@ -222,3 +222,31 @@ jobs:
           files: |
             artifacts/**/*.zip
             checksums.txt
+
+  update-v2-registry:
+    name: Refresh schema v2 direct registry
+    runs-on: ubuntu-latest
+    needs: [release]
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Generate registry-v2.json from released assets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          scripts/generate-registry-v2.py
+
+      - name: Commit registry-v2.json if changed
+        run: |
+          if git diff --quiet -- registry-v2.json; then
+            echo "registry-v2.json already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add registry-v2.json
+          git commit -m "chore: refresh schema v2 direct registry"
+          git push origin main
