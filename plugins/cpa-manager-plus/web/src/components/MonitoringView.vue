@@ -64,7 +64,7 @@
     </div>
 
     <section v-if="error" class="notice error">{{ error }}</section>
-    <section v-if="!ready" class="notice">缺少 CPA management key，无法访问插件代理。</section>
+    <section v-if="!ready" class="notice">缺少 CPA management key，无法访问插件 API。</section>
 
     <MetricGrid :cards="summaryCards"/>
 

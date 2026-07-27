@@ -23,8 +23,8 @@
       <details class="inspection-info-note">
         <summary>服务端巡检说明</summary>
         <ul class="inspection-info-list">
-          <li><strong>后台 Worker</strong>：定时任务由 Manager Server 执行，无需保持本页打开。</li>
-          <li><strong>时间基准</strong>：定时时间点以 Manager Server 所在时区为准（可在配置中指定）。</li>
+          <li><strong>后台 Worker</strong>：定时任务由插件本地 Runtime 执行，无需保持本页打开。</li>
+          <li><strong>时间基准</strong>：定时时间点以本地 Runtime / 主机时区为准（可在配置中指定）。</li>
           <li><strong>自动刷新</strong>：启用定时或存在运行中批次时，每 30 秒静默刷新列表。</li>
         </ul>
       </details>
@@ -54,7 +54,7 @@
     </div>
 
     <section v-if="error" class="notice error">{{ error }}</section>
-    <section v-if="!ready" class="notice">缺少 CPA management key，无法访问插件代理。</section>
+    <section v-if="!ready" class="notice">缺少 CPA management key，无法访问插件 API。</section>
 
     <div class="inspection-detail-grid">
       <DataCard title="巡检历史" subtitle="选择批次查看结果与日志">
@@ -232,7 +232,7 @@
         <div class="drawer-head">
           <div>
             <h2 id="inspection-config-title">服务端巡检配置</h2>
-            <p class="muted small-text">保存后由 Manager Server 应用，影响定时任务与默认探测参数。</p>
+            <p class="muted small-text">保存后由本地 Runtime 应用，影响定时任务与默认探测参数。</p>
           </div>
           <button type="button" class="btn" @click="closeConfigDrawer">关闭</button>
         </div>
@@ -635,7 +635,7 @@ async function selectRun(id) {
 async function confirmRunNow() {
   const ok = await showConfirm({
     title: '立即巡检',
-    message: '将立即在 Manager Server 上启动一次 Codex 账号巡检，是否继续？',
+    message: '将立即在本地 Runtime 上启动一次 Codex 账号巡检，是否继续？',
     confirmLabel: '开始巡检',
   });
   if (!ok) return;

@@ -62,6 +62,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import DataCard from './DataCard.vue';
+import { accountActionPath } from '../utils/data.js';
 
 const props = defineProps({
   ready: { type: Boolean, default: false },
@@ -116,13 +117,10 @@ async function act(id, action){
   busy.value = true;
   actingId.value = id;
   try{
-    const paths = {
-      enable: `/v0/management/account-action-candidates/${encodeURIComponent(id)}/enable`,
-      ignore: `/v0/management/account-action-candidates/${encodeURIComponent(id)}/ignore`,
-      resolve: `/v0/management/account-action-candidates/${encodeURIComponent(id)}/resolve`,
-      delete: `/v0/management/account-action-candidates/${encodeURIComponent(id)}`,
-    };
-    await props.proxyCall({method: action === 'delete' ? 'DELETE' : 'POST', path: paths[action]});
+    await props.proxyCall({
+      method: action === 'delete' ? 'DELETE' : 'POST',
+      path: accountActionPath(id, action),
+    });
     await loadCandidates();
   }catch(e){
     error.value = e.message || String(e);

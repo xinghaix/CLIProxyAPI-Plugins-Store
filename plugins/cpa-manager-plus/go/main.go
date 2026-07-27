@@ -3,165 +3,95 @@ package main
 /*
 #include <stdint.h>
 #include <stdlib.h>
-
-typedef struct {
-	void* ptr;
-	size_t len;
-} cliproxy_buffer;
-
+typedef struct { void* ptr; size_t len; } cliproxy_buffer;
 typedef int (*cliproxy_host_call_fn)(void*, const char*, const uint8_t*, size_t, cliproxy_buffer*);
 typedef void (*cliproxy_host_free_fn)(void*, size_t);
-
-typedef struct {
-	uint32_t abi_version;
-	void* host_ctx;
-	cliproxy_host_call_fn call;
-	cliproxy_host_free_fn free_buffer;
-} cliproxy_host_api;
-
+typedef struct { uint32_t abi_version; void* host_ctx; cliproxy_host_call_fn call; cliproxy_host_free_fn free_buffer; } cliproxy_host_api;
 typedef int (*cliproxy_plugin_call_fn)(char*, uint8_t*, size_t, cliproxy_buffer*);
 typedef void (*cliproxy_plugin_free_fn)(void*, size_t);
 typedef void (*cliproxy_plugin_shutdown_fn)(void);
-
-typedef struct {
-	uint32_t abi_version;
-	cliproxy_plugin_call_fn call;
-	cliproxy_plugin_free_fn free_buffer;
-	cliproxy_plugin_shutdown_fn shutdown;
-} cliproxy_plugin_api;
-
+typedef struct { uint32_t abi_version; cliproxy_plugin_call_fn call; cliproxy_plugin_free_fn free_buffer; cliproxy_plugin_shutdown_fn shutdown; } cliproxy_plugin_api;
+static const cliproxy_host_api* stored_host;
+static void store_host_api(const cliproxy_host_api* host) { stored_host = host; }
+static int call_host_api(const char* method, const uint8_t* request, size_t request_len, cliproxy_buffer* response) {
+	if (stored_host == NULL || stored_host->call == NULL) return 1;
+	return stored_host->call(stored_host->host_ctx, method, request, request_len, response);
+}
+static void free_host_buffer(void* ptr, size_t len) { if (stored_host != NULL && stored_host->free_buffer != NULL && ptr != NULL) stored_host->free_buffer(ptr, len); }
 extern int cliproxyPluginCall(char*, uint8_t*, size_t, cliproxy_buffer*);
 extern void cliproxyPluginFree(void*, size_t);
 extern void cliproxyPluginShutdown(void);
-
-static const cliproxy_host_api* stored_host;
-
-static void store_host_api(const cliproxy_host_api* host) {
-	stored_host = host;
-}
-
-static int call_host_api(const char* method, const uint8_t* request, size_t request_len, cliproxy_buffer* response) {
-	if (stored_host == NULL || stored_host->call == NULL) {
-		return 1;
-	}
-	return stored_host->call(stored_host->host_ctx, method, request, request_len, response);
-}
-
-static void free_host_buffer(void* ptr, size_t len) {
-	if (stored_host != NULL && stored_host->free_buffer != NULL && ptr != NULL) {
-		stored_host->free_buffer(ptr, len);
-	}
-}
 */
 import "C"
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"net/url"
 	"path"
 	"strings"
-	"sync/atomic"
-	"time"
+	"sync"
 	"unsafe"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
-	"gopkg.in/yaml.v3"
+	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/api"
+	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/app"
 )
 
 const (
-	defaultManagerBaseURL   = "http://127.0.0.1:18317"
+	pluginVersion           = "0.4.0"
 	managementHealthPathRel = "/cpa-manager-plus/health"
-	managementProxyPathRel  = "/cpa-manager-plus/proxy"
+	managementAPIPathRel    = "/cpa-manager-plus/api"
 	managementHealthPathAbs = "/v0/management/cpa-manager-plus/health"
-	managementProxyPathAbs  = "/v0/management/cpa-manager-plus/proxy"
+	managementAPIPathAbs    = "/v0/management/cpa-manager-plus/api"
 	resourceAppPath         = "/v0/resource/plugins/cpa-manager-plus/app"
 	contentTypeJSON         = "application/json; charset=utf-8"
 	contentTypeHTML         = "text/html; charset=utf-8"
-	maxProxyBodyBytes       = 8 << 20
 )
-
-var pluginVersion = "0.3.8"
-
-var activeConfig atomic.Value
-
-func init() {
-	activeConfig.Store(defaultPluginConfig())
-}
-
-func main() {}
 
 type envelope struct {
 	OK     bool            `json:"ok"`
 	Result json.RawMessage `json:"result,omitempty"`
 	Error  *envelopeError  `json:"error,omitempty"`
 }
-
 type envelopeError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
-
 type lifecycleRequest struct {
 	ConfigYAML []byte `json:"config_yaml"`
 }
-
-type pluginConfig struct {
-	ManagerBaseURL string `yaml:"manager_base_url"`
-	ManagementKey  string `yaml:"management_key"`
-	AdminKey       string `yaml:"admin_key"` // deprecated: use management_key
-	ProxyURL       string `yaml:"proxy_url"`
-}
-
 type registration struct {
 	SchemaVersion uint32                   `json:"schema_version"`
 	Metadata      pluginapi.Metadata       `json:"metadata"`
 	Capabilities  registrationCapabilities `json:"capabilities"`
 }
-
 type registrationCapabilities struct {
 	ManagementAPI bool `json:"management_api"`
+	UsagePlugin   bool `json:"usage_plugin"`
 }
-
 type managementRegistrationResponse struct {
 	Routes    []pluginapi.ManagementRoute `json:"routes,omitempty"`
 	Resources []pluginapi.ResourceRoute   `json:"resources,omitempty"`
 }
-
 type managementRequest struct {
 	pluginapi.ManagementRequest
 	HostCallbackID string `json:"host_callback_id,omitempty"`
 }
-
 type managementResponse struct {
 	StatusCode int         `json:"StatusCode"`
 	Headers    http.Header `json:"Headers"`
 	Body       []byte      `json:"Body"`
 }
 
-type proxyRequest struct {
-	Method string          `json:"method"`
-	Path   string          `json:"path"`
-	Query  string          `json:"query"`
-	Body   json.RawMessage `json:"body"`
+var runtimeState struct {
+	sync.Mutex
+	runtime *app.Runtime
 }
 
-type healthResponse struct {
-	OK             bool   `json:"ok"`
-	ManagerBaseURL string `json:"manager_base_url,omitempty"`
-	ManagerStatus  int    `json:"manager_status,omitempty"`
-	Error          string `json:"error,omitempty"`
-}
-
-type hostHTTPResult struct {
-	StatusCode int
-	Headers    map[string][]string
-	Body       []byte
-}
+func main() {}
 
 //export cliproxy_plugin_init
 func cliproxy_plugin_init(host *C.cliproxy_host_api, plugin *C.cliproxy_plugin_api) C.int {
@@ -186,48 +116,55 @@ func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t,
 		writeResponse(response, errorEnvelope("invalid_method", "method is required"))
 		return 1
 	}
-	var requestBytes []byte
+	var raw []byte
 	if request != nil && requestLen > 0 {
-		requestBytes = C.GoBytes(unsafe.Pointer(request), C.int(requestLen))
+		raw = C.GoBytes(unsafe.Pointer(request), C.int(requestLen))
 	}
-	raw, errHandle := handleMethod(C.GoString(method), requestBytes)
-	if errHandle != nil {
-		writeResponse(response, errorEnvelope("plugin_error", errHandle.Error()))
+	result, err := handleMethod(C.GoString(method), raw)
+	if err != nil {
+		writeResponse(response, errorEnvelope("plugin_error", err.Error()))
 		return 1
 	}
-	writeResponse(response, raw)
+	writeResponse(response, result)
 	return 0
 }
 
 //export cliproxyPluginFree
-func cliproxyPluginFree(ptr unsafe.Pointer, len C.size_t) {
+func cliproxyPluginFree(ptr unsafe.Pointer, _ C.size_t) {
 	if ptr != nil {
 		C.free(ptr)
 	}
 }
 
 //export cliproxyPluginShutdown
-func cliproxyPluginShutdown() {}
+func cliproxyPluginShutdown() {
+	runtimeState.Lock()
+	runtime := runtimeState.runtime
+	runtimeState.runtime = nil
+	runtimeState.Unlock()
+	if runtime != nil {
+		_ = runtime.Close()
+	}
+}
 
 func handleMethod(method string, request []byte) ([]byte, error) {
 	switch method {
 	case pluginabi.MethodPluginRegister, pluginabi.MethodPluginReconfigure:
-		if errConfigure := configure(request); errConfigure != nil {
-			return nil, errConfigure
+		if err := configure(request); err != nil {
+			return nil, err
 		}
 		return okEnvelope(pluginRegistration())
+	case pluginabi.MethodUsageHandle:
+		var record pluginapi.UsageRecord
+		if err := json.Unmarshal(request, &record); err != nil {
+			return nil, err
+		}
+		if runtime := currentRuntime(); runtime != nil {
+			runtime.HandleUsage(record)
+		}
+		return okEnvelope(map[string]any{})
 	case pluginabi.MethodManagementRegister:
-		return okEnvelope(managementRegistrationResponse{
-			Routes: []pluginapi.ManagementRoute{
-				{Method: http.MethodGet, Path: "/cpa-manager-plus/health"},
-				{Method: http.MethodPost, Path: "/cpa-manager-plus/proxy"},
-			},
-			Resources: []pluginapi.ResourceRoute{{
-				Path:        "/app",
-				Menu:        "CPA Manager Plus",
-				Description: "Manager Plus 仪表盘 / 监控 / 巡检（经插件反向代理 CPA Manager Server）",
-			}},
-		})
+		return okEnvelope(managementRegistration())
 	case pluginabi.MethodManagementHandle:
 		return handleManagement(request)
 	default:
@@ -236,477 +173,186 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 }
 
 func configure(raw []byte) error {
-	var req lifecycleRequest
+	var request lifecycleRequest
 	if len(raw) > 0 {
-		if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
-			return errUnmarshal
+		if err := json.Unmarshal(raw, &request); err != nil {
+			return err
 		}
 	}
-	cfg := defaultPluginConfig()
-	if len(req.ConfigYAML) > 0 {
-		var decoded pluginConfig
-		if errUnmarshal := yaml.Unmarshal(req.ConfigYAML, &decoded); errUnmarshal != nil {
-			return errUnmarshal
+	runtimeState.Lock()
+	defer runtimeState.Unlock()
+	if runtimeState.runtime == nil {
+		runtime, err := app.New(request.ConfigYAML)
+		if err != nil {
+			return err
 		}
-		cfg = mergeConfig(cfg, decoded)
+		runtime.SetAuthList(listHostAuth)
+		runtime.SetHTTPDo(hostHTTPDo)
+		runtimeState.runtime = runtime
+		return nil
 	}
-	activeConfig.Store(normalizeConfig(cfg))
-	return nil
+	return runtimeState.runtime.Reconfigure(request.ConfigYAML)
 }
 
-func defaultPluginConfig() pluginConfig {
-	return pluginConfig{ManagerBaseURL: defaultManagerBaseURL}
-}
-
-func mergeConfig(base, override pluginConfig) pluginConfig {
-	if strings.TrimSpace(override.ManagerBaseURL) != "" {
-		base.ManagerBaseURL = override.ManagerBaseURL
-	}
-	if strings.TrimSpace(override.ManagementKey) != "" {
-		base.ManagementKey = override.ManagementKey
-	}
-	if strings.TrimSpace(override.AdminKey) != "" && base.ManagementKey == "" {
-		base.ManagementKey = override.AdminKey
-	}
-	if strings.TrimSpace(override.ProxyURL) != "" {
-		base.ProxyURL = override.ProxyURL
-	}
-	return base
-}
-
-func normalizeConfig(cfg pluginConfig) pluginConfig {
-	cfg.ManagerBaseURL = strings.TrimRight(strings.TrimSpace(cfg.ManagerBaseURL), "/")
-	if cfg.ManagerBaseURL == "" {
-		cfg.ManagerBaseURL = defaultManagerBaseURL
-	}
-	cfg.ManagementKey = strings.TrimSpace(cfg.ManagementKey)
-	if cfg.ManagementKey == "" {
-		cfg.ManagementKey = strings.TrimSpace(cfg.AdminKey)
-	}
-	cfg.ProxyURL = strings.TrimSpace(cfg.ProxyURL)
-	cfg.AdminKey = ""
-	return cfg
-}
-
-func currentConfig() pluginConfig {
-	raw := activeConfig.Load()
-	if cfg, ok := raw.(pluginConfig); ok {
-		return cfg
-	}
-	return defaultPluginConfig()
+func currentRuntime() *app.Runtime {
+	runtimeState.Lock()
+	defer runtimeState.Unlock()
+	return runtimeState.runtime
 }
 
 func pluginRegistration() registration {
-	return registration{
-		SchemaVersion: pluginabi.SchemaVersion,
-		Metadata: pluginapi.Metadata{
-			Name:             "CPA Manager Plus",
-			Version:          pluginVersion,
-			Author:           "xinghaix",
-			GitHubRepository: "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
-			ConfigFields: []pluginapi.ConfigField{
-				{Name: "manager_base_url", Type: pluginapi.ConfigFieldTypeString, Description: "Manager Server base URL (default http://127.0.0.1:18317)"},
-				{Name: "management_key", Type: pluginapi.ConfigFieldTypeString, Description: "Manager Plus admin Bearer token for proxy to Manager Server (optional if Manager allows unauthenticated local access)"},
-				{Name: "proxy_url", Type: pluginapi.ConfigFieldTypeString, Description: "Optional proxy for Manager Server calls; empty, direct, or none bypasses CPA global proxy-url"},
-			},
-		},
-		Capabilities: registrationCapabilities{ManagementAPI: true},
-	}
+	return registration{SchemaVersion: pluginabi.SchemaVersion, Metadata: pluginapi.Metadata{Name: "CPA Manager Plus", Version: pluginVersion, Author: "xinghaix", GitHubRepository: "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store", ConfigFields: []pluginapi.ConfigField{
+		{Name: "data_dir", Type: pluginapi.ConfigFieldTypeString, Description: "本地 SQLite 数据目录；为空时使用 data/cpa-manager-plus"},
+		{Name: "queue_capacity", Type: pluginapi.ConfigFieldTypeInteger, Description: "异步用量写入队列容量（1-65536）"},
+		{Name: "batch_size", Type: pluginapi.ConfigFieldTypeInteger, Description: "SQLite 批量写入大小（1-1024）"},
+	}}, Capabilities: registrationCapabilities{ManagementAPI: true, UsagePlugin: true}}
+}
+
+func managementRegistration() managementRegistrationResponse {
+	return managementRegistrationResponse{Routes: []pluginapi.ManagementRoute{{Method: http.MethodGet, Path: managementHealthPathRel}, {Method: http.MethodPost, Path: managementAPIPathRel}}, Resources: []pluginapi.ResourceRoute{{Path: "/app", Menu: "CPA Manager Plus", Description: "本地 SQLite 用量监控、价格与账号巡检"}}}
 }
 
 func handleManagement(raw []byte) ([]byte, error) {
-	var req managementRequest
-	if len(raw) > 0 {
-		if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
-			return nil, errUnmarshal
-		}
+	var request managementRequest
+	if err := json.Unmarshal(raw, &request); err != nil {
+		return nil, err
 	}
-	path := strings.TrimRight(strings.TrimSpace(req.Path), "/")
-	if path == "" {
-		path = "/"
+	requestPath := strings.TrimRight(strings.TrimSpace(request.Path), "/")
+	if requestPath == "" {
+		requestPath = "/"
 	}
-	isHealth := path == managementHealthPathRel || path == managementHealthPathAbs
-	isProxy := path == managementProxyPathRel || path == managementProxyPathAbs
-
-	switch {
-	case strings.EqualFold(req.Method, http.MethodGet) && strings.HasPrefix(path, "/v0/resource/plugins/cpa-manager-plus"):
-		return okEnvelope(handleResource(path))
-	case strings.EqualFold(req.Method, http.MethodGet) && isHealth:
-		return okEnvelope(handleHealth(req.ManagementRequest))
-	case strings.EqualFold(req.Method, http.MethodPost) && isProxy:
-		return okEnvelope(handleProxy(req.ManagementRequest))
-	default:
-		return okEnvelope(jsonResponse(http.StatusNotFound, map[string]any{"error": "plugin route not found", "path": path}))
+	if strings.EqualFold(request.Method, http.MethodGet) && strings.HasPrefix(requestPath, "/v0/resource/plugins/cpa-manager-plus") {
+		return okEnvelope(handleResource(requestPath))
 	}
+	runtime := currentRuntime()
+	if runtime == nil {
+		return okEnvelope(jsonResponse(http.StatusServiceUnavailable, map[string]any{"error": "local runtime is not initialized"}))
+	}
+	if strings.EqualFold(request.Method, http.MethodGet) && (requestPath == managementHealthPathRel || requestPath == managementHealthPathAbs) {
+		return okEnvelope(jsonResponse(http.StatusOK, runtime.Health(context.Background())))
+	}
+	if strings.EqualFold(request.Method, http.MethodPost) && (requestPath == managementAPIPathRel || requestPath == managementAPIPathAbs) {
+		response := api.Handle(context.Background(), runtime, request.Body)
+		return okEnvelope(managementResponse{StatusCode: response.StatusCode, Headers: response.Headers, Body: response.Body})
+	}
+	return okEnvelope(jsonResponse(http.StatusNotFound, map[string]any{"error": "plugin route not found", "path": requestPath}))
 }
 
 func handleResource(requestPath string) managementResponse {
 	filePath, ok := resourceFileForPath(requestPath)
 	if !ok {
-		return jsonResponse(http.StatusNotFound, map[string]any{"error": "resource not found", "path": requestPath})
+		return jsonResponse(http.StatusNotFound, map[string]any{"error": "resource not found"})
 	}
-	body, errRead := embeddedWebFS.ReadFile(filePath)
-	if errRead != nil {
-		return jsonResponse(http.StatusNotFound, map[string]any{"error": "resource not found", "path": requestPath})
+	body, err := embeddedWebFS.ReadFile(filePath)
+	if err != nil {
+		return jsonResponse(http.StatusNotFound, map[string]any{"error": "resource not found"})
 	}
-	return managementResponse{
-		StatusCode: http.StatusOK,
-		Headers:    http.Header{"Content-Type": []string{contentTypeForResourceFile(filePath)}},
-		Body:       append([]byte(nil), body...),
-	}
+	return managementResponse{StatusCode: http.StatusOK, Headers: http.Header{"Content-Type": []string{contentTypeHTML}}, Body: append([]byte(nil), body...)}
 }
-
 func resourceFileForPath(requestPath string) (string, bool) {
 	cleaned := path.Clean("/" + strings.TrimSpace(requestPath))
-	if cleaned == resourceAppPath || cleaned == "/v0/resource/plugins/cpa-manager-plus/app/" {
-		return "web-dist/index.html", true
-	}
-	return "", false
+	return "web-dist/index.html", cleaned == resourceAppPath || cleaned == resourceAppPath+"/"
 }
-
-func contentTypeForResourceFile(filePath string) string {
-	return contentTypeHTML
-}
-
-func handleHealth(req pluginapi.ManagementRequest) managementResponse {
-	cfg := currentConfig()
-	status, _, _, err := proxyToManager(cfg, req, http.MethodGet, "/health", "", nil)
-	out := healthResponse{ManagerBaseURL: cfg.ManagerBaseURL, ManagerStatus: status}
+func jsonResponse(status int, payload any) managementResponse {
+	raw, err := json.Marshal(payload)
 	if err != nil {
-		out.Error = err.Error()
-		return jsonResponse(http.StatusBadGateway, out)
+		status = http.StatusInternalServerError
+		raw = []byte(`{"error":"marshal failed"}`)
 	}
-	out.OK = status >= 200 && status < 300
-	if !out.OK {
-		out.Error = fmt.Sprintf("manager health status %d", status)
-		return jsonResponse(http.StatusBadGateway, out)
-	}
-	return jsonResponse(http.StatusOK, out)
+	return managementResponse{StatusCode: status, Headers: http.Header{"Content-Type": []string{contentTypeJSON}}, Body: raw}
 }
-
-func handleProxy(req pluginapi.ManagementRequest) managementResponse {
-	if len(req.Body) > maxProxyBodyBytes {
-		return jsonResponse(http.StatusRequestEntityTooLarge, map[string]any{"error": "body too large"})
+func okEnvelope(result any) ([]byte, error) {
+	raw, err := json.Marshal(envelope{OK: true, Result: mustRaw(result)})
+	return raw, err
+}
+func mustRaw(value any) json.RawMessage {
+	if raw, ok := value.(json.RawMessage); ok {
+		return raw
 	}
-	var payload proxyRequest
-	if len(req.Body) > 0 {
-		if errUnmarshal := json.Unmarshal(req.Body, &payload); errUnmarshal != nil {
-			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
-		}
-	}
-	method := strings.ToUpper(strings.TrimSpace(payload.Method))
-	if method == "" {
-		method = http.MethodGet
-	}
-	path := strings.TrimSpace(payload.Path)
-	if path == "" || !strings.HasPrefix(path, "/") {
-		return jsonResponse(http.StatusBadRequest, map[string]any{"error": "path must start with /"})
-	}
-	var body []byte
-	if len(payload.Body) > 0 && string(payload.Body) != "null" {
-		body = append([]byte(nil), payload.Body...)
-	}
-	if errValidate := validateProxyTarget(method, path); errValidate != nil {
-		return jsonResponse(http.StatusForbidden, map[string]any{"error": errValidate.Error()})
-	}
-	cfg := currentConfig()
-	status, respHeaders, respBody, err := proxyToManager(cfg, req, method, path, payload.Query, body)
+	raw, _ := json.Marshal(value)
+	return raw
+}
+func errorEnvelope(code, message string) []byte {
+	raw, _ := json.Marshal(envelope{OK: false, Error: &envelopeError{Code: code, Message: message}})
+	return raw
+}
+func hostHTTPDo(method, target string, headers http.Header, body []byte) error {
+	raw, err := callHost(pluginabi.MethodHostHTTPDo, map[string]any{"method": method, "url": target, "headers": headers, "body": body})
 	if err != nil {
-		return jsonResponse(http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return err
 	}
-	return managementResponse{
-		StatusCode: status,
-		Headers:    respHeaders,
-		Body:       respBody,
+	var response struct {
+		StatusCode int    `json:"StatusCode"`
+		Body       []byte `json:"Body"`
 	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return fmt.Errorf("decode host.http.do: %w", err)
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("CPA action returned HTTP %d", response.StatusCode)
+	}
+	return nil
 }
 
-func proxyToManager(cfg pluginConfig, req pluginapi.ManagementRequest, method, path, query string, body []byte) (int, http.Header, []byte, error) {
-	if errValidate := validateProxyTarget(method, path); errValidate != nil {
-		return 0, nil, nil, errValidate
+func listHostAuth() ([]pluginapi.HostAuthFileEntry, error) {
+	raw, err := callHost(pluginabi.MethodHostAuthList, map[string]any{})
+	if err != nil {
+		return nil, err
 	}
-	target, errURL := buildManagerURL(cfg.ManagerBaseURL, path, query)
-	if errURL != nil {
-		return 0, nil, nil, errURL
+	var auths []pluginapi.HostAuthFileEntry
+	if err := json.Unmarshal(raw, &auths); err == nil {
+		return auths, nil
 	}
-	headers := http.Header{}
-	headers.Set("Accept", "application/json")
-	if auth := managerAuthorization(cfg, req); auth != "" {
-		headers.Set("Authorization", auth)
+	var wrapped struct {
+		Items []pluginapi.HostAuthFileEntry `json:"items"`
+		Auths []pluginapi.HostAuthFileEntry `json:"auths"`
 	}
-	if len(body) > 0 {
-		headers.Set("Content-Type", "application/json")
+	if err := json.Unmarshal(raw, &wrapped); err != nil {
+		return nil, err
 	}
-	resp, errDo := callConfiguredHTTP(cfg, method, target, headers, body)
-	if errDo != nil {
-		return 0, nil, nil, errDo
+	if len(wrapped.Items) > 0 {
+		return wrapped.Items, nil
 	}
-	return resp.StatusCode, proxyResponseHeaders(resp.Headers), resp.Body, nil
-}
-
-func validateProxyTarget(method, path string) error {
-	method = strings.ToUpper(strings.TrimSpace(method))
-	if _, ok := allowedProxyMethods[method]; !ok {
-		return fmt.Errorf("method %s is not allowed", method)
-	}
-	path = strings.TrimRight(strings.TrimSpace(path), "/")
-	if path == "" {
-		path = "/"
-	}
-	for _, rule := range allowedProxyPathRules {
-		if rule(path) {
-			return nil
-		}
-	}
-	return fmt.Errorf("manager path %s is not allowed", path)
-}
-
-var allowedProxyMethods = map[string]struct{}{
-	http.MethodGet:    {},
-	http.MethodPost:   {},
-	http.MethodPut:    {},
-	http.MethodPatch:  {},
-	http.MethodDelete: {},
-}
-
-var allowedProxyPathRules = []func(string) bool{
-	exactPath("/health"),
-	exactPath("/status"),
-	prefixPath("/usage-service/"),
-	exactPath("/v0/management/dashboard/summary"),
-	exactPath("/v0/management/usage"),
-	prefixPath("/v0/management/usage/"),
-	exactPath("/v0/management/model-prices"),
-	prefixPath("/v0/management/model-prices/"),
-	exactPath("/v0/management/api-key-aliases"),
-	prefixPath("/v0/management/api-key-aliases/"),
-	exactPath("/v0/management/monitoring/header-snapshots"),
-	exactPath("/v0/management/monitoring/analytics"),
-	exactPath("/v0/management/codex-inspection/run"),
-	exactPath("/v0/management/codex-inspection/runs"),
-	prefixPath("/v0/management/codex-inspection/runs/"),
-	exactPath("/v0/management/account-action-candidates"),
-	prefixPath("/v0/management/account-action-candidates/"),
-}
-
-func exactPath(want string) func(string) bool {
-	return func(path string) bool { return path == want }
-}
-
-func prefixPath(prefix string) func(string) bool {
-	return func(path string) bool { return strings.HasPrefix(path, prefix) }
-}
-
-func proxyResponseHeaders(upstream map[string][]string) http.Header {
-	headers := http.Header{}
-	for key, values := range upstream {
-		if strings.EqualFold(key, "Content-Type") {
-			for _, value := range values {
-				if strings.TrimSpace(value) != "" {
-					headers.Add("Content-Type", value)
-				}
-			}
-		}
-	}
-	if headers.Get("Content-Type") == "" {
-		headers.Set("Content-Type", contentTypeJSON)
-	}
-	return headers
-}
-
-func managerAuthorization(cfg pluginConfig, _ pluginapi.ManagementRequest) string {
-	key := strings.TrimSpace(cfg.ManagementKey)
-	if key == "" {
-		return ""
-	}
-	if !strings.HasPrefix(strings.ToLower(key), "bearer ") {
-		key = "Bearer " + key
-	}
-	return key
-}
-
-func buildManagerURL(base, path, query string) (string, error) {
-	base = strings.TrimRight(strings.TrimSpace(base), "/")
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	u, errParse := url.Parse(base + path)
-	if errParse != nil {
-		return "", errParse
-	}
-	if strings.TrimSpace(query) != "" {
-		q, errQ := url.ParseQuery(query)
-		if errQ != nil {
-			return "", fmt.Errorf("invalid query: %w", errQ)
-		}
-		u.RawQuery = q.Encode()
-	}
-	return u.String(), nil
-}
-
-func callHostHTTP(method, target string, headers http.Header, body []byte) (hostHTTPResult, error) {
-	h := map[string][]string(headers)
-	payload := map[string]any{
-		"method":  method,
-		"url":     target,
-		"headers": h,
-		"body":    body,
-	}
-	result, errCall := callHost(pluginabi.MethodHostHTTPDo, payload)
-	if errCall != nil {
-		return hostHTTPResult{}, errCall
-	}
-	var resp hostHTTPResult
-	if errUnmarshal := json.Unmarshal(result, &resp); errUnmarshal != nil {
-		return hostHTTPResult{}, fmt.Errorf("decode host.http.do: %w", errUnmarshal)
-	}
-	return resp, nil
-}
-
-func callConfiguredHTTP(cfg pluginConfig, method, target string, headers http.Header, body []byte) (hostHTTPResult, error) {
-	proxyURL := strings.TrimSpace(cfg.ProxyURL)
-	if proxyURL == "" || strings.EqualFold(proxyURL, "direct") || strings.EqualFold(proxyURL, "none") {
-		return callHTTPWithTransport(directTransport(), "direct", method, target, headers, body)
-	}
-	transport, errTransport := proxyTransport(proxyURL)
-	if errTransport != nil {
-		return hostHTTPResult{}, errTransport
-	}
-	return callHTTPWithTransport(transport, "proxied", method, target, headers, body)
-}
-
-func callHTTPWithTransport(transport http.RoundTripper, mode, method, target string, headers http.Header, body []byte) (hostHTTPResult, error) {
-	req, errNewRequest := http.NewRequest(method, target, bytes.NewReader(bytes.Clone(body)))
-	if errNewRequest != nil {
-		return hostHTTPResult{}, fmt.Errorf("create %s http request: %w", mode, errNewRequest)
-	}
-	req.Header = headers.Clone()
-	client := &http.Client{Timeout: 30 * time.Second, Transport: transport}
-	resp, errDo := client.Do(req)
-	if errDo != nil {
-		return hostHTTPResult{}, fmt.Errorf("execute %s http request: %w", mode, errDo)
-	}
-	defer resp.Body.Close()
-	bodyBytes, errRead := io.ReadAll(resp.Body)
-	if errRead != nil {
-		return hostHTTPResult{}, fmt.Errorf("read %s http response: %w", mode, errRead)
-	}
-	return hostHTTPResult{StatusCode: resp.StatusCode, Headers: map[string][]string(resp.Header), Body: bodyBytes}, nil
-}
-
-func directTransport() *http.Transport {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	return transport
-}
-
-func proxyTransport(proxyURL string) (*http.Transport, error) {
-	parsed, errParse := url.Parse(strings.TrimSpace(proxyURL))
-	if errParse != nil {
-		return nil, fmt.Errorf("parse proxy_url: %w", errParse)
-	}
-	if parsed.Scheme == "" || parsed.Host == "" {
-		return nil, fmt.Errorf("proxy_url missing scheme or host")
-	}
-	transport := directTransport()
-	switch parsed.Scheme {
-	case "http", "https":
-		transport.Proxy = http.ProxyURL(parsed)
-		return transport, nil
-	default:
-		return nil, fmt.Errorf("unsupported proxy_url scheme %s; use http, https, direct, or empty", parsed.Scheme)
-	}
+	return wrapped.Auths, nil
 }
 
 func callHost(method string, payload any) (json.RawMessage, error) {
-	rawPayload, errMarshal := json.Marshal(payload)
-	if errMarshal != nil {
-		return nil, errMarshal
+	rawPayload, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
 	}
 	cMethod := C.CString(method)
 	defer C.free(unsafe.Pointer(cMethod))
 	var response C.cliproxy_buffer
-	var requestPtr *C.uint8_t
+	var request *C.uint8_t
 	if len(rawPayload) > 0 {
-		cPayload := C.CBytes(rawPayload)
-		if cPayload == nil {
-			return nil, fmt.Errorf("allocate host callback payload %s", method)
+		allocated := C.CBytes(rawPayload)
+		if allocated == nil {
+			return nil, fmt.Errorf("allocate host callback request")
 		}
-		defer C.free(cPayload)
-		requestPtr = (*C.uint8_t)(cPayload)
+		defer C.free(allocated)
+		request = (*C.uint8_t)(allocated)
 	}
-	callCode := C.call_host_api(cMethod, requestPtr, C.size_t(len(rawPayload)), &response)
+	code := C.call_host_api(cMethod, request, C.size_t(len(rawPayload)), &response)
 	var rawResponse []byte
 	if response.ptr != nil && response.len > 0 {
 		rawResponse = C.GoBytes(response.ptr, C.int(response.len))
-	}
-	if response.ptr != nil {
 		C.free_host_buffer(response.ptr, response.len)
 	}
 	if len(rawResponse) == 0 {
-		return nil, fmt.Errorf("host callback %s returned no response, code=%d", method, int(callCode))
+		return nil, fmt.Errorf("host callback %s returned no response, code=%d", method, int(code))
 	}
-	var env envelope
-	if errUnmarshal := json.Unmarshal(rawResponse, &env); errUnmarshal != nil {
-		return nil, fmt.Errorf("decode host envelope %s: %w", method, errUnmarshal)
+	var result envelope
+	if err := json.Unmarshal(rawResponse, &result); err != nil {
+		return nil, err
 	}
-	if !env.OK {
-		if env.Error != nil {
-			return nil, fmt.Errorf("%s: %s", env.Error.Code, env.Error.Message)
+	if code != 0 || !result.OK {
+		if result.Error != nil {
+			return nil, fmt.Errorf("%s: %s", result.Error.Code, result.Error.Message)
 		}
 		return nil, fmt.Errorf("host callback %s failed", method)
 	}
-	if callCode != 0 {
-		return nil, fmt.Errorf("host callback %s code=%d", method, int(callCode))
-	}
-	return append(json.RawMessage(nil), env.Result...), nil
-}
-
-func htmlResponse(statusCode int, body []byte) managementResponse {
-	return managementResponse{
-		StatusCode: statusCode,
-		Headers:    http.Header{"Content-Type": []string{contentTypeHTML}},
-		Body:       body,
-	}
-}
-
-func jsonResponse(statusCode int, payload any) managementResponse {
-	raw, errMarshal := json.Marshal(payload)
-	if errMarshal != nil {
-		statusCode = http.StatusInternalServerError
-		raw = []byte(`{"error":"marshal failed"}`)
-	}
-	return managementResponse{
-		StatusCode: statusCode,
-		Headers:    http.Header{"Content-Type": []string{contentTypeJSON}},
-		Body:       raw,
-	}
-}
-
-func okEnvelope(result any) ([]byte, error) {
-	raw, errMarshal := json.Marshal(envelope{OK: true, Result: mustRaw(result)})
-	if errMarshal != nil {
-		return nil, errMarshal
-	}
-	return raw, nil
-}
-
-func mustRaw(v any) json.RawMessage {
-	switch t := v.(type) {
-	case json.RawMessage:
-		return t
-	case managementResponse:
-		raw, _ := json.Marshal(t)
-		return raw
-	default:
-		raw, _ := json.Marshal(v)
-		return raw
-	}
-}
-
-func errorEnvelope(code, message string) []byte {
-	raw, _ := json.Marshal(envelope{OK: false, Error: &envelopeError{Code: code, Message: message}})
-	return raw
+	return append(json.RawMessage(nil), result.Result...), nil
 }
 
 func writeResponse(response *C.cliproxy_buffer, data []byte) {
@@ -720,5 +366,3 @@ func writeResponse(response *C.cliproxy_buffer, data []byte) {
 	response.ptr = ptr
 	response.len = C.size_t(len(data))
 }
-
-var _ = bytes.Reader{}

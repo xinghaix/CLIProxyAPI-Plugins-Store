@@ -89,7 +89,7 @@
     </div>
 
     <!-- ====== Config summary ====== -->
-    <DataCard v-if="configSummary.length" title="CPA 配置摘要" subtitle="来自 Manager 快照">
+    <DataCard v-if="configSummary.length" title="CPA 配置摘要" subtitle="来自本地 Runtime 快照">
       <div class="config-summary-grid">
         <div v-for="item in configSummary" :key="item.label" class="config-summary-item">
           <span class="config-summary-label">{{ item.label }}</span>
