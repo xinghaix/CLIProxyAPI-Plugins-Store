@@ -40,8 +40,9 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/app"
 )
 
+var pluginVersion = "0.4.0"
+
 const (
-	pluginVersion           = "0.4.0"
 	managementHealthPathRel = "/cpa-manager-plus/health"
 	managementAPIPathRel    = "/cpa-manager-plus/api"
 	managementHealthPathAbs = "/v0/management/cpa-manager-plus/health"
