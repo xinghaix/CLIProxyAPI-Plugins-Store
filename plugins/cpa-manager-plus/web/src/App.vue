@@ -31,7 +31,7 @@
           <input v-model.trim="cpaKeyInput" type="password" autocomplete="off"
                  placeholder="CPA management key（当前会话临时保存）" @keyup.enter="saveCPAKey"/>
           <button class="btn primary" @click="saveCPAKey">保存并检测</button>
-          <button class="btn" @click="checkHealth" :disabled="loading">检测 Manager</button>
+          <button class="btn" @click="checkHealth" :disabled="loading">检测 Runtime</button>
           <button class="btn danger" @click="clearCPAKey">清除</button>
         </div>
         <div class="config-health-row">
@@ -39,7 +39,7 @@
         </div>
       </DataCard>
 
-      <DataCard title="CPA 连接配置" subtitle="Manager Server → CPA">
+      <DataCard title="CPA 连接配置" subtitle="本地 Runtime → CPA">
         <div class="config-form-grid">
           <label class="config-field">
             <span class="config-field-label">CPA Base URL</span>
@@ -62,8 +62,8 @@
             <small class="muted">{{ mgrHasBoundKey ? '已绑定密钥（留空不修改）' : '未绑定密钥' }}</small>
           </label>
         </div>
-        <p class="muted small-text" style="margin-top:8px">修改 CPA 连接可能导致 Manager Server 与 CPA
-          断开，请确认后保存。</p>
+        <p class="muted small-text" style="margin-top:8px">该密钥供插件本地 Runtime 调用 CPA management/auth
+          使用（加密保存在本地 SQLite）。修改后请确认仍可访问本机 CPA。</p>
       </DataCard>
 
       <DataCard title="请求监控配置" subtitle="Collector">
@@ -110,13 +110,13 @@
       </DataCard>
 
       <div class="config-save-block">
-        <p v-if="!mgrConfigLoaded && resolvedCPAKey" class="muted small-text">正在加载 Manager 配置…</p>
-        <p v-else-if="mgrConfigLoaded && !mgrDirty" class="muted small-text">当前与服务器配置一致，修改 CPA 连接或
+        <p v-if="!mgrConfigLoaded && resolvedCPAKey" class="muted small-text">正在加载插件配置…</p>
+        <p v-else-if="mgrConfigLoaded && !mgrDirty" class="muted small-text">当前与本地 Runtime 配置一致，修改 CPA 连接或
           Collector 后可保存。</p>
         <p v-if="configSaveMessage" class="notice config-save-ok">{{ configSaveMessage }}</p>
         <div class="config-actions-bar">
           <button class="btn primary" @click="saveManagerConfig" :disabled="mgrSaving || !mgrConfigLoaded || !mgrDirty">
-            {{ mgrSaving ? '保存中…' : '保存 Manager 配置' }}
+            {{ mgrSaving ? '保存中…' : '保存插件配置' }}
           </button>
           <button class="btn" @click="loadConfig" :disabled="mgrSaving || !resolvedCPAKey">重新加载</button>
         </div>
@@ -148,7 +148,7 @@ import DashboardView from './components/DashboardView.vue';
 import ModelPricesView from './components/ModelPricesView.vue';
 import AccountActionsView from './components/AccountActionsView.vue';
 import InspectionView from './components/InspectionView.vue';
-import {HEALTH, LEGACY_SESSION_KEY, PROXY, readCPAAuthStoreKey, SESSION_KEY} from './utils/data.js';
+import {formatHealthText, HEALTH, LEGACY_SESSION_KEY, PROXY, readCPAAuthStoreKey, SESSION_KEY} from './utils/data.js';
 import {initThemeBridge} from './themeBridge.js';
 
 initThemeBridge();
@@ -163,7 +163,7 @@ const tabs = [
 ];
 const activeTab = ref('dashboard');
 const loading = ref(false);
-const health = reactive({state: '', text: '未检测 Manager'});
+const health = reactive({state: '', text: '未检测 Runtime'});
 const cpaKeyInput = ref((sessionStorage.getItem(SESSION_KEY) || '').trim());
 const errors = reactive({});
 const configData = ref(null);
@@ -173,7 +173,7 @@ const modelPricesView = ref(null);
 const accountActionsView = ref(null);
 const inspectionView = ref(null);
 
-// Manager config state
+// Local runtime config state
 const mgrSaving = ref(false);
 const mgrCPABaseInput = ref('');
 const mgrCPAKeyInput = ref('');
@@ -254,14 +254,14 @@ function formatError(status, body) {
     const msg = body.error || body.message || body.msg || '';
     if (msg) {
       if (status === 401) return 'CPA 管理鉴权失败：' + code + msg;
-      if (status === 403) return '插件代理拒绝：' + code + msg;
+      if (status === 403) return '插件 API 拒绝：' + code + msg;
       if (status === 409) return '配置冲突：' + code + msg;
       return code + msg;
     }
   }
   if (typeof body === 'string' && body.trim()) return body.trim();
   if (status === 401) return 'CPA 管理鉴权失败：请登录管理台或在配置 Tab 输入 CPA remote-management.secret-key';
-  if (status === 403) return '插件代理拒绝：路径或方法不在允许范围内';
+  if (status === 403) return '插件 API 拒绝：路径或方法不在允许范围内';
   return 'HTTP ' + status;
 }
 
@@ -286,10 +286,10 @@ async function checkHealth() {
     const body = await readJSONResponse(res);
     if (res.ok && body && body.ok) {
       health.state = 'ok';
-      health.text = 'Manager 可达 · ' + (body.manager_base_url || '');
+      health.text = formatHealthText(body);
     } else {
       health.state = 'err';
-      health.text = formatError(res.status, body);
+      health.text = formatError(res.status, body) || formatHealthText(body);
     }
   } catch (e) {
     health.state = 'err';
@@ -378,10 +378,10 @@ async function saveManagerConfig() {
       codexInspection: c.codexInspection ?? c.codex_inspection ?? undefined,
       externalUsageService: {enabled: false, serviceBase: ''},
     };
-    // Manager Server 要求外层 {"config": ManagerConfig}，见 managerconfig/handler.go
+    // Local runtime expects outer {"config": ...} for /usage-service/config
     await proxyCall({method: 'PUT', path: '/usage-service/config', body: {config: nextConfig}});
     await loadConfig();
-    configSaveMessage.value = 'Manager 配置已保存并应用';
+    configSaveMessage.value = '插件配置已保存并应用';
     checkHealth();
   } catch (e) {
     errors.config = e.message || String(e);
@@ -403,7 +403,7 @@ function clearCPAKey() {
   sessionStorage.removeItem(SESSION_KEY);
   sessionStorage.removeItem(LEGACY_SESSION_KEY);
   health.state = '';
-  health.text = '未检测 Manager';
+  health.text = '未检测 Runtime';
 }
 
 function handleOpenMonitoring() {

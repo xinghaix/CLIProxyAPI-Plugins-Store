@@ -2,29 +2,29 @@
 
 中文 | [English](README.en.md)
 
-`cpa-manager-plus` 在 CPA 管理端提供一个侧栏菜单「CPA Manager Plus」。页面内用 Tabs 承载仪表盘、用量分析、请求监控、账号巡检、配置与健康检查，并通过插件服务端反向代理到 [CPA-Manager-Plus](https://github.com/seakee/CPA-Manager-Plus) Manager Server，默认地址为 `http://127.0.0.1:18317`。
+`cpa-manager-plus` 在 CPA 管理端提供一个侧栏菜单「CPA Manager Plus」。页面内用 Tabs 承载仪表盘、用量分析、请求监控、账号巡检、配置与健康检查。
+
+从 **0.4.0** 起，插件在 CPA 同进程内运行 **本地 Runtime**（SQLite + worker），**不再依赖外部 Manager Server / `:18317` 反向代理**。
 
 ## 当前架构决策
 
-本插件不代理、不 iframe、不整页嵌入 Plus 的 `management.html`。
-
-原因：Plus 是独立管理面产品，整页代理会把另一个控制台塞进 CPA 插件页，导致视觉、路由、登录态、布局与 CPA Management Center 割裂。
+本插件不代理、不 iframe、不整页嵌入旧 Plus 的 `management.html`，也不再把外部 Manager 当作运行前提。
 
 正确边界：
 
 1. 前端归插件所有
    - 插件资源页只提供 CPA 风格的单页应用。
-   - 当前迁移/重写需要的功能 Tab：概览、用量分析、请求监控、账号巡检、配置、健康。
-   - 页面样式使用 CPA Management Center CSS 变量，例如 `--bg-secondary`、`--bg-primary`、`--text-primary`、`--border-color`、`--primary-color`。
+   - 功能 Tab：概览、用量分析、请求监控、认证异常、账号巡检、配置、健康。
+   - 页面样式使用 CPA Management Center CSS 变量。
 
-2. 后端仍依赖 Manager Server
-   - SQLite、collector、历史用量、Codex 服务端巡检等长生命周期能力仍由 Manager Server 提供。
-   - 插件不内联这些后台模块。
+2. 后端能力内嵌在插件本地 Runtime
+   - SQLite、用量接入、rollup、Codex 巡检、认证异常等由插件同进程实现。
+   - 默认数据目录为开发友好的 CWD 相对路径；生产请显式配置 `data_dir`。
 
-3. 插件只反向代理必要 API
-   - 浏览器只访问 CPA 同源地址：`8317`。
-   - 插件服务端通过 `host.http.do` 请求 Manager Server：默认 `18317`。
-   - 代理只允许本插件 Tab 需要的 Manager API 路径，不作为通用 HTTP tunnel。
+3. 浏览器只访问 CPA 同源 management API
+   - 浏览器 → `POST /v0/management/cpa-manager-plus/api`（payload 形状与旧 proxy 相同）
+   - 浏览器 → `GET /v0/management/cpa-manager-plus/health`
+   - 插件在本地 router 分发到服务层；不再提供通用 HTTP tunnel。
 
 ## 架构
 
@@ -38,19 +38,16 @@ CPA Management Center
 Vue single-page plugin UI
     │
     ▼
-/v0/management/cpa-manager-plus/proxy
-    │
+/v0/management/cpa-manager-plus/api|health
+    │  management.handle
     ▼
-CPA plugin server handler
-    │ host.http.do
-    ▼
-CPA-Manager-Plus Manager Server
-    default: http://127.0.0.1:18317
+Plugin Local Runtime (in-process)
+    ├── API facade（保持旧 path 契约）
+    ├── Services / Workers
+    └── SQLite（本地 data_dir）
 ```
 
 ## 前端构建架构
-
-采用 `web/` + Vite + Vue SFC 的工程化构建，而不是在 `index.html` 里直接加载 runtime Vue CDN/global build：
 
 ```text
 plugins/cpa-manager-plus/
@@ -62,10 +59,11 @@ plugins/cpa-manager-plus/
 └── go/
     ├── embed.go
     ├── main.go
+    ├── internal/      # 本地 Runtime
     └── web-dist/      # Vite 构建产物，git ignore，由 make/CI 生成
 ```
 
-构建命令：
+构建：
 
 ```bash
 cd plugins/cpa-manager-plus
@@ -80,17 +78,15 @@ cd go && go mod tidy
 cd go && CGO_ENABLED=1 go build -buildmode=c-shared -o ../cpa-manager-plus-v<version>.dylib .
 ```
 
-Go 通过 `embed.FS` 打包编译后的 `go/web-dist`。不要把未构建的前端源码或 runtime CDN 页面直接交给 Go embed。
-
 ## URL 结构
 
 | 功能 | 路径 | 说明 |
 |------|------|------|
 | 插件页面 | `GET /v0/resource/plugins/cpa-manager-plus/app` | Resource route，无 CPA management middleware |
-| 健康检查 | `GET /v0/management/cpa-manager-plus/health` | CPA 管理鉴权 |
-| API 网关 | `POST /v0/management/cpa-manager-plus/proxy` | CPA 管理鉴权，代理到 Manager Server |
+| 健康检查 | `GET /v0/management/cpa-manager-plus/health` | CPA 管理鉴权；返回本地 Runtime 状态 |
+| API 网关 | `POST /v0/management/cpa-manager-plus/api` | CPA 管理鉴权；本地分发（payload 兼容旧 proxy） |
 
-代理请求体：
+API 请求体（内部仍由前端 `proxyCall` 发送）：
 
 ```json
 {
@@ -100,50 +96,56 @@ Go 通过 `embed.FS` 打包编译后的 `go/web-dist`。不要把未构建的前
 }
 ```
 
-`path` 是 Manager Server 上的路径。插件会做路径和方法白名单校验。
+`path` 是本地 Runtime 兼容的业务路径；插件会做路径和方法白名单校验。
 
-## 当前允许代理的 Manager API
+## 主要本地 API（白名单）
 
-- `/health`
-- `/usage-service/info`
+- `/health`、`/status`
 - `/usage-service/config`
-- `/usage-service/account-processing-policy`
-- `/usage-service/quota-cooldowns`
 - `/v0/management/dashboard/summary`
-- `/v0/management/usage`
 - `/v0/management/model-prices`
-- `/v0/management/api-key-aliases`
-- `/v0/management/monitoring/header-snapshots`
 - `/v0/management/monitoring/analytics`
-- `/v0/management/codex-inspection/run`
-- `/v0/management/codex-inspection/runs`
-- `/v0/management/codex-inspection/runs/{id}`
-- `/v0/management/codex-inspection/runs/{id}/actions`
+- `/v0/management/codex-inspection/run|runs|...`
+- `/v0/management/account-action-candidates` 及 `.../enable|ignore|resolve|auth-file`
 
 ## UI 结构
 
-| Tab | Vue loader | Manager Server endpoint |
-|-----|------------|-------------------------|
-| 仪表盘 | `loadDashboard` | `GET /v0/management/dashboard/summary` |
-| 用量分析 | `loadUsage` | `GET /v0/management/usage` |
-| 请求监控 | `loadMonitoring` | `GET /v0/management/monitoring/analytics` |
-| 账号巡检 | `loadInspection` | `GET /v0/management/codex-inspection/runs` |
-| 配置 | `loadConfig` | `GET /usage-service/config` |
-| 健康 | `checkHealth` | `GET /v0/management/cpa-manager-plus/health` |
+| Tab | 主要 endpoint |
+|-----|---------------|
+| 仪表盘 | `GET /v0/management/dashboard/summary` |
+| 请求监控 / 用量 | `POST /v0/management/monitoring/analytics` |
+| 模型单价 | `GET/PUT /v0/management/model-prices` |
+| 认证异常 | `GET/POST/DELETE .../account-action-candidates...` |
+| 账号巡检 | `GET/POST .../codex-inspection/...` |
+| 配置 | `GET/PUT /usage-service/config` |
+| 健康 | `GET /v0/management/cpa-manager-plus/health` |
 
 ## 配置：`plugins.configs.cpa-manager-plus`
 
 | 字段 | 说明 |
 |------|------|
-| `manager_base_url` | Manager Server 地址，默认 `http://127.0.0.1:18317` |
-| `management_key` | 可选。Plus Manager 的 admin Bearer，仅插件服务端访问 `18317` 时使用。本机无鉴权可省略。旧字段 `admin_key` 仍可读，等价于 `management_key` |
+| `enabled` | 是否启用插件 |
+| `data_dir` | 本地 SQLite / data.key 目录；生产强烈建议绝对路径 |
+| `db_filename` | 可选，默认 `manager.sqlite` |
+| `ingest_mode` | 可选：`usage_plugin`（默认）/ `queue` / `dual` |
+| `egress_proxy_url` | 可选，仅用于外部价格同步等出站请求 |
 
-CPA 管理密钥（`remote-management.secret-key`）不要写入插件配置。浏览器调用 `/v0/management/cpa-manager-plus/*` 时，需要 CPA 管理台登录态或本页临时输入；插件进程无法从 CPA 配置读取 secret-key。
+已废弃（读取时忽略）：`manager_base_url`、`management_key`（旧 Plus admin）、面向外部 Manager 的 `proxy_url`。
 
-`management_key` 与 CPA secret-key 是两个不同密钥：
+浏览器访问 `/v0/management/cpa-manager-plus/*` 仍需要 CPA `remote-management.secret-key`（管理台登录或配置 Tab 临时输入）。插件内 SQLite 还可保存「插件访问 CPA management/auth」的连接密钥，与浏览器密钥用途不同。
 
-- CPA secret-key：浏览器访问 CPA `/v0/management/*` 使用。
-- Plus `management_key`：插件服务端访问 Manager Server `18317` 使用。
+示例：
+
+```yaml
+plugins:
+  enabled: true
+  configs:
+    cpa-manager-plus:
+      enabled: true
+      priority: 10
+      data_dir: "/var/lib/cliproxyapi/plugins/cpa-manager-plus"
+      # ingest_mode: "usage_plugin"
+```
 
 ## 安装
 
@@ -181,51 +183,41 @@ curl -X POST http://localhost:8317/v0/management/plugin-store/cpa-manager-plus/i
   -H "Authorization: Bearer ***"
 ```
 
-启用并配置 Manager Server：
-
-```yaml
-plugins:
-  enabled: true
-  configs:
-    cpa-manager-plus:
-      enabled: true
-      priority: 10
-      manager_base_url: "http://127.0.0.1:18317"
-      # management_key: "optional-plus-manager-admin-key"
-```
-
 安装或升级后重启 CPA 进程，已加载的动态库不会热替换。
 
 ## 运行前提
 
 1. CPA 已启用插件。
-2. Manager Server 已启动并监听 `manager_base_url`。
+2. **不需要**外部 Manager Server / `:18317`。
 3. CPA 管理台已登录，或在插件页临时输入 CPA management key。
-4. 如果 Manager Server 启用了 admin key，在插件配置中设置 `management_key`。
+4. 生产环境建议显式配置 `data_dir`。
+5. 本地模式独占本机 CPA 用量流；勿与旧外部 Manager 同时消费同一 `usage-queue`。
 
 ## 验证标准
 
 ```bash
 cd plugins/cpa-manager-plus
 make build
-cd go
+cd web && npm test
+cd ../go
 go test ./...
 go vet ./...
-nm ../cpa-manager-plus-v0.3.8.dylib | grep cliproxy_plugin_init
+nm ../cpa-manager-plus-v0.4.0.dylib | grep cliproxy_plugin_init
 ```
 
 还应检查：
 
 - `go/web-dist/index.html` 引用 `./assets/app.js` 与 `./assets/app.css`。
-- 动态库 strings 中包含 `./assets/app.js`、`./assets/app.css` 和业务 API marker。
 - 导出符号包含 `cliproxy_plugin_init`、`cliproxyPluginCall`、`cliproxyPluginFree`。
+- 字符串扫描无 `127.0.0.1:18317` 硬依赖。
 - zip 中只包含对应平台动态库。
 
 ## 非目标
 
-- 不完整复刻 Plus 原 React 页全部复杂交互。
-- 不内联 Manager Server 后台。
+- 不完整复刻旧 Plus React 页全部复杂交互。
 - 不提供通用 HTTP tunnel。
+- 不把插件做成独立网络服务。
+- 不自动导入旧外部 Manager 历史库。
 
 ## License
 

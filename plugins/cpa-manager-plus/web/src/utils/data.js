@@ -1,9 +1,41 @@
 import { readManagementKeyFromMCStorage } from './mcAuthStorage.js';
 
-export const PROXY = '/v0/management/cpa-manager-plus/proxy';
+// API gateway path (formerly /proxy). proxyCall keeps the internal name and payload shape.
+export const PROXY = '/v0/management/cpa-manager-plus/api';
 export const HEALTH = '/v0/management/cpa-manager-plus/health';
 export const SESSION_KEY = 'cpa_manager_plus_mgmt_key';
 export const LEGACY_SESSION_KEY = 'cpa_mgmt_key';
+
+/** Build management path for account-action candidate operations. */
+export function accountActionPath(id, action) {
+  const base = `/v0/management/account-action-candidates/${encodeURIComponent(id)}`;
+  switch (action) {
+    case 'enable':
+    case 'ignore':
+    case 'resolve':
+      return `${base}/${action}`;
+    case 'delete':
+      return `${base}/auth-file`;
+    default:
+      throw new Error(`unknown account action: ${action}`);
+  }
+}
+
+/** Format local runtime health response for the config tab pill. */
+export function formatHealthText(body) {
+  if (!body || typeof body !== 'object') return '本地 Runtime 状态未知';
+  if (body.ok) {
+    const mode = body.mode || 'local';
+    const parts = [`本地 Runtime 正常 · ${mode}`];
+    if (body.data_dir) parts.push(String(body.data_dir));
+    else if (body.manager_base_url) parts.push(String(body.manager_base_url));
+    if (body.db_ok === false) parts.push('DB 异常');
+    return parts.join(' · ');
+  }
+  if (body.error) return String(body.error);
+  if (body.manager_base_url) return 'Runtime 异常 · ' + body.manager_base_url;
+  return '本地 Runtime 异常';
+}
 
 function readManagementKeyFromParentRuntime() {
   try {
