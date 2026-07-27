@@ -78,6 +78,46 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 			return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"ok": true})
+	case method == http.MethodGet && path == "/v0/management/model-prices/usage-summary":
+		models, err := runtime.Store().PriceSyncTargets(ctx)
+		if err != nil {
+			return errorResponse(err)
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"models": models})
+	case method == http.MethodPost && path == "/v0/management/model-prices/sync":
+		result, err := runtime.SyncPrices(ctx)
+		if err != nil {
+			if err.Error() == "price sync is already running" {
+				return jsonResponse(http.StatusConflict, map[string]any{"error": err.Error()})
+			}
+			return jsonResponse(http.StatusBadGateway, map[string]any{"error": err.Error()})
+		}
+		return jsonResponse(http.StatusOK, result)
+	case method == http.MethodGet && path == "/v0/management/model-prices/sync-settings":
+		return jsonResponse(http.StatusOK, runtime.PriceSyncSettings())
+	case method == http.MethodPut && path == "/v0/management/model-prices/sync-settings":
+		var settings app.PriceSyncSettings
+		if err := json.Unmarshal(request.Body, &settings); err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid sync settings"})
+		}
+		if err := runtime.UpdatePriceSyncSettings(ctx, settings); err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		}
+		return jsonResponse(http.StatusOK, runtime.PriceSyncSettings())
+	case method == http.MethodGet && path == "/v0/management/model-prices/sync-status":
+		return jsonResponse(http.StatusOK, runtime.PriceSyncStatus())
+	case method == http.MethodPost && path == "/v0/management/model-prices/sync-confirm":
+		var payload struct {
+			Model string      `json:"model"`
+			Price store.Price `json:"price"`
+		}
+		if err := json.Unmarshal(request.Body, &payload); err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid sync candidate"})
+		}
+		if err := runtime.ConfirmPriceSyncCandidate(ctx, payload.Model, payload.Price); err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"ok": true})
 	case method == http.MethodGet && path == "/usage-service/config":
 		cfg := runtime.Config()
 		baseURL, hasKey := runtime.Connection()

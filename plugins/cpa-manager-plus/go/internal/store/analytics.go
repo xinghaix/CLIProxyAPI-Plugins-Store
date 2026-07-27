@@ -17,6 +17,9 @@ type Price struct {
 	CacheRead     float64 `json:"cacheRead"`
 	CacheCreation float64 `json:"cacheCreation"`
 	Source        string  `json:"source,omitempty"`
+	SourceModelID string  `json:"sourceModelId,omitempty"`
+	SyncedAtMS    int64   `json:"syncedAtMs,omitempty"`
+	UpdatedAtMS   int64   `json:"updatedAtMs,omitempty"`
 }
 
 type AnalyticsRequest struct {
@@ -45,7 +48,7 @@ type eventRow struct {
 }
 
 func (s *Store) Prices(ctx context.Context) (map[string]Price, error) {
-	rows, err := s.db.QueryContext(ctx, `select model, prompt, completion, cache, cache_read, cache_creation, coalesce(source, '') from model_prices order by model`)
+	rows, err := s.db.QueryContext(ctx, `select model, prompt, completion, cache, cache_read, cache_creation, coalesce(source, ''), coalesce(source_model_id, ''), coalesce(synced_at_ms, 0), updated_at_ms from model_prices order by model`)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +57,7 @@ func (s *Store) Prices(ctx context.Context) (map[string]Price, error) {
 	for rows.Next() {
 		var model string
 		var price Price
-		if err := rows.Scan(&model, &price.Prompt, &price.Completion, &price.Cache, &price.CacheRead, &price.CacheCreation, &price.Source); err != nil {
+		if err := rows.Scan(&model, &price.Prompt, &price.Completion, &price.Cache, &price.CacheRead, &price.CacheCreation, &price.Source, &price.SourceModelID, &price.SyncedAtMS, &price.UpdatedAtMS); err != nil {
 			return nil, err
 		}
 		prices[model] = price
@@ -68,10 +71,7 @@ func (s *Store) ReplacePrices(ctx context.Context, prices map[string]Price) erro
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `delete from model_prices`); err != nil {
-		return err
-	}
-	stmt, err := tx.PrepareContext(ctx, `insert into model_prices(model,prompt,completion,cache,cache_read,cache_creation,source,updated_at_ms) values(?,?,?,?,?,?,?,?)`)
+	stmt, err := tx.PrepareContext(ctx, `insert into model_prices(model,prompt,completion,cache,cache_read,cache_creation,source,source_model_id,synced_at_ms,updated_at_ms) values(?,?,?,?,?,?,?,?,?,?) on conflict(model) do update set prompt=excluded.prompt,completion=excluded.completion,cache=excluded.cache,cache_read=excluded.cache_read,cache_creation=excluded.cache_creation,source=excluded.source,source_model_id=excluded.source_model_id,synced_at_ms=excluded.synced_at_ms,updated_at_ms=excluded.updated_at_ms`)
 	if err != nil {
 		return err
 	}
@@ -82,11 +82,22 @@ func (s *Store) ReplacePrices(ctx context.Context, prices map[string]Price) erro
 		if model == "" || len(model) > 256 || !finiteNonNegative(price.Prompt, price.Completion, price.Cache, price.CacheRead, price.CacheCreation) {
 			return fmt.Errorf("invalid model price %q", model)
 		}
-		if _, err := stmt.ExecContext(ctx, model, price.Prompt, price.Completion, price.Cache, price.CacheRead, price.CacheCreation, strings.TrimSpace(price.Source), now); err != nil {
+		price.Source = strings.TrimSpace(price.Source)
+		if price.Source == "" {
+			price.Source = "manual"
+		}
+		if _, err := stmt.ExecContext(ctx, model, price.Prompt, price.Completion, price.Cache, price.CacheRead, price.CacheCreation, price.Source, strings.TrimSpace(price.SourceModelID), nullableSyncedAt(price.SyncedAtMS), now); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+func nullableSyncedAt(value int64) any {
+	if value == 0 {
+		return nil
+	}
+	return value
 }
 
 func finiteNonNegative(values ...float64) bool {

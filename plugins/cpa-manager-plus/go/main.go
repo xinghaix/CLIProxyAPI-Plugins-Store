@@ -38,6 +38,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/api"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/app"
+	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 )
 
 var pluginVersion = "0.4.0"
@@ -277,22 +278,20 @@ func errorEnvelope(code, message string) []byte {
 	raw, _ := json.Marshal(envelope{OK: false, Error: &envelopeError{Code: code, Message: message}})
 	return raw
 }
-func hostHTTPDo(method, target string, headers http.Header, body []byte) error {
+func hostHTTPDo(_ context.Context, method, target string, headers http.Header, body []byte) (pricesync.HTTPResponse, error) {
 	raw, err := callHost(pluginabi.MethodHostHTTPDo, map[string]any{"method": method, "url": target, "headers": headers, "body": body})
 	if err != nil {
-		return err
+		return pricesync.HTTPResponse{}, err
 	}
 	var response struct {
-		StatusCode int    `json:"StatusCode"`
-		Body       []byte `json:"Body"`
+		StatusCode int         `json:"StatusCode"`
+		Headers    http.Header `json:"Headers"`
+		Body       []byte      `json:"Body"`
 	}
 	if err := json.Unmarshal(raw, &response); err != nil {
-		return fmt.Errorf("decode host.http.do: %w", err)
+		return pricesync.HTTPResponse{}, fmt.Errorf("decode host.http.do: %w", err)
 	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("CPA action returned HTTP %d", response.StatusCode)
-	}
-	return nil
+	return pricesync.HTTPResponse{StatusCode: response.StatusCode, Headers: response.Headers, Body: response.Body}, nil
 }
 
 func listHostAuth() ([]pluginapi.HostAuthFileEntry, error) {

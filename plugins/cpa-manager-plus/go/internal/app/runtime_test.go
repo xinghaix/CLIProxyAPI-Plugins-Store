@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/store"
 )
 
@@ -71,9 +72,9 @@ func TestRuntimeEncryptsConnectionAndCallsHostForEnable(t *testing.T) {
 		t.Fatalf("candidates=%#v err=%v", candidates, err)
 	}
 	called := false
-	runtime.SetHTTPDo(func(method, target string, headers http.Header, body []byte) error {
+	runtime.SetHTTPDo(func(_ context.Context, method, target string, headers http.Header, body []byte) (pricesync.HTTPResponse, error) {
 		called = method == http.MethodPatch && strings.Contains(target, "/v0/management/auth-files/status") && headers.Get("Authorization") == "Bearer secret"
-		return nil
+		return pricesync.HTTPResponse{StatusCode: http.StatusOK}, nil
 	})
 	if err := runtime.ExecuteCandidate(context.Background(), candidates[0].ID, "enable"); err != nil {
 		t.Fatal(err)
