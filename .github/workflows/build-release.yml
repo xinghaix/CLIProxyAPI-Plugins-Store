@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 env:
   GO_VERSION: "1.26"
@@ -33,6 +34,21 @@ jobs:
       matrix: ${{ steps.list.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag targets main history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          TAG_COMMIT="$(git rev-parse "${GITHUB_REF}^{commit}")"
+          if ! git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
+            echo "tag ${GITHUB_REF_NAME} does not target a commit in main history" >&2
+            exit 1
+          fi
+          echo "tag ${GITHUB_REF_NAME} targets main commit ${TAG_COMMIT}"
+
       - id: list
         shell: bash
         run: |
@@ -233,14 +249,31 @@ jobs:
         with:
           ref: main
 
+      - name: Prepare registry update branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          REGISTRY_BRANCH="automation/refresh-registry-v2-${GITHUB_REF_NAME}"
+          if git ls-remote --exit-code --heads origin "$REGISTRY_BRANCH" >/dev/null; then
+            git fetch origin "+refs/heads/${REGISTRY_BRANCH}:refs/remotes/origin/${REGISTRY_BRANCH}"
+            git switch --force-create "$REGISTRY_BRANCH" "origin/${REGISTRY_BRANCH}"
+          else
+            git switch -c "$REGISTRY_BRANCH"
+          fi
+          echo "REGISTRY_BRANCH=${REGISTRY_BRANCH}" >> "$GITHUB_ENV"
+
       - name: Generate registry-v2.json from released assets
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           scripts/generate-registry-v2.py
 
-      - name: Commit registry-v2.json if changed
+      - name: Commit registry-v2.json and create pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
+          set -euo pipefail
           if git diff --quiet -- registry-v2.json; then
             echo "registry-v2.json already up to date"
             exit 0
@@ -249,7 +282,18 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add registry-v2.json
           git commit -m "chore: refresh schema v2 direct registry"
-          git push origin main
+          git push origin "HEAD:${REGISTRY_BRANCH}"
+
+          PR_URL="$(gh pr list --base main --head "$REGISTRY_BRANCH" --state open --json url --jq '.[0].url')"
+          if [ -n "$PR_URL" ]; then
+            echo "registry update pull request already open: $PR_URL"
+            exit 0
+          fi
+          gh pr create \
+            --base main \
+            --head "$REGISTRY_BRANCH" \
+            --title "chore: refresh schema v2 direct registry" \
+            --body "Automated registry refresh for ${GITHUB_REF_NAME}. This PR requires the configured main-branch approval before merge."
 
   publish-cdn:
     name: Publish jsDelivr CDN branch
