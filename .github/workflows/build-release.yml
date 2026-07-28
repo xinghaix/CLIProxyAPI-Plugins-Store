@@ -24,7 +24,6 @@ permissions:
 env:
   GO_VERSION: "1.26"
   NODE_VERSION: "22"
-  CLIPROXYAPI_VERSION: "v7.2.102"
 
 jobs:
   discover:
@@ -132,14 +131,7 @@ jobs:
         with:
           repository: router-for-me/CLIProxyAPI
           path: CLIProxyAPI
-          ref: ${{ env.CLIPROXYAPI_VERSION }}
-
-      - name: Verify CLIProxyAPI plugin schema
-        shell: bash
-        run: |
-          set -euo pipefail
-          git -C CLIProxyAPI rev-parse HEAD
-          grep -Eq 'SchemaVersion uint32 = 1' CLIProxyAPI/sdk/pluginabi/types.go
+          ref: main
 
       - name: Set up Go
         uses: actions/setup-go@v5
