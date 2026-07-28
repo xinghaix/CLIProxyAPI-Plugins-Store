@@ -214,7 +214,7 @@ func (r *Runtime) Health(ctx context.Context) map[string]any {
 	result := map[string]any{
 		"ok":               countErr == nil && lastErr == nil && !r.closed.Load(),
 		"runtime":          "local",
-		"version":          "0.4.2",
+		"version":          "0.4.3",
 		"data_dir":         cfg.DataDir,
 		"started_at_ms":    r.started.UnixMilli(),
 		"event_count":      count,
