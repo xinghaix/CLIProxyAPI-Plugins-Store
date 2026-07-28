@@ -39,16 +39,16 @@
         </div>
       </DataCard>
 
-      <DataCard title="CPA 连接配置" subtitle="本地 Runtime → CPA">
+      <DataCard title="账号巡检操作授权" subtitle="仅用于启用、禁用或删除认证文件">
         <div class="config-form-grid">
           <label class="config-field">
-            <span class="config-field-label">CPA Base URL</span>
+            <span class="config-field-label">CPA 管理 API 地址</span>
             <input v-model.trim="mgrCPABaseInput" class="control" placeholder="http://127.0.0.1:8317"
                    :disabled="mgrSaving"/>
             <small class="muted">当前绑定: {{ mgrBoundCPABase || '未绑定' }}</small>
           </label>
           <label class="config-field">
-            <span class="config-field-label">CPA Management Key</span>
+            <span class="config-field-label">CPA 管理密钥</span>
             <div class="keybar">
               <input v-model.trim="mgrCPAKeyInput" :type="mgrCPAKeyVisible ? 'text' : 'password'"
                      autocomplete="new-password" placeholder="留空保持不变" :disabled="mgrSaving"/>
@@ -62,8 +62,8 @@
             <small class="muted">{{ mgrHasBoundKey ? '已绑定密钥（留空不修改）' : '未绑定密钥' }}</small>
           </label>
         </div>
-        <p class="muted small-text" style="margin-top:8px">该密钥供插件本地 Runtime 调用 CPA management/auth
-          使用（加密保存在本地 SQLite）。修改后请确认仍可访问本机 CPA。</p>
+        <p class="muted small-text" style="margin-top:8px">仅在账号巡检中执行启用、禁用或删除认证文件时使用（加密保存在本地 SQLite）。
+          本地请求监控、模型价格同步和账号巡检读取不依赖此配置。</p>
       </DataCard>
 
       <DataCard title="请求监控配置" subtitle="Collector">
@@ -72,7 +72,7 @@
             <span class="config-field-label">请求监控</span>
             <button :class="['toggle-switch', {on: mgrMonitoringEnabled}]"
                     @click="mgrMonitoringEnabled = !mgrMonitoringEnabled"
-                    :disabled="mgrSaving || !canConfigureMonitoring">
+                    :disabled="mgrSaving">
               <span class="toggle-knob"></span>
             </button>
             <small class="muted">{{ mgrMonitoringEnabled ? '已启用' : '已关闭' }}</small>
@@ -80,7 +80,7 @@
           <label class="config-field">
             <span class="config-field-label">Collector 模式</span>
             <select v-model="mgrCollectorMode" class="control"
-                    :disabled="mgrSaving || !mgrMonitoringEnabled || !canConfigureMonitoring">
+                    :disabled="mgrSaving || !mgrMonitoringEnabled">
               <option value="auto">自动</option>
               <option value="http">HTTP</option>
               <option value="resp">RESP</option>
@@ -90,28 +90,25 @@
           <label class="config-field">
             <span class="config-field-label">轮询间隔 (ms)</span>
             <input v-model.trim="mgrPollIntervalMs" type="number" min="1" class="control" placeholder="500"
-                   :disabled="mgrSaving || !mgrMonitoringEnabled || !canConfigureMonitoring"/>
+                   :disabled="mgrSaving || !mgrMonitoringEnabled"/>
             <small class="muted">须 ≤ CPA retention ({{ mgrRetentionSeconds }}s)</small>
           </label>
           <label class="config-field">
             <span class="config-field-label">批量大小</span>
             <input v-model.trim="mgrBatchSize" type="number" min="1" class="control" placeholder="100"
-                   :disabled="mgrSaving || !mgrMonitoringEnabled || !canConfigureMonitoring"/>
+                   :disabled="mgrSaving || !mgrMonitoringEnabled"/>
           </label>
           <label class="config-field">
             <span class="config-field-label">查询限制</span>
             <input v-model.trim="mgrQueryLimit" type="number" min="1" class="control" placeholder="50000"
-                   :disabled="mgrSaving || !mgrMonitoringEnabled || !canConfigureMonitoring"/>
+                   :disabled="mgrSaving || !mgrMonitoringEnabled"/>
           </label>
-        </div>
-        <div v-if="!canConfigureMonitoring" class="notice" style="margin-top:8px">需先填写 CPA Base URL 和 Management
-          Key 才能配置监控。
         </div>
       </DataCard>
 
       <div class="config-save-block">
         <p v-if="!mgrConfigLoaded && resolvedCPAKey" class="muted small-text">正在加载插件配置…</p>
-        <p v-else-if="mgrConfigLoaded && !mgrDirty" class="muted small-text">当前与本地 Runtime 配置一致，修改 CPA 连接或
+        <p v-else-if="mgrConfigLoaded && !mgrDirty" class="muted small-text">当前与本地 Runtime 配置一致，修改账号巡检操作授权或
           Collector 后可保存。</p>
         <p v-if="configSaveMessage" class="notice config-save-ok">{{ configSaveMessage }}</p>
         <div class="config-actions-bar">
@@ -197,7 +194,6 @@ const mgrConfigSourceLabel = computed(() => {
   if (mgrConfigSource.value === 'db') return '数据库';
   return '未配置';
 });
-const canConfigureMonitoring = computed(() => Boolean(mgrCPABaseInput.value.trim() && (mgrCPAKeyInput.value.trim() || mgrHasBoundKey.value)));
 const mgrDirty = computed(() => {
   if (!mgrConfigLoaded.value) return false;
   const c = mgrLoadedConfig.value || {};
@@ -331,7 +327,9 @@ async function loadConfig() {
   mgrConfigSource.value = resp?.source || '';
   mgrCPABaseInput.value = cfg.cpaConnection?.cpaBaseUrl || '';
   mgrBoundCPABase.value = cfg.cpaConnection?.cpaBaseUrl || '';
-  mgrHasBoundKey.value = Boolean(cfg.cpaConnection?.managementKey);
+  mgrHasBoundKey.value = Boolean(
+    cfg.cpaConnection?.hasManagementKey ?? cfg.cpaConnection?.managementKey,
+  );
   mgrCPAKeyInput.value = '';
   mgrCPAKeyVisible.value = false;
   mgrMonitoringEnabled.value = cfg.collector?.enabled !== false;
@@ -361,7 +359,10 @@ async function saveManagerConfig() {
     const cpaConnection = {};
     if (newBase !== (oldConn.cpaBaseUrl || '') || newMgmtKey) {
       cpaConnection.cpaBaseUrl = newBase;
-      cpaConnection.managementKey = newMgmtKey || oldConn.managementKey || '';
+      // Never echo redacted boolean/placeholder managementKey from GET.
+      if (newMgmtKey) {
+        cpaConnection.managementKey = newMgmtKey;
+      }
     }
     const nextConfig = {
       cpaConnection,
@@ -375,7 +376,6 @@ async function saveManagerConfig() {
         queryLimit: Number(mgrQueryLimit.value) || 50000,
         tlsSkipVerify: Boolean(c.collector?.tlsSkipVerify),
       },
-      codexInspection: c.codexInspection ?? c.codex_inspection ?? undefined,
       externalUsageService: {enabled: false, serviceBase: ''},
     };
     // Local runtime expects outer {"config": ...} for /usage-service/config

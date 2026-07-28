@@ -117,46 +117,57 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 		if err := runtime.ConfirmPriceSyncCandidate(ctx, payload.Model, payload.Price); err != nil {
 			return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		}
-		return jsonResponse(http.StatusOK, map[string]any{"ok": true})
+		return jsonResponse(http.StatusOK, map[string]any{"ok": true, "status": runtime.PriceSyncStatus()})
+	case method == http.MethodPost && path == "/v0/management/model-prices/sync-dismiss":
+		var payload struct {
+			Models []string `json:"models"`
+		}
+		if len(request.Body) > 0 {
+			if err := json.Unmarshal(request.Body, &payload); err != nil {
+				return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid dismiss payload"})
+			}
+		}
+		if err := runtime.DismissPriceSyncCandidates(ctx, payload.Models); err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"ok": true, "status": runtime.PriceSyncStatus()})
 	case method == http.MethodGet && path == "/usage-service/config":
 		cfg := runtime.Config()
 		baseURL, hasKey := runtime.Connection()
-		return jsonResponse(http.StatusOK, map[string]any{"source": "plugin", "config": map[string]any{"dataDir": cfg.DataDir, "cpaConnection": map[string]any{"cpaBaseUrl": baseURL, "hasManagementKey": hasKey, "managementKey": hasKey}, "collector": map[string]any{"enabled": cfg.Collector.Enabled, "queueCapacity": cfg.QueueCapacity, "batchSize": cfg.BatchSize}, "codexInspection": map[string]any{"enabled": cfg.Codex.Enabled, "scheduleMode": cfg.Codex.ScheduleMode, "intervalMinutes": cfg.Codex.IntervalMinutes, "autoActionMode": cfg.Codex.AutoActionMode}}})
+		inspection := runtime.CodexInspectionSettings()
+		return jsonResponse(http.StatusOK, map[string]any{
+			"source": "plugin",
+			"config": map[string]any{
+				"dataDir": cfg.DataDir,
+				"cpaConnection": map[string]any{
+					"cpaBaseUrl":       baseURL,
+					"hasManagementKey": hasKey,
+				},
+				"collector": map[string]any{
+					"enabled":       cfg.Collector.Enabled,
+					"queueCapacity": cfg.QueueCapacity,
+					"batchSize":     cfg.BatchSize,
+				},
+				"codexInspection": inspection,
+			},
+		})
 	case method == http.MethodPut && path == "/usage-service/config":
-		var payload struct {
-			Config struct {
-				CPAConnection struct {
-					BaseURL       string `json:"cpaBaseUrl"`
-					ManagementKey string `json:"managementKey"`
-				} `json:"cpaConnection"`
-				Collector struct {
-					Enabled *bool `json:"enabled"`
-				} `json:"collector"`
-			} `json:"config"`
-			CPAConnection struct {
-				BaseURL       string `json:"cpaBaseUrl"`
-				ManagementKey string `json:"managementKey"`
-			} `json:"cpaConnection"`
-			Collector struct {
-				Enabled *bool `json:"enabled"`
-			} `json:"collector"`
-		}
-		if err := json.Unmarshal(request.Body, &payload); err != nil {
+		payload, err := parseUsageServiceConfigPut(request.Body)
+		if err != nil {
 			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid config"})
 		}
-		connection := payload.CPAConnection
-		if connection.BaseURL == "" && connection.ManagementKey == "" {
-			connection = payload.Config.CPAConnection
+		if payload.BaseURL != "" || payload.ManagementKey != "" {
+			if err := runtime.UpdateConnection(ctx, payload.BaseURL, payload.ManagementKey); err != nil {
+				return errorResponse(err)
+			}
 		}
-		if err := runtime.UpdateConnection(ctx, strings.TrimSpace(connection.BaseURL), strings.TrimSpace(connection.ManagementKey)); err != nil {
-			return errorResponse(err)
+		if payload.CollectorEnabled != nil {
+			runtime.UpdateCollector(*payload.CollectorEnabled)
 		}
-		enabled := payload.Collector.Enabled
-		if enabled == nil {
-			enabled = payload.Config.Collector.Enabled
-		}
-		if enabled != nil {
-			runtime.UpdateCollector(*enabled)
+		if payload.Codex != nil {
+			if err := runtime.UpdateCodexInspectionSettings(ctx, *payload.Codex); err != nil {
+				return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
+			}
 		}
 		return Handle(ctx, runtime, []byte(`{"method":"GET","path":"/usage-service/config"}`))
 	case method == http.MethodGet && path == "/v0/management/account-action-candidates":
@@ -254,6 +265,115 @@ func candidateAction(path string) (int64, string, bool) {
 		return id, action, true
 	}
 	return 0, "", false
+}
+
+type usageServiceConfigPut struct {
+	BaseURL          string
+	ManagementKey    string
+	CollectorEnabled *bool
+	Codex            *app.CodexInspectionSettings
+}
+
+func parseUsageServiceConfigPut(body json.RawMessage) (usageServiceConfigPut, error) {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(rawBody(body), &root); err != nil {
+		return usageServiceConfigPut{}, err
+	}
+	// Support both top-level and nested {"config": ...} envelopes.
+	sections := []map[string]json.RawMessage{root}
+	if nestedRaw, ok := root["config"]; ok {
+		var nested map[string]json.RawMessage
+		if err := json.Unmarshal(nestedRaw, &nested); err != nil {
+			return usageServiceConfigPut{}, err
+		}
+		sections = append([]map[string]json.RawMessage{nested}, sections...)
+	}
+
+	var out usageServiceConfigPut
+	for _, section := range sections {
+		if raw, ok := section["cpaConnection"]; ok && out.BaseURL == "" && out.ManagementKey == "" {
+			baseURL, managementKey, err := parseCPAConnection(raw)
+			if err != nil {
+				return usageServiceConfigPut{}, err
+			}
+			out.BaseURL = baseURL
+			out.ManagementKey = managementKey
+		}
+		if raw, ok := section["collector"]; ok && out.CollectorEnabled == nil {
+			var collector struct {
+				Enabled *bool `json:"enabled"`
+			}
+			if err := json.Unmarshal(raw, &collector); err != nil {
+				return usageServiceConfigPut{}, err
+			}
+			out.CollectorEnabled = collector.Enabled
+		}
+		if raw, ok := section["codexInspection"]; ok && out.Codex == nil {
+			settings, err := parseCodexInspectionSettings(raw)
+			if err != nil {
+				return usageServiceConfigPut{}, err
+			}
+			out.Codex = &settings
+		}
+	}
+	return out, nil
+}
+
+func parseCPAConnection(raw json.RawMessage) (string, string, error) {
+	var conn map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &conn); err != nil {
+		return "", "", err
+	}
+	baseURL := ""
+	if rawURL, ok := conn["cpaBaseUrl"]; ok {
+		if err := json.Unmarshal(rawURL, &baseURL); err != nil {
+			return "", "", err
+		}
+	}
+	// managementKey is write-only: only accept JSON strings. Boolean/null redaction
+	// placeholders from older GET responses are ignored so they never clear secrets.
+	managementKey := ""
+	if rawKey, ok := conn["managementKey"]; ok {
+		var asString string
+		if err := json.Unmarshal(rawKey, &asString); err == nil {
+			managementKey = strings.TrimSpace(asString)
+		}
+	}
+	return strings.TrimSpace(baseURL), managementKey, nil
+}
+
+func parseCodexInspectionSettings(raw json.RawMessage) (app.CodexInspectionSettings, error) {
+	var flat map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &flat); err != nil {
+		return app.CodexInspectionSettings{}, err
+	}
+
+	settings := app.CodexInspectionSettings{}
+	if _, hasSchedule := flat["schedule"]; !hasSchedule {
+		// A legacy payload carried only the four runtime fields. Seed all newer
+		// persisted/UI fields so it remains valid after upgrading the plugin.
+		settings = app.DefaultCodexInspectionSettings()
+	}
+	if err := json.Unmarshal(raw, &settings); err != nil {
+		return app.CodexInspectionSettings{}, err
+	}
+	// Accept legacy flat payloads (scheduleMode/intervalMinutes at top level).
+	if _, hasSchedule := flat["schedule"]; !hasSchedule {
+		var legacy struct {
+			ScheduleMode    string `json:"scheduleMode"`
+			IntervalMinutes int    `json:"intervalMinutes"`
+		}
+		if err := json.Unmarshal(raw, &legacy); err != nil {
+			return app.CodexInspectionSettings{}, err
+		}
+		if legacy.ScheduleMode != "" {
+			settings.Schedule.Mode = legacy.ScheduleMode
+		}
+		if legacy.IntervalMinutes > 0 {
+			settings.Schedule.IntervalMinutes = legacy.IntervalMinutes
+		}
+	}
+	return settings, nil
 }
 
 func rawBody(raw json.RawMessage) []byte {

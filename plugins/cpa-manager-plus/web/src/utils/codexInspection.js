@@ -86,20 +86,28 @@ export function formatSchedule(config) {
 export function resolveServerCodexConfig(raw) {
   const c = raw || {};
   const schedule = c.schedule || {};
+  // Accept nested schedule and legacy flat scheduleMode/intervalMinutes from older GET payloads.
+  const flatMode = c.scheduleMode === 'time_points' || c.scheduleMode === 'interval' ? c.scheduleMode : '';
   const mode =
     schedule.mode === 'time_points' || schedule.mode === 'interval'
       ? schedule.mode
-      : schedule.timePoints?.length
-        ? 'time_points'
-        : DEFAULT_SERVER_CONFIG.schedule.mode;
+      : flatMode ||
+        (schedule.timePoints?.length
+          ? 'time_points'
+          : DEFAULT_SERVER_CONFIG.schedule.mode);
+  const intervalMinutes =
+    schedule.intervalMinutes > 0
+      ? schedule.intervalMinutes
+      : c.intervalMinutes > 0
+        ? c.intervalMinutes
+        : DEFAULT_SERVER_CONFIG.schedule.intervalMinutes;
   return {
     ...DEFAULT_SERVER_CONFIG,
     ...c,
     enabled: Boolean(c.enabled),
     schedule: {
       mode,
-      intervalMinutes:
-        schedule.intervalMinutes > 0 ? schedule.intervalMinutes : DEFAULT_SERVER_CONFIG.schedule.intervalMinutes,
+      intervalMinutes,
       timePoints: schedule.timePoints || [],
       timeZone: typeof schedule.timeZone === 'string' ? schedule.timeZone : '',
     },

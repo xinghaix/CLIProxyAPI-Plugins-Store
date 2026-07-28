@@ -380,6 +380,7 @@ import {
   toDraft,
   validateInspectionConfigFields,
 } from '../utils/codexInspection.js';
+import { buildInspectionConfigSaveBody } from '../utils/inspectionConfigSave.js';
 
 const props = defineProps({
   ready: { type: Boolean, default: false },
@@ -742,9 +743,14 @@ async function saveConfig() {
   if (!managerConfig.value) return;
   saving.value = true;
   try {
-    const next = { ...managerConfig.value, codexInspection };
-    const resp = await props.proxyCall({ method: 'PUT', path: '/usage-service/config', body: next });
-    managerConfig.value = resp?.config || next;
+    // Only send writable inspection fields — never echo redacted connection metadata.
+    const body = buildInspectionConfigSaveBody(codexInspection);
+    const resp = await props.proxyCall({
+      method: 'PUT',
+      path: '/usage-service/config',
+      body,
+    });
+    managerConfig.value = resp?.config || { ...managerConfig.value, codexInspection };
     Object.assign(draft, toDraft(managerConfig.value?.codexInspection));
     configDrawerOpen.value = false;
   } catch (e) {
