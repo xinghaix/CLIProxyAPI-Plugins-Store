@@ -498,6 +498,25 @@ export function summarizeLastResult(result, syncModelCount = 0) {
   };
 }
 
+
+/**
+ * Drop candidates whose local model already has a saved price.
+ * Defends against stale LastResult after confirm/refresh races.
+ */
+export function filterCandidatesWithExistingPrices(candidates, prices) {
+  const map = prices || {};
+  return (candidates || []).filter((c) => {
+    const m = c?.localModel;
+    return Boolean(m) && !map[m];
+  });
+}
+
+/** Remove candidates for the given local model names. */
+export function removeCandidatesForModels(candidates, models) {
+  const set = new Set(models || []);
+  return (candidates || []).filter((c) => c?.localModel && !set.has(c.localModel));
+}
+
 /** Soft API call helper: returns {ok, data, error, missing}. */
 export async function softProxyCall(proxyCall, payload) {
   try {

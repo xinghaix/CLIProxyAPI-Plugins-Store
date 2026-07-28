@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
@@ -116,20 +117,146 @@ func (r *Runtime) SyncPrices(ctx context.Context) (pricesync.Result, error) {
 			result.Skipped += upsert.Skipped
 			result.ProtectedManual = upsert.ProtectedManual
 			result.Prices, _ = r.store.Prices(ctx)
+			// Drop fuzzy candidates for models that already have a local price
+			// (exact match just written, previously confirmed, or manual).
+			result.Candidates = filterCandidatesWithoutPrice(result.Candidates, result.Prices)
 		}
 	}
 	return r.finishPriceSync(ctx, result, err)
 }
 
 func (r *Runtime) ConfirmPriceSyncCandidate(ctx context.Context, model string, price store.Price) error {
+	model = strings.TrimSpace(model)
 	if model == "" || price.Source == "" || price.SourceModelID == "" {
 		return fmt.Errorf("model, source, and sourceModelId are required")
 	}
-	_, err := r.store.UpsertSyncedPrices(ctx, map[string]store.Price{model: price})
-	return err
+	if _, err := r.store.UpsertSyncedPrices(ctx, map[string]store.Price{model: price}); err != nil {
+		return err
+	}
+	prices, err := r.store.Prices(ctx)
+	if err != nil {
+		return err
+	}
+	return r.pruneResolvedPriceSyncCandidates(ctx, prices)
+}
+
+// DismissPriceSyncCandidates removes pending candidates from LastResult without writing prices.
+// Empty models clears all candidates.
+func (r *Runtime) DismissPriceSyncCandidates(ctx context.Context, models []string) error {
+	r.priceMu.Lock()
+	status := r.priceStatus
+	if status.LastResult == nil {
+		r.priceMu.Unlock()
+		return nil
+	}
+	result := *status.LastResult
+	if len(models) == 0 {
+		result.Candidates = []pricesync.CandidateGroup{}
+	} else {
+		drop := make(map[string]struct{}, len(models))
+		for _, m := range models {
+			if m = strings.TrimSpace(m); m != "" {
+				drop[m] = struct{}{}
+			}
+		}
+		result.Candidates = removeCandidateGroups(result.Candidates, drop)
+	}
+	status.LastResult = &result
+	r.priceStatus = status
+	r.priceMu.Unlock()
+	return r.persistPriceSyncStatus(ctx, status)
+}
+
+func (r *Runtime) pruneResolvedPriceSyncCandidates(ctx context.Context, prices map[string]store.Price) error {
+	r.priceMu.Lock()
+	status := r.priceStatus
+	if status.LastResult == nil {
+		r.priceMu.Unlock()
+		return nil
+	}
+	result := *status.LastResult
+	result.Candidates = filterResolvedCandidateGroups(result.Candidates, prices)
+	status.LastResult = &result
+	r.priceStatus = status
+	r.priceMu.Unlock()
+	return r.persistPriceSyncStatus(ctx, status)
+}
+
+func (r *Runtime) persistPriceSyncStatus(ctx context.Context, status PriceSyncStatus) error {
+	raw, err := json.Marshal(status)
+	if err != nil {
+		return err
+	}
+	return r.store.PutSetting(ctx, priceSyncStatusKey, raw)
+}
+
+func removeCandidateGroups(groups []pricesync.CandidateGroup, drop map[string]struct{}) []pricesync.CandidateGroup {
+	if len(groups) == 0 || len(drop) == 0 {
+		if groups == nil {
+			return []pricesync.CandidateGroup{}
+		}
+		return groups
+	}
+	out := make([]pricesync.CandidateGroup, 0, len(groups))
+	for _, g := range groups {
+		if _, ok := drop[strings.TrimSpace(g.Model)]; ok {
+			continue
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
+func filterResolvedCandidateGroups(groups []pricesync.CandidateGroup, prices map[string]store.Price) []pricesync.CandidateGroup {
+	if len(groups) == 0 {
+		return []pricesync.CandidateGroup{}
+	}
+	out := make([]pricesync.CandidateGroup, 0, len(groups))
+	for _, group := range groups {
+		price, ok := prices[strings.TrimSpace(group.Model)]
+		if ok && candidateGroupMatchesPrice(group, price) {
+			continue
+		}
+		out = append(out, group)
+	}
+	return out
+}
+
+func candidateGroupMatchesPrice(group pricesync.CandidateGroup, price store.Price) bool {
+	for _, candidate := range group.Candidates {
+		if strings.EqualFold(strings.TrimSpace(candidate.Source), strings.TrimSpace(price.Source)) && strings.TrimSpace(candidate.SourceModelID) == strings.TrimSpace(price.SourceModelID) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterCandidatesWithoutPrice drops candidate groups for models that already have any local price.
+func filterCandidatesWithoutPrice(groups []pricesync.CandidateGroup, prices map[string]store.Price) []pricesync.CandidateGroup {
+	if len(groups) == 0 {
+		return []pricesync.CandidateGroup{}
+	}
+	if len(prices) == 0 {
+		return groups
+	}
+	out := make([]pricesync.CandidateGroup, 0, len(groups))
+	for _, g := range groups {
+		model := strings.TrimSpace(g.Model)
+		if model == "" {
+			continue
+		}
+		if _, ok := prices[model]; ok {
+			continue
+		}
+		out = append(out, g)
+	}
+	return out
 }
 
 func (r *Runtime) finishPriceSync(ctx context.Context, result pricesync.Result, runErr error) (pricesync.Result, error) {
+	if result.Candidates == nil {
+		result.Candidates = []pricesync.CandidateGroup{}
+	}
 	r.priceMu.Lock()
 	status := r.priceStatus
 	status.Running = false
@@ -143,8 +270,7 @@ func (r *Runtime) finishPriceSync(ctx context.Context, result pricesync.Result, 
 	}
 	r.priceStatus = status
 	r.priceMu.Unlock()
-	raw, _ := json.Marshal(status)
-	if err := r.store.PutSetting(ctx, priceSyncStatusKey, raw); err != nil && runErr == nil {
+	if err := r.persistPriceSyncStatus(ctx, status); err != nil && runErr == nil {
 		runErr = err
 	}
 	return result, runErr

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SYNC_SETTINGS,
   buildConfirmBody,
+  filterCandidatesWithExistingPrices,
+  removeCandidatesForModels,
   buildFilterCounts,
   buildManualPriceEntry,
   buildManualPutBody,
@@ -305,5 +307,28 @@ describe('formatters / builders', () => {
     expect(
       summarizeLastResult({ targetCount: 3, applied: 1, protectedSkipped: 0, unmatched: 0, candidateCount: 0 }),
     ).toMatchObject({ targetCount: 3, applied: 1 });
+  });
+});
+
+describe('filterCandidatesWithExistingPrices / removeCandidatesForModels', () => {
+  it('drops candidates that already have prices', () => {
+    const candidates = [
+      { localModel: 'm1', source: 'litellm' },
+      { localModel: 'm2', source: 'openrouter' },
+    ];
+    expect(filterCandidatesWithExistingPrices(candidates, { m1: { prompt: 1 } }).map((c) => c.localModel)).toEqual([
+      'm2',
+    ]);
+    expect(filterCandidatesWithExistingPrices(candidates, {})).toHaveLength(2);
+    expect(filterCandidatesWithExistingPrices(null, { m1: {} })).toEqual([]);
+  });
+
+  it('removes by model set', () => {
+    const candidates = [
+      { localModel: 'a' },
+      { localModel: 'b' },
+      { localModel: 'c' },
+    ];
+    expect(removeCandidatesForModels(candidates, ['b', 'c']).map((c) => c.localModel)).toEqual(['a']);
   });
 });

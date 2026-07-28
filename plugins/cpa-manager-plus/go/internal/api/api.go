@@ -117,7 +117,20 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 		if err := runtime.ConfirmPriceSyncCandidate(ctx, payload.Model, payload.Price); err != nil {
 			return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		}
-		return jsonResponse(http.StatusOK, map[string]any{"ok": true})
+		return jsonResponse(http.StatusOK, map[string]any{"ok": true, "status": runtime.PriceSyncStatus()})
+	case method == http.MethodPost && path == "/v0/management/model-prices/sync-dismiss":
+		var payload struct {
+			Models []string `json:"models"`
+		}
+		if len(request.Body) > 0 {
+			if err := json.Unmarshal(request.Body, &payload); err != nil {
+				return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid dismiss payload"})
+			}
+		}
+		if err := runtime.DismissPriceSyncCandidates(ctx, payload.Models); err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"ok": true, "status": runtime.PriceSyncStatus()})
 	case method == http.MethodGet && path == "/usage-service/config":
 		cfg := runtime.Config()
 		baseURL, hasKey := runtime.Connection()

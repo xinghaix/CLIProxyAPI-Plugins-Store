@@ -334,6 +334,7 @@ import {
   normalizeSyncStatus,
   softProxyCall,
   sourceBadgeClass,
+  filterCandidatesWithExistingPrices,
   summarizeLastResult,
   validateIntervalHours,
 } from '../utils/priceSync.js';
@@ -491,28 +492,40 @@ function applySettings(next) {
   settingsDraft.protectManual = normalized.protectManual;
 }
 
-function applyStatus(body) {
+function applyStatus(body, pricesMap = prices.value) {
   const normalized = normalizeSyncStatus(body);
   status.value = normalized;
   if (normalized.settings && (body?.settings || body?.Settings)) {
     applySettings(normalized.settings);
   }
   if (normalized.lastResult) {
-    lastResult.value = normalized.lastResult;
-    // Keep dismissed candidates if user cleared them and status poll returns same set?
-    // Prefer status as source of truth when loading/refreshing.
-    pendingCandidates.value = normalized.lastResult.candidates || [];
+    const filtered = filterCandidatesWithExistingPrices(
+      normalized.lastResult.candidates || [],
+      pricesMap,
+    );
+    lastResult.value = {
+      ...normalized.lastResult,
+      candidates: filtered,
+      candidateCount: filtered.length,
+    };
+    pendingCandidates.value = filtered;
     selectedCandidateKeys.value = new Set();
   }
   if (normalized.running) startPolling();
   else stopPolling();
 }
 
-function applySyncResult(body) {
+function applySyncResult(body, pricesMap = prices.value) {
   const result = normalizeSyncResult(body);
   if (!result) return;
-  lastResult.value = result;
-  pendingCandidates.value = result.candidates || [];
+  const filtered = filterCandidatesWithExistingPrices(result.candidates || [], pricesMap);
+  const next = {
+    ...result,
+    candidates: filtered,
+    candidateCount: filtered.length,
+  };
+  lastResult.value = next;
+  pendingCandidates.value = filtered;
   selectedCandidateKeys.value = new Set();
   status.value = {
     ...status.value,
@@ -520,7 +533,7 @@ function applySyncResult(body) {
     lastSyncAtMs: result.finishedAtMs || result.startedAtMs || Date.now(),
     lastSuccessAtMs: result.error ? status.value.lastSuccessAtMs : (result.finishedAtMs || Date.now()),
     lastError: result.error || '',
-    lastResult: result,
+    lastResult: next,
   };
 }
 
@@ -538,10 +551,13 @@ async function refresh(force = false) {
       softProxyCall(props.proxyCall, { method: 'GET', path: '/v0/management/model-prices/sync-settings' }),
     ]);
 
+    // Apply prices first so status candidate filtering sees current map.
+    let pricesMap = prices.value;
     if (!pricesRes.ok) {
       error.value = pricesRes.error || '加载模型单价失败';
     } else {
-      prices.value = extractPricesMap(pricesRes.data);
+      pricesMap = extractPricesMap(pricesRes.data);
+      prices.value = pricesMap;
     }
 
     if (usageRes.ok) {
@@ -558,7 +574,7 @@ async function refresh(force = false) {
 
     if (statusRes.ok) {
       syncApiAvailable.status = true;
-      applyStatus(statusRes.data);
+      applyStatus(statusRes.data, pricesMap);
     } else {
       syncApiAvailable.status = !statusRes.missing;
       if (!statusRes.missing) {
@@ -612,13 +628,17 @@ async function runSync() {
       return;
     }
     syncApiAvailable.sync = true;
-    applySyncResult(res.data);
-    // Refresh prices after successful/partial sync
+    // Refresh prices first so candidate filter sees exact matches just written.
     const pricesRes = await softProxyCall(props.proxyCall, {
       method: 'GET',
       path: '/v0/management/model-prices',
     });
-    if (pricesRes.ok) prices.value = extractPricesMap(pricesRes.data);
+    let pricesMap = prices.value;
+    if (pricesRes.ok) {
+      pricesMap = extractPricesMap(pricesRes.data);
+      prices.value = pricesMap;
+    }
+    applySyncResult(res.data, pricesMap);
 
     const applied = lastResult.value?.applied || 0;
     const cand = pendingCandidates.value.length;
@@ -798,7 +818,8 @@ function toggleSelectAllCandidates(ev) {
   }
 }
 
-function dismissCandidates() {
+async function dismissCandidates() {
+  const models = pendingCandidates.value.map((c) => c.localModel).filter(Boolean);
   pendingCandidates.value = [];
   selectedCandidateKeys.value = new Set();
   if (lastResult.value) {
@@ -807,6 +828,17 @@ function dismissCandidates() {
       candidates: [],
       candidateCount: 0,
     };
+  }
+  const res = await softProxyCall(props.proxyCall, {
+    method: 'POST',
+    path: '/v0/management/model-prices/sync-dismiss',
+    body: { models },
+  });
+  if (res.ok && res.data?.status) {
+    applyStatus(res.data.status, prices.value);
+  } else if (!res.ok && !res.missing) {
+    // Soft failure: local clear already applied; notice only.
+    syncNotice.value = syncNotice.value || `忽略候选未持久化：${res.error}`;
   }
 }
 
@@ -856,10 +888,16 @@ async function confirmCandidates(list) {
           syncedAtMs: Date.now(),
         },
       };
+      if (res.data?.status) {
+        applyStatus(res.data.status, prices.value);
+      }
     }
 
     const confirmedModels = new Set(list.map((c) => c.localModel));
-    pendingCandidates.value = pendingCandidates.value.filter((c) => !confirmedModels.has(c.localModel));
+    pendingCandidates.value = filterCandidatesWithExistingPrices(
+      pendingCandidates.value.filter((c) => !confirmedModels.has(c.localModel)),
+      prices.value,
+    );
     selectedCandidateKeys.value = new Set();
     if (lastResult.value) {
       lastResult.value = {
@@ -874,7 +912,28 @@ async function confirmCandidates(list) {
       method: 'GET',
       path: '/v0/management/model-prices',
     });
-    if (pricesRes.ok) prices.value = extractPricesMap(pricesRes.data);
+    let pricesMap = prices.value;
+    if (pricesRes.ok) {
+      pricesMap = extractPricesMap(pricesRes.data);
+      prices.value = pricesMap;
+    }
+
+    const statusRes = await softProxyCall(props.proxyCall, {
+      method: 'GET',
+      path: '/v0/management/model-prices/sync-status',
+    });
+    if (statusRes.ok) {
+      applyStatus(statusRes.data, pricesMap);
+    } else {
+      pendingCandidates.value = filterCandidatesWithExistingPrices(pendingCandidates.value, pricesMap);
+      if (lastResult.value) {
+        lastResult.value = {
+          ...lastResult.value,
+          candidates: pendingCandidates.value,
+          candidateCount: pendingCandidates.value.length,
+        };
+      }
+    }
   } finally {
     confirming.value = false;
   }
