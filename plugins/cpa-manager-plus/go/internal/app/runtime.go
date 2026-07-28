@@ -20,6 +20,7 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/config"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/datapath"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/ingest"
+	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/store"
 )
 
@@ -30,18 +31,23 @@ type connection struct {
 
 // Runtime owns all local resources that must stop before the plugin is unloaded.
 type Runtime struct {
-	mu         sync.Mutex
-	config     config.Config
-	store      *store.Store
-	writer     *ingest.Writer
-	cancel     context.CancelFunc
-	wait       sync.WaitGroup
-	closed     atomic.Bool
-	started    time.Time
-	masterKey  []byte
-	connection connection
-	authList   func() ([]pluginapi.HostAuthFileEntry, error)
-	httpDo     func(string, string, http.Header, []byte) error
+	mu            sync.Mutex
+	config        config.Config
+	store         *store.Store
+	writer        *ingest.Writer
+	cancel        context.CancelFunc
+	wait          sync.WaitGroup
+	closed        atomic.Bool
+	started       time.Time
+	masterKey     []byte
+	connection    connection
+	authList      func() ([]pluginapi.HostAuthFileEntry, error)
+	httpDo        func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)
+	syncMu        sync.Mutex
+	priceMu       sync.Mutex
+	priceSettings PriceSyncSettings
+	priceStatus   PriceSyncStatus
+	priceWake     chan struct{}
 }
 
 func New(rawConfig []byte) (*Runtime, error) {
@@ -58,14 +64,20 @@ func New(rawConfig []byte) (*Runtime, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	runtime := &Runtime{config: cfg, store: database, cancel: cancel, started: time.Now(), masterKey: masterKey}
+	runtime := &Runtime{config: cfg, store: database, cancel: cancel, started: time.Now(), masterKey: masterKey, priceWake: make(chan struct{}, 1)}
 	if err := runtime.loadConnection(context.Background()); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	if err := runtime.loadPriceSync(context.Background()); err != nil {
 		_ = database.Close()
 		return nil, err
 	}
 	runtime.writer = ingest.NewWriter(database, cfg.QueueCapacity, cfg.BatchSize)
 	runtime.wait.Add(1)
 	go func() { defer runtime.wait.Done(); runtime.writer.Run(ctx) }()
+	runtime.wait.Add(1)
+	go func() { defer runtime.wait.Done(); runtime.priceSyncLoop(ctx) }()
 	if cfg.Codex.Enabled {
 		runtime.wait.Add(1)
 		go func() { defer runtime.wait.Done(); runtime.scheduleInspections(ctx) }()
@@ -227,7 +239,7 @@ func (r *Runtime) SetAuthList(list func() ([]pluginapi.HostAuthFileEntry, error)
 	r.authList = list
 }
 
-func (r *Runtime) SetHTTPDo(do func(string, string, http.Header, []byte) error) {
+func (r *Runtime) SetHTTPDo(do func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.httpDo = do
@@ -270,8 +282,12 @@ func (r *Runtime) ExecuteCandidate(ctx context.Context, id int64, action string)
 	default:
 		return fmt.Errorf("unsupported candidate action")
 	}
-	if err := do(method, target, headers, body); err != nil {
+	response, err := do(ctx, method, target, headers, body)
+	if err != nil {
 		return err
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("CPA action returned HTTP %d", response.StatusCode)
 	}
 	return r.store.ResolveCandidate(ctx, id, action)
 }

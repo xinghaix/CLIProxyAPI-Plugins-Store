@@ -88,6 +88,8 @@ func (s *Store) migrate(ctx context.Context) error {
 			cache_read real not null default 0,
 			cache_creation real not null default 0,
 			source text,
+			source_model_id text,
+			synced_at_ms integer,
 			updated_at_ms integer not null
 		)`,
 		`create table if not exists account_action_candidates (
@@ -152,6 +154,40 @@ func (s *Store) migrate(ctx context.Context) error {
 			return fmt.Errorf("migrate sqlite: %w", err)
 		}
 	}
-	_, err := s.db.ExecContext(ctx, `insert or ignore into schema_migrations(version, applied_at_ms) values(1, ?)`, time.Now().UnixMilli())
+	if err := s.ensureModelPriceColumns(ctx); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `insert or ignore into schema_migrations(version, applied_at_ms) values(2, ?)`, time.Now().UnixMilli())
 	return err
+}
+
+func (s *Store) ensureModelPriceColumns(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `pragma table_info(model_prices)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	existing := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, column := range []struct{ name, definition string }{{"source_model_id", "text"}, {"synced_at_ms", "integer"}} {
+		if existing[column.name] {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, `alter table model_prices add column `+column.name+` `+column.definition); err != nil {
+			return err
+		}
+	}
+	return nil
 }
