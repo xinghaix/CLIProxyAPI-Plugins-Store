@@ -151,6 +151,8 @@ plugins:
 
 ### Recommended: CPA v7.2.46+ with CDN v2 registry
 
+> **CPA Manager Plus requires CPA v7.2.103+.** v7.2.46+ here only indicates registry-v2 installation support; earlier CPA versions cannot load this plugin.
+
 ```yaml
 plugins:
   enabled: true
