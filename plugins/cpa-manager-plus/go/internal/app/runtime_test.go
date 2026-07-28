@@ -120,3 +120,18 @@ func TestRuntimeRejectsDataDirectoryHotSwap(t *testing.T) {
 		t.Fatal("expected data_dir hot swap rejection")
 	}
 }
+
+func TestNextTimePointDelayUsesProvidedClock(t *testing.T) {
+	now := time.Date(2035, time.January, 2, 10, 15, 0, 0, time.UTC)
+	delay, key := nextTimePointDelay(CodexInspectionSchedule{
+		Mode:       "time_points",
+		TimePoints: []string{"09:00", "11:30"},
+		TimeZone:   "UTC",
+	}, now, "")
+	if delay != 75*time.Minute {
+		t.Fatalf("delay = %s, want 1h15m", delay)
+	}
+	if key != "2035-01-02T11:30:00Z" {
+		t.Fatalf("key = %q", key)
+	}
+}

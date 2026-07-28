@@ -327,7 +327,9 @@ async function loadConfig() {
   mgrConfigSource.value = resp?.source || '';
   mgrCPABaseInput.value = cfg.cpaConnection?.cpaBaseUrl || '';
   mgrBoundCPABase.value = cfg.cpaConnection?.cpaBaseUrl || '';
-  mgrHasBoundKey.value = Boolean(cfg.cpaConnection?.managementKey);
+  mgrHasBoundKey.value = Boolean(
+    cfg.cpaConnection?.hasManagementKey ?? cfg.cpaConnection?.managementKey,
+  );
   mgrCPAKeyInput.value = '';
   mgrCPAKeyVisible.value = false;
   mgrMonitoringEnabled.value = cfg.collector?.enabled !== false;
@@ -357,7 +359,10 @@ async function saveManagerConfig() {
     const cpaConnection = {};
     if (newBase !== (oldConn.cpaBaseUrl || '') || newMgmtKey) {
       cpaConnection.cpaBaseUrl = newBase;
-      cpaConnection.managementKey = newMgmtKey || oldConn.managementKey || '';
+      // Never echo redacted boolean/placeholder managementKey from GET.
+      if (newMgmtKey) {
+        cpaConnection.managementKey = newMgmtKey;
+      }
     }
     const nextConfig = {
       cpaConnection,
@@ -371,7 +376,6 @@ async function saveManagerConfig() {
         queryLimit: Number(mgrQueryLimit.value) || 50000,
         tlsSkipVerify: Boolean(c.collector?.tlsSkipVerify),
       },
-      codexInspection: c.codexInspection ?? c.codex_inspection ?? undefined,
       externalUsageService: {enabled: false, serviceBase: ''},
     };
     // Local runtime expects outer {"config": ...} for /usage-service/config

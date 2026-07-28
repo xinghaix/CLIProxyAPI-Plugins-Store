@@ -31,23 +31,26 @@ type connection struct {
 
 // Runtime owns all local resources that must stop before the plugin is unloaded.
 type Runtime struct {
-	mu            sync.Mutex
-	config        config.Config
-	store         *store.Store
-	writer        *ingest.Writer
-	cancel        context.CancelFunc
-	wait          sync.WaitGroup
-	closed        atomic.Bool
-	started       time.Time
-	masterKey     []byte
-	connection    connection
-	authList      func() ([]pluginapi.HostAuthFileEntry, error)
-	httpDo        func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)
-	syncMu        sync.Mutex
-	priceMu       sync.Mutex
-	priceSettings PriceSyncSettings
-	priceStatus   PriceSyncStatus
-	priceWake     chan struct{}
+	mu                 sync.Mutex
+	config             config.Config
+	store              *store.Store
+	writer             *ingest.Writer
+	cancel             context.CancelFunc
+	wait               sync.WaitGroup
+	closed             atomic.Bool
+	started            time.Time
+	masterKey          []byte
+	connection         connection
+	authList           func() ([]pluginapi.HostAuthFileEntry, error)
+	httpDo             func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)
+	syncMu             sync.Mutex
+	priceMu            sync.Mutex
+	priceSettings      PriceSyncSettings
+	priceStatus        PriceSyncStatus
+	priceWake          chan struct{}
+	inspectionMu       sync.Mutex
+	inspectionSettings CodexInspectionSettings
+	inspectionWake     chan struct{}
 }
 
 func New(rawConfig []byte) (*Runtime, error) {
@@ -64,7 +67,7 @@ func New(rawConfig []byte) (*Runtime, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	runtime := &Runtime{config: cfg, store: database, cancel: cancel, started: time.Now(), masterKey: masterKey, priceWake: make(chan struct{}, 1)}
+	runtime := &Runtime{config: cfg, store: database, cancel: cancel, started: time.Now(), masterKey: masterKey, priceWake: make(chan struct{}, 1), inspectionWake: make(chan struct{}, 1)}
 	if err := runtime.loadConnection(context.Background()); err != nil {
 		_ = database.Close()
 		return nil, err
@@ -73,15 +76,18 @@ func New(rawConfig []byte) (*Runtime, error) {
 		_ = database.Close()
 		return nil, err
 	}
+	if err := runtime.loadInspectionSettings(context.Background()); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	runtime.writer = ingest.NewWriter(database, cfg.QueueCapacity, cfg.BatchSize)
 	runtime.wait.Add(1)
 	go func() { defer runtime.wait.Done(); runtime.writer.Run(ctx) }()
 	runtime.wait.Add(1)
 	go func() { defer runtime.wait.Done(); runtime.priceSyncLoop(ctx) }()
-	if cfg.Codex.Enabled {
-		runtime.wait.Add(1)
-		go func() { defer runtime.wait.Done(); runtime.scheduleInspections(ctx) }()
-	}
+	// Always run the inspection scheduler loop so runtime config updates can enable it without restart.
+	runtime.wait.Add(1)
+	go func() { defer runtime.wait.Done(); runtime.scheduleInspections(ctx) }()
 	return runtime, nil
 }
 
@@ -91,14 +97,24 @@ func (r *Runtime) Reconfigure(rawConfig []byte) error {
 		return err
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if cfg.DataDir != r.config.DataDir {
+		r.mu.Unlock()
 		return fmt.Errorf("data_dir cannot change while the plugin is running; stop CPA, move the complete data directory, then restart")
 	}
 	if cfg.QueueCapacity != r.config.QueueCapacity || cfg.BatchSize != r.config.BatchSize {
+		r.mu.Unlock()
 		return fmt.Errorf("queue_capacity and batch_size require a restart")
 	}
+	// Keep SQLite-backed inspection settings authoritative over host YAML after first persist.
+	r.inspectionMu.Lock()
+	inspection := r.inspectionSettings
+	cfg.Codex.Enabled = inspection.Enabled
+	cfg.Codex.ScheduleMode = inspection.Schedule.Mode
+	cfg.Codex.IntervalMinutes = inspection.Schedule.IntervalMinutes
+	cfg.Codex.AutoActionMode = inspection.AutoActionMode
+	r.inspectionMu.Unlock()
 	r.config = cfg
+	r.mu.Unlock()
 	return nil
 }
 
@@ -322,26 +338,6 @@ func (r *Runtime) RunInspection(ctx context.Context) (map[string]any, error) {
 		return nil, err
 	}
 	return r.store.InspectionDetail(ctx, run.ID)
-}
-
-func (r *Runtime) scheduleInspections(ctx context.Context) {
-	for {
-		cfg := r.Config()
-		interval := time.Duration(cfg.Codex.IntervalMinutes) * time.Minute
-		if interval <= 0 {
-			interval = time.Hour
-		}
-		timer := time.NewTimer(interval)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return
-		case <-timer.C:
-			if cfg.Codex.Enabled {
-				_, _ = r.RunInspection(ctx)
-			}
-		}
-	}
 }
 
 func firstNonEmpty(values ...string) string {
