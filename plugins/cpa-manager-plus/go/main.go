@@ -41,7 +41,7 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 )
 
-var pluginVersion = "0.4.0"
+var pluginVersion = "0.4.1"
 
 const (
 	managementHealthPathRel = "/cpa-manager-plus/health"

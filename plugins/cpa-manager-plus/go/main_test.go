@@ -40,7 +40,7 @@ func TestPluginRegistrationExposesUsagePlugin(t *testing.T) {
 	if !registration.Capabilities.ManagementAPI || !registration.Capabilities.UsagePlugin {
 		t.Fatalf("capabilities = %#v", registration.Capabilities)
 	}
-	if registration.Metadata.Version != "0.4.0" {
+	if registration.Metadata.Version != "0.4.1" {
 		t.Fatalf("version = %s", registration.Metadata.Version)
 	}
 	for _, field := range registration.Metadata.ConfigFields {
