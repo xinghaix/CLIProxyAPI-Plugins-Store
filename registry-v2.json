@@ -69,7 +69,7 @@
       "name": "CPA Manager Plus",
       "description": "In-process local Runtime for Manager Plus dashboard, usage, monitoring, and inspection in CPA (local SQLite; no external Manager Server).",
       "author": "xinghaix",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
       "logo": "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/refs/heads/main/plugins/cpa-manager-plus/assets/logo.png",
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/cpa-manager-plus",
@@ -86,44 +86,44 @@
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.4.0/cpa-manager-plus_0.4.0_linux_amd64.zip",
-            "sha256": "827230d54ee52351a81dc8e6c2c314ba2db34cfe3ff9620cb396714a84a02bad",
-            "size": 7050116
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.4.1/cpa-manager-plus_0.4.1_linux_amd64.zip",
+            "sha256": "ee55cb35d59837dd302300f64a198b5b70353724142571bfad8be1dc28612872",
+            "size": 7104558
           },
           {
             "goos": "linux",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.4.0/cpa-manager-plus_0.4.0_linux_arm64.zip",
-            "sha256": "f40cdea123b182102df18d718a5f6b29baf2d79c3864ab4636e003e559ca7c2d",
-            "size": 6473552
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.4.1/cpa-manager-plus_0.4.1_linux_arm64.zip",
+            "sha256": "485864b9e9e7039dd57707f6707404e254f3e31b7e9b2587c45e278d07b4d291",
+            "size": 6521070
           },
           {
             "goos": "darwin",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.4.0/cpa-manager-plus_0.4.0_darwin_amd64.zip",
-            "sha256": "fd749847a9735ac25baafafbc68e0b4bb51734321d6026dbf89846f0df7a12c6",
-            "size": 3881617
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.4.1/cpa-manager-plus_0.4.1_darwin_amd64.zip",
+            "sha256": "d5e35f0bde62241c9d16628ad52724d832546496d888bfb9e042c9c188119eaa",
+            "size": 3916444
           },
           {
             "goos": "darwin",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.4.0/cpa-manager-plus_0.4.0_darwin_arm64.zip",
-            "sha256": "6caa2bd5289e3f90630c9fed44e32e66d163635d4b39d827991b4fb05d7380c5",
-            "size": 3655761
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.4.1/cpa-manager-plus_0.4.1_darwin_arm64.zip",
+            "sha256": "2ceb8b8965d5a24af5fac49d3a23fbab7812b69ce4b9e4530694ebca0a4902df",
+            "size": 3685129
           },
           {
             "goos": "windows",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.4.0/cpa-manager-plus_0.4.0_windows_amd64.zip",
-            "sha256": "f9fdfdfba812e472edbc9def27ec36432db095b483decd014f77df2ef0f7d314",
-            "size": 6956124
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.4.1/cpa-manager-plus_0.4.1_windows_amd64.zip",
+            "sha256": "7a098e2159a539dab654d0b5621db09a8caea63977c8d07e2e2cb702459b65fc",
+            "size": 7001182
           },
           {
             "goos": "windows",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.4.0/cpa-manager-plus_0.4.0_windows_arm64.zip",
-            "sha256": "0a3fb04de2001b77805a21a343f14569ba62c2a1002e20cbfcfa7daa00f987ac",
-            "size": 6226193
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.4.1/cpa-manager-plus_0.4.1_windows_arm64.zip",
+            "sha256": "2a1c2299792c2565532258247e219df9b8b554f214246fba095d1f76a89da1a6",
+            "size": 6271504
           }
         ]
       }
