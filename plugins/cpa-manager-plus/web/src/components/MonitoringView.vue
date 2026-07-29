@@ -121,18 +121,7 @@
                 >{{ isEventKeyExpanded(row, 'source') ? '折叠' : '展开' }}</button>
               </strong>
               <strong v-else>{{ row.sourceName }}</strong>
-              <div class="muted small-text">提供方: {{ row.provider }}</div>
-              <div class="muted small-text sensitive-value">
-                API Key: {{ eventApiKeyDisplay(row.apiKeyHash, isEventKeyExpanded(row, 'api-key')) }}
-                <button
-                  v-if="row.apiKeyHash !== '—'"
-                  type="button"
-                  class="sensitive-value-toggle"
-                  :aria-expanded="isEventKeyExpanded(row, 'api-key')"
-                  :aria-label="isEventKeyExpanded(row, 'api-key') ? '折叠 API Key 哈希' : '展开 API Key 哈希'"
-                  @click.stop="toggleEventKey(row, 'api-key')"
-                >{{ isEventKeyExpanded(row, 'api-key') ? '折叠' : '展开' }}</button>
-              </div>
+              <div class="muted small-text">Provider: {{ row.provider }}</div>
             </td>
             <td>
               <strong>{{ row.model }}</strong>
@@ -214,8 +203,17 @@
           <tr v-for="row in accountApiKeyRows" :key="row.id" :class="['clickable', { 'selected-row': row.id === selectedAccountId }]"
               @click="selectAccountAPIKey(row)">
             <td>
-              <strong>{{ row.account_snapshot || '—' }}</strong>
-              <div class="muted small-text">API Key: {{ shortHash(row.api_key_hash) }}</div>
+              <strong v-if="isAccountSourceApiKey(row)" class="sensitive-value">
+                {{ eventApiKeyDisplay(accountSource(row), isAccountSourceExpanded(row)) }}
+                <button
+                  type="button"
+                  class="sensitive-value-toggle"
+                  :aria-expanded="isAccountSourceExpanded(row)"
+                  :aria-label="isAccountSourceExpanded(row) ? '折叠来源 API Key' : '展开来源 API Key'"
+                  @click.stop="toggleAccountSource(row)"
+                >{{ isAccountSourceExpanded(row) ? '折叠' : '展开' }}</button>
+              </strong>
+              <strong v-else>{{ accountSource(row) }}</strong>
             </td>
             <td>{{ row.auth_provider_snapshot || '—' }}</td>
             <td>{{ fmtInt(row.calls) }}</td>
@@ -233,7 +231,7 @@
     </DataCard>
 
     <div v-if="activeDataTab === 'accounts' && selectedAccount" style="margin-top:16px">
-      <DataCard title="账号 / API Key 详情" :subtitle="selectedAccount.account_snapshot || '—'">
+      <DataCard title="来源详情" :subtitle="accountSource(selectedAccount)">
         <DetailGrid :items="buildAccountDetail(selectedAccount)"/>
       </DataCard>
     </div>
@@ -293,6 +291,7 @@ const eventPage = ref(1);
 const eventPageSize = ref(50);
 const selectedAccountId = ref('');
 const expandedEventKeys = ref(new Set());
+const expandedAccountSources = ref(new Set());
 const filters = ref(defaultFilters());
 const failureTooltip = ref({visible: false, row: null, style: {}});
 let failureHideTimer = null;
@@ -513,13 +512,39 @@ function toggleEventKey(row, field) {
   expandedEventKeys.value = next;
 }
 
+function accountSource(row) {
+  return String(row?.source || '').trim() || '—';
+}
+
+function accountSourceKey(row) {
+  return row?.id || accountSource(row);
+}
+
+function isAccountSourceApiKey(row) {
+  return looksLikeApiKey(accountSource(row));
+}
+
+function isAccountSourceExpanded(row) {
+  return expandedAccountSources.value.has(accountSourceKey(row));
+}
+
+function toggleAccountSource(row) {
+  const key = accountSourceKey(row);
+  const next = new Set(expandedAccountSources.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  expandedAccountSources.value = next;
+}
+
 function selectAccountAPIKey(row) {
   selectedAccountId.value = row.id || '';
 }
 
 function filterAccountAPIKey(row) {
-  filters.value.account = row.account_snapshot || 'all';
-  filters.value.apiKeyHash = row.api_key_hash || 'all';
+  filters.value.account = 'all';
+  filters.value.apiKeyHash = 'all';
+  const source = accountSource(row);
+  searchQuery.value = source === '—' || source === 'unknown' ? '' : source;
   refresh(true);
 }
 
@@ -688,8 +713,7 @@ function buildEventTableRow(row, groupMap) {
   const sliding = groupMap._slidingWindow?.get(key)?.get(eventId);
   const latencyMs = numberOrNull(row.latency_ms);
   const outputTokens = Number(row.output_tokens || 0);
-  const accountName = row.account_snapshot || row.auth_label_snapshot || '';
-  const sourceName = accountName && accountName !== 'unknown' ? accountName : row.source || row.auth_index || '—';
+  const sourceName = String(row.source || '').trim() || '—';
   return {
     id: eventId,
     raw: row,
@@ -718,11 +742,10 @@ function buildEventTableRow(row, groupMap) {
 }
 
 function eventGroupKey(row) {
-  const snapshot = row.account_snapshot || row.auth_label_snapshot || '';
-  const account = snapshot && snapshot !== 'unknown' ? snapshot : row.source || '';
+  const source = String(row.source || '').trim() || 'unknown';
   const provider = row.auth_provider_snapshot || row.provider || '';
   const model = row.model || '';
-  return [account, provider, model, row.api_key_hash || 'unknown'].join('::');
+  return [source, provider, model].join('::');
 }
 
 function normalizeRate(rate, calls, success) {
@@ -975,10 +998,8 @@ const selectedAccount = computed(() => accountApiKeyRows.value.find(r => r.id ==
 function buildAccountDetail(row) {
   if (!row) return [];
   return [
-    {label: '账号', value: row.account_snapshot || row.auth_label_snapshot || row.id || '—'},
-    {label: 'API Key', value: shortHash(row.api_key_hash)},
+    {label: '来源', value: accountSource(row)},
     {label: 'Provider', value: row.auth_provider_snapshot || '—'},
-    {label: '标签', value: row.auth_label_snapshot || '—'},
     {label: '请求', value: fmtInt(row.calls)},
     {label: '成功率', value: fmtPct(row.success_rate)},
     {label: 'Token', value: fmtCompact(row.total_tokens)},
