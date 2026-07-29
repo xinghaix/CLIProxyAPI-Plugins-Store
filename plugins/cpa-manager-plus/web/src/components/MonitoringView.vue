@@ -110,9 +110,29 @@
           <tbody>
           <tr v-for="row in pagedEvents" :key="row.id" @click="selectedEvent = row.raw" class="clickable">
             <td>
-              <strong>{{ row.sourceName }}</strong>
+              <strong v-if="row.sourceIsApiKey" class="sensitive-value">
+                {{ eventApiKeyDisplay(row.sourceName, isEventKeyExpanded(row, 'source')) }}
+                <button
+                  type="button"
+                  class="sensitive-value-toggle"
+                  :aria-expanded="isEventKeyExpanded(row, 'source')"
+                  :aria-label="isEventKeyExpanded(row, 'source') ? '折叠来源 API Key' : '展开来源 API Key'"
+                  @click.stop="toggleEventKey(row, 'source')"
+                >{{ isEventKeyExpanded(row, 'source') ? '折叠' : '展开' }}</button>
+              </strong>
+              <strong v-else>{{ row.sourceName }}</strong>
               <div class="muted small-text">提供方: {{ row.provider }}</div>
-              <div class="muted small-text">API Key: {{ row.apiKeyMasked }}</div>
+              <div class="muted small-text sensitive-value">
+                API Key: {{ eventApiKeyDisplay(row.apiKeyHash, isEventKeyExpanded(row, 'api-key')) }}
+                <button
+                  v-if="row.apiKeyHash !== '—'"
+                  type="button"
+                  class="sensitive-value-toggle"
+                  :aria-expanded="isEventKeyExpanded(row, 'api-key')"
+                  :aria-label="isEventKeyExpanded(row, 'api-key') ? '折叠 API Key 哈希' : '展开 API Key 哈希'"
+                  @click.stop="toggleEventKey(row, 'api-key')"
+                >{{ isEventKeyExpanded(row, 'api-key') ? '折叠' : '展开' }}</button>
+              </div>
             </td>
             <td>
               <strong>{{ row.model }}</strong>
@@ -174,23 +194,46 @@
       </Teleport>
     </DataCard>
 
-    <DataCard v-if="activeDataTab === 'accounts'" title="账号汇总" subtitle="account_stats / api_key_stats">
-      <div class="split">
-        <div>
-          <h3 style="margin:0 0 10px; font-size:14px; color:var(--cpa-text-secondary)">账号维度</h3>
-          <SimpleTable :rows="accountRows" :columns="accountColumns" selectable :selected-id="selectedAccountId"
-                       @select="row => selectedAccountId = row.id || row.account_snapshot || row.account || ''"/>
-        </div>
-        <div>
-          <h3 style="margin:0 0 10px; font-size:14px; color:var(--cpa-text-secondary)">API Key 维度</h3>
-          <SimpleTable :rows="apiKeyRows" :columns="apiKeyColumns" @select="setApiKeyFilter"/>
-        </div>
+    <DataCard v-if="activeDataTab === 'accounts'" title="账号汇总" subtitle="账号 / API KEY 联合维度">
+      <div v-if="accountApiKeyRows.length" class="table-wrap monitor-table account-api-key-table">
+        <table>
+          <thead>
+          <tr>
+            <th>账号 / API KEY</th>
+            <th>Provider</th>
+            <th>请求</th>
+            <th>成功率</th>
+            <th>Token</th>
+            <th>费用</th>
+            <th>延迟</th>
+            <th>最后出现</th>
+            <th>操作</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr v-for="row in accountApiKeyRows" :key="row.id" :class="['clickable', { 'selected-row': row.id === selectedAccountId }]"
+              @click="selectAccountAPIKey(row)">
+            <td>
+              <strong>{{ row.account_snapshot || '—' }}</strong>
+              <div class="muted small-text">API Key: {{ shortHash(row.api_key_hash) }}</div>
+            </td>
+            <td>{{ row.auth_provider_snapshot || '—' }}</td>
+            <td>{{ fmtInt(row.calls) }}</td>
+            <td><strong :class="successRateClass(row.success_rate)">{{ fmtPct(row.success_rate) }}</strong></td>
+            <td>{{ fmtCompact(row.total_tokens) }}</td>
+            <td>{{ fmtMoney(row.cost) }}</td>
+            <td>{{ fmtDuration(row.average_latency_ms) }}</td>
+            <td>{{ formatDateTime(row.last_seen_ms) }}</td>
+            <td><button type="button" class="btn btn-xs" @click.stop="filterAccountAPIKey(row)">筛选</button></td>
+          </tr>
+          </tbody>
+        </table>
       </div>
+      <div v-else class="empty">暂无账号 / API Key 汇总数据</div>
     </DataCard>
 
     <div v-if="activeDataTab === 'accounts' && selectedAccount" style="margin-top:16px">
-      <DataCard title="账号详情"
-                :subtitle="selectedAccount.account_snapshot || selectedAccount.auth_label_snapshot || selectedAccount.id || '—'">
+      <DataCard title="账号 / API Key 详情" :subtitle="selectedAccount.account_snapshot || '—'">
         <DetailGrid :items="buildAccountDetail(selectedAccount)"/>
       </DataCard>
     </div>
@@ -228,6 +271,7 @@
 import {computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
+import { eventApiKeyDisplay, looksLikeApiKey, shortHash } from '../utils/apiKeyDisplay.js';
 
 const props = defineProps({
   ready: {type: Boolean, default: false},
@@ -248,6 +292,7 @@ const selectedEvent = ref(null);
 const eventPage = ref(1);
 const eventPageSize = ref(50);
 const selectedAccountId = ref('');
+const expandedEventKeys = ref(new Set());
 const filters = ref(defaultFilters());
 const failureTooltip = ref({visible: false, row: null, style: {}});
 let failureHideTimer = null;
@@ -255,7 +300,7 @@ let timer = null;
 
 const dataTabs = computed(() => [
   {key: 'events', label: '事件流', count: eventRows.value.length},
-  {key: 'accounts', label: '账号汇总', count: accountRows.value.length + apiKeyRows.value.length},
+  {key: 'accounts', label: '账号汇总', count: accountApiKeyRows.value.length},
   {key: 'models', label: '模型', count: modelRows.value.length},
   {key: 'timeline', label: '时间线', count: timelineRows.value.length},
 ]);
@@ -304,6 +349,7 @@ const modelRows = computed(() => data.value?.model_stats || data.value?.model_sh
 const channelRows = computed(() => data.value?.channel_share || []);
 const accountRows = computed(() => data.value?.account_stats || []);
 const apiKeyRows = computed(() => data.value?.api_key_stats || []);
+const accountApiKeyRows = computed(() => data.value?.account_api_key_stats || []);
 const failureRows = computed(() => [...(data.value?.failure_sources || []), ...(data.value?.recent_failures || [])]);
 const taskRows = computed(() => data.value?.task_buckets || []);
 
@@ -445,6 +491,35 @@ function resolveRange() {
 function resetFilters() {
   filters.value = defaultFilters();
   searchQuery.value = '';
+  refresh(true);
+}
+
+function eventKeyId(row, field) {
+  return `${row.id}:${field}`;
+}
+
+function isEventKeyExpanded(row, field) {
+  return expandedEventKeys.value.has(eventKeyId(row, field));
+}
+
+function toggleEventKey(row, field) {
+  const key = eventKeyId(row, field);
+  const next = new Set(expandedEventKeys.value);
+  if (next.has(key)) {
+    next.delete(key);
+  } else {
+    next.add(key);
+  }
+  expandedEventKeys.value = next;
+}
+
+function selectAccountAPIKey(row) {
+  selectedAccountId.value = row.id || '';
+}
+
+function filterAccountAPIKey(row) {
+  filters.value.account = row.account_snapshot || 'all';
+  filters.value.apiKeyHash = row.api_key_hash || 'all';
   refresh(true);
 }
 
@@ -613,12 +688,15 @@ function buildEventTableRow(row, groupMap) {
   const sliding = groupMap._slidingWindow?.get(key)?.get(eventId);
   const latencyMs = numberOrNull(row.latency_ms);
   const outputTokens = Number(row.output_tokens || 0);
+  const accountName = row.account_snapshot || row.auth_label_snapshot || '';
+  const sourceName = accountName && accountName !== 'unknown' ? accountName : row.source || row.auth_index || '—';
   return {
     id: eventId,
     raw: row,
-    sourceName: row.account_snapshot || row.auth_label_snapshot || row.source || row.auth_index || '—',
-    provider: row.auth_provider_snapshot || row.provider || row.source || '—',
-    apiKeyMasked: maskApiKey(row.api_key_hash),
+    sourceName,
+    sourceIsApiKey: looksLikeApiKey(sourceName),
+    provider: row.auth_provider_snapshot || row.provider || '—',
+    apiKeyHash: row.api_key_hash || '—',
     model: row.model || '—',
     resolvedModel: row.resolved_model || '',
     intensity: row.reasoning_effort || row.service_tier || '-',
@@ -640,10 +718,11 @@ function buildEventTableRow(row, groupMap) {
 }
 
 function eventGroupKey(row) {
-  const account = row.account_snapshot || row.auth_label_snapshot || row.source || '';
+  const snapshot = row.account_snapshot || row.auth_label_snapshot || '';
+  const account = snapshot && snapshot !== 'unknown' ? snapshot : row.source || '';
   const provider = row.auth_provider_snapshot || row.provider || '';
   const model = row.model || '';
-  return [account, provider, model].join('::');
+  return [account, provider, model, row.api_key_hash || 'unknown'].join('::');
 }
 
 function normalizeRate(rate, calls, success) {
@@ -718,13 +797,6 @@ function getServiceTierMultiplier(model, tier) {
     return 2;
   }
   return 1;
-}
-
-function maskApiKey(value) {
-  const s = String(value || '').trim();
-  if (!s) return '—';
-  if (s.startsWith('sk') && s.length > 8) return `${s.slice(0, 2)}******${s.slice(-2)}`;
-  return shortHash(s);
 }
 
 function barWidth(value) {
@@ -853,11 +925,6 @@ function formatTime(ms) {
   return new Date(Number(ms)).toLocaleTimeString('zh-CN', {hour12: false});
 }
 
-function shortHash(v) {
-  const s = String(v || '').trim();
-  return s.length > 14 ? `${s.slice(0, 7)}…${s.slice(-5)}` : (s || '—');
-}
-
 function pickObject(obj, keys) {
   return Object.fromEntries(keys.map(k => [k, obj?.[k]]).filter(([, v]) => v !== undefined));
 }
@@ -903,12 +970,13 @@ const DetailGrid = defineComponent({
     ));
   }
 });
-const selectedAccount = computed(() => accountRows.value.find(r => (r.id || r.account_snapshot || r.account || '') === selectedAccountId.value) || null);
+const selectedAccount = computed(() => accountApiKeyRows.value.find(r => r.id === selectedAccountId.value) || null);
 
 function buildAccountDetail(row) {
   if (!row) return [];
   return [
     {label: '账号', value: row.account_snapshot || row.auth_label_snapshot || row.id || '—'},
+    {label: 'API Key', value: shortHash(row.api_key_hash)},
     {label: 'Provider', value: row.auth_provider_snapshot || '—'},
     {label: '标签', value: row.auth_label_snapshot || '—'},
     {label: '请求', value: fmtInt(row.calls)},

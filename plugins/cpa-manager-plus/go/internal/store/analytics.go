@@ -164,7 +164,24 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 }
 
 func matches(row eventRow, request AnalyticsRequest) bool {
-	return includes(request.Models, row.Model) && includes(request.Providers, row.Provider) && includes(request.Accounts, row.AuthIndex) && includes(request.APIKeyHashes, row.APIKeyHash)
+	return includes(request.Models, row.Model) && includes(request.Providers, row.Provider) && includes(request.Accounts, accountSnapshot(row)) && includes(request.APIKeyHashes, apiKeySnapshot(row))
+}
+
+func accountSnapshot(row eventRow) string {
+	if row.AuthIndex != "" {
+		return row.AuthIndex
+	}
+	if row.AuthID != "" {
+		return row.AuthID
+	}
+	return "unknown"
+}
+
+func apiKeySnapshot(row eventRow) string {
+	if row.APIKeyHash == "" {
+		return "unknown"
+	}
+	return row.APIKeyHash
 }
 func includes(values []string, got string) bool {
 	if len(values) == 0 {
@@ -184,6 +201,13 @@ type stats struct {
 	LatencySamples                                                                              int64
 	Cost                                                                                        float64
 	Last                                                                                        int64
+}
+
+type accountAPIKeyStats struct {
+	stats
+	Account  string
+	APIKey   string
+	Provider string
 }
 
 func (s *stats) add(row eventRow, price Price) {
@@ -235,6 +259,7 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 	byModel := map[string]*stats{}
 	byAccount := map[string]*stats{}
 	byKey := map[string]*stats{}
+	byAccountAPIKey := map[string]*accountAPIKeyStats{}
 	byBucket := map[string]*stats{}
 	providers := map[string]bool{}
 	models := map[string]bool{}
@@ -249,12 +274,11 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 		price := prices[row.Model]
 		total.add(row, price)
 		addStats(byModel, row.Model, row, price)
-		account := row.AuthIndex
-		if account == "" {
-			account = row.AuthID
-		}
+		account := accountSnapshot(row)
+		apiKey := apiKeySnapshot(row)
 		addStats(byAccount, account, row, price)
-		addStats(byKey, row.APIKeyHash, row, price)
+		addStats(byKey, apiKey, row, price)
+		addAccountAPIKeyStats(byAccountAPIKey, account, apiKey, row, price)
 		bucket := row.TimestampMS / bucketSize * bucketSize
 		addStats(byBucket, fmt.Sprint(bucket), row, price)
 		providers[row.Provider] = true
@@ -265,7 +289,7 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 			events = append(events, eventJSON(row, price))
 		}
 	}
-	return map[string]any{"summary": total.json(), "timeline": statsRows(byBucket, "bucket_ms"), "model_stats": statsRows(byModel, "model"), "model_share": statsRows(byModel, "model"), "account_stats": statsRows(byAccount, "account_snapshot"), "credential_stats": statsRows(byAccount, "auth_file"), "api_key_stats": statsRows(byKey, "api_key_hash"), "events": map[string]any{"items": events}, "filter_options": map[string]any{"providers": keysOf(providers), "model_stats": namedKeys(models, "model"), "auth_files": keysOf(accounts)}, "granularity": request.Granularity, "generated_at_ms": time.Now().UnixMilli(), "heatmap": []any{}, "anomaly_points": []any{}, "recent_failures": failureRows(rows, prices)}
+	return map[string]any{"summary": total.json(), "timeline": statsRows(byBucket, "bucket_ms"), "model_stats": statsRows(byModel, "model"), "model_share": statsRows(byModel, "model"), "account_stats": statsRows(byAccount, "account_snapshot"), "credential_stats": statsRows(byAccount, "auth_file"), "api_key_stats": statsRows(byKey, "api_key_hash"), "account_api_key_stats": accountAPIKeyStatsRows(byAccountAPIKey), "events": map[string]any{"items": events}, "filter_options": map[string]any{"providers": keysOf(providers), "model_stats": namedKeys(models, "model"), "auth_files": keysOf(accounts)}, "granularity": request.Granularity, "generated_at_ms": time.Now().UnixMilli(), "heatmap": []any{}, "anomaly_points": []any{}, "recent_failures": failureRows(rows, prices)}
 }
 func addStats(group map[string]*stats, key string, row eventRow, price Price) {
 	if key == "" {
@@ -278,6 +302,43 @@ func addStats(group map[string]*stats, key string, row eventRow, price Price) {
 	}
 	value.add(row, price)
 }
+func addAccountAPIKeyStats(group map[string]*accountAPIKeyStats, account, apiKey string, row eventRow, price Price) {
+	key := account + "\x00" + apiKey
+	value := group[key]
+	if value == nil {
+		value = &accountAPIKeyStats{Account: account, APIKey: apiKey}
+		group[key] = value
+	}
+	if row.TimestampMS >= value.Last {
+		value.Provider = row.Provider
+	}
+	value.add(row, price)
+}
+
+func accountAPIKeyStatsRows(group map[string]*accountAPIKeyStats) []map[string]any {
+	out := make([]map[string]any, 0, len(group))
+	for _, value := range group {
+		row := value.json()
+		row["id"] = value.Account + "::" + value.APIKey
+		row["account_snapshot"] = value.Account
+		row["api_key_hash"] = value.APIKey
+		row["auth_provider_snapshot"] = value.Provider
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		leftAccount, rightAccount := fmt.Sprint(out[i]["account_snapshot"]), fmt.Sprint(out[j]["account_snapshot"])
+		if leftAccount != rightAccount {
+			return leftAccount < rightAccount
+		}
+		leftCalls, rightCalls := out[i]["calls"].(int64), out[j]["calls"].(int64)
+		if leftCalls != rightCalls {
+			return leftCalls > rightCalls
+		}
+		return fmt.Sprint(out[i]["api_key_hash"]) < fmt.Sprint(out[j]["api_key_hash"])
+	})
+	return out
+}
+
 func statsRows(group map[string]*stats, key string) []map[string]any {
 	out := make([]map[string]any, 0, len(group))
 	for name, value := range group {
@@ -312,7 +373,7 @@ func namedKeys(values map[string]bool, key string) []map[string]string {
 	return out
 }
 func eventJSON(row eventRow, price Price) map[string]any {
-	return map[string]any{"id": row.ID, "timestamp_ms": row.TimestampMS, "event_hash": fmt.Sprint(row.ID), "provider": row.Provider, "auth_provider_snapshot": row.Provider, "model": row.Model, "api_key_hash": row.APIKeyHash, "auth_index": row.AuthIndex, "auth_file_snapshot": row.AuthID, "source": row.Source, "reasoning_effort": row.ReasoningEffort, "service_tier": row.ServiceTier, "input_tokens": row.InputTokens, "output_tokens": row.OutputTokens, "reasoning_tokens": row.ReasoningTokens, "cached_tokens": row.CachedTokens, "cache_read_tokens": row.CacheReadTokens, "cache_creation_tokens": row.CacheCreationTokens, "total_tokens": row.TotalTokens, "latency_ms": row.LatencyMS.Int64, "ttft_ms": row.TTFTMS.Int64, "failed": row.Failed != 0, "fail_status_code": row.FailStatus.Int64, "fail_summary": row.FailSummary.String, "cost": cost(row, price)}
+	return map[string]any{"id": row.ID, "timestamp_ms": row.TimestampMS, "event_hash": fmt.Sprint(row.ID), "provider": row.Provider, "auth_provider_snapshot": row.Provider, "model": row.Model, "api_key_hash": row.APIKeyHash, "account_snapshot": accountSnapshot(row), "auth_index": row.AuthIndex, "auth_file_snapshot": row.AuthID, "source": row.Source, "reasoning_effort": row.ReasoningEffort, "service_tier": row.ServiceTier, "input_tokens": row.InputTokens, "output_tokens": row.OutputTokens, "reasoning_tokens": row.ReasoningTokens, "cached_tokens": row.CachedTokens, "cache_read_tokens": row.CacheReadTokens, "cache_creation_tokens": row.CacheCreationTokens, "total_tokens": row.TotalTokens, "latency_ms": row.LatencyMS.Int64, "ttft_ms": row.TTFTMS.Int64, "failed": row.Failed != 0, "fail_status_code": row.FailStatus.Int64, "fail_summary": row.FailSummary.String, "cost": cost(row, price)}
 }
 func failureRows(rows []eventRow, prices map[string]Price) []map[string]any {
 	out := []map[string]any{}

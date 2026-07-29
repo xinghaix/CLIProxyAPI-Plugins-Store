@@ -351,6 +351,11 @@ pre { margin: 0; max-height: 380px; overflow: auto; border: 1px solid var(--cpa-
 .event-stream-table table { min-width: 1360px; }
 .event-stream-table th, .event-stream-table td { border-right: 1px solid color-mix(in srgb, var(--cpa-border) 70%, transparent); }
 .event-stream-table th:last-child, .event-stream-table td:last-child { border-right: 0; }
+.sensitive-value { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sensitive-value-toggle { border: 0; padding: 0; background: transparent; color: var(--cpa-primary); cursor: pointer; font-size: 11px; font-weight: 600; }
+.sensitive-value-toggle:hover { color: var(--cpa-primary-hover); text-decoration: underline; }
+.sensitive-value-toggle:focus-visible { outline: 2px solid var(--cpa-primary); outline-offset: 2px; border-radius: 2px; }
+.account-api-key-table table { min-width: 1080px; }
 .clickable { cursor: pointer; }
 .clickable:hover td { background: var(--cpa-surface-muted); }
 .blue-text { color: var(--cpa-primary); }
