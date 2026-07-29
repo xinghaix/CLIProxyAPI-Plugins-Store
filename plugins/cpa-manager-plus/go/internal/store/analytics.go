@@ -200,6 +200,13 @@ func apiKeySnapshot(row eventRow) string {
 	}
 	return row.APIKeyHash
 }
+
+func sourceSnapshot(row eventRow) string {
+	if source := strings.TrimSpace(row.Source); source != "" {
+		return source
+	}
+	return "unknown"
+}
 func includes(values []string, got string) bool {
 	if len(values) == 0 {
 		return true
@@ -222,7 +229,7 @@ type stats struct {
 
 type accountAPIKeyStats struct {
 	stats
-	Account  string
+	Source   string
 	APIKey   string
 	Provider string
 }
@@ -295,7 +302,7 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 		apiKey := apiKeySnapshot(row)
 		addStats(byAccount, account, row, price)
 		addStats(byKey, apiKey, row, price)
-		addAccountAPIKeyStats(byAccountAPIKey, account, apiKey, row, price)
+		addAccountAPIKeyStats(byAccountAPIKey, sourceSnapshot(row), row, price)
 		bucket := row.TimestampMS / bucketSize * bucketSize
 		addStats(byBucket, fmt.Sprint(bucket), row, price)
 		providers[row.Provider] = true
@@ -319,15 +326,15 @@ func addStats(group map[string]*stats, key string, row eventRow, price Price) {
 	}
 	value.add(row, price)
 }
-func addAccountAPIKeyStats(group map[string]*accountAPIKeyStats, account, apiKey string, row eventRow, price Price) {
-	key := account + "\x00" + apiKey
-	value := group[key]
+func addAccountAPIKeyStats(group map[string]*accountAPIKeyStats, source string, row eventRow, price Price) {
+	value := group[source]
 	if value == nil {
-		value = &accountAPIKeyStats{Account: account, APIKey: apiKey}
-		group[key] = value
+		value = &accountAPIKeyStats{Source: source}
+		group[source] = value
 	}
 	if row.TimestampMS >= value.Last {
 		value.Provider = row.Provider
+		value.APIKey = apiKeySnapshot(row)
 	}
 	value.add(row, price)
 }
@@ -336,22 +343,19 @@ func accountAPIKeyStatsRows(group map[string]*accountAPIKeyStats) []map[string]a
 	out := make([]map[string]any, 0, len(group))
 	for _, value := range group {
 		row := value.json()
-		row["id"] = value.Account + "::" + value.APIKey
-		row["account_snapshot"] = value.Account
+		row["id"] = value.Source
+		row["source"] = value.Source
+		row["account_snapshot"] = value.Source
 		row["api_key_hash"] = value.APIKey
 		row["auth_provider_snapshot"] = value.Provider
 		out = append(out, row)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		leftAccount, rightAccount := fmt.Sprint(out[i]["account_snapshot"]), fmt.Sprint(out[j]["account_snapshot"])
-		if leftAccount != rightAccount {
-			return leftAccount < rightAccount
+		leftSource, rightSource := fmt.Sprint(out[i]["source"]), fmt.Sprint(out[j]["source"])
+		if leftSource != rightSource {
+			return leftSource < rightSource
 		}
-		leftCalls, rightCalls := out[i]["calls"].(int64), out[j]["calls"].(int64)
-		if leftCalls != rightCalls {
-			return leftCalls > rightCalls
-		}
-		return fmt.Sprint(out[i]["api_key_hash"]) < fmt.Sprint(out[j]["api_key_hash"])
+		return out[i]["calls"].(int64) > out[j]["calls"].(int64)
 	})
 	return out
 }
