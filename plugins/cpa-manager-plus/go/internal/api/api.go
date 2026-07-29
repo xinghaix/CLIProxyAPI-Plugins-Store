@@ -78,6 +78,16 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 			return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"ok": true})
+	case method == http.MethodDelete && path == "/v0/management/model-prices":
+		query, err := url.ParseQuery(request.Query)
+		if err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid query"})
+		}
+		deleted, err := runtime.Store().DeletePrice(ctx, query.Get("model"))
+		if err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"ok": true, "deleted": deleted})
 	case method == http.MethodGet && path == "/v0/management/model-prices/usage-summary":
 		models, err := runtime.Store().PriceSyncTargets(ctx)
 		if err != nil {
