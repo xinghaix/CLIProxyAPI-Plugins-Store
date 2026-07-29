@@ -80,8 +80,8 @@
             <small class="muted">{{ mgrHasBoundKey ? '已绑定密钥（留空不修改）' : '未绑定密钥' }}</small>
           </label>
         </div>
-        <p class="muted small-text" style="margin-top:8px">仅在账号巡检/认证异常中执行启用、禁用或删除认证文件时使用（加密保存在本地 SQLite）。
-          本地请求监控、模型价格同步和账号巡检读取不依赖此配置；与上方浏览器访问密钥用途不同。</p>
+        <p class="muted small-text" style="margin-top:8px">真实账号巡检的 provider 探测，以及启用、禁用或删除认证文件的处置都依赖此配置（加密保存在本地 SQLite）。
+          本地请求监控和模型价格同步不依赖此配置；与上方浏览器访问密钥用途不同。</p>
       </DataCard>
 
       <DataCard title="运行时信息" subtitle="只读">

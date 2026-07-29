@@ -70,6 +70,23 @@ export function getRunTone(status) {
   return 'idle';
 }
 
+export function getInspectionResultsEmptyText(run, rawCount = 0, filteredCount = 0) {
+  if (rawCount > 0 && filteredCount === 0) return '当前筛选下无结果。';
+  if (run?.status !== 'completed') return '暂无巡检结果。';
+
+  const totalFiles = Number(run.totalFiles) || 0;
+  if (totalFiles === 0) return '未发现可巡检凭据；本次未对任何账号执行真实探测。';
+
+  const probeSetCount = Number(run.probeSetCount) || 0;
+  if (probeSetCount === 0) {
+    return `主机发现 ${totalFiles} 个凭据文件，但目标类型过滤后没有可探测账号。请检查巡检提供商。`;
+  }
+
+  const sampledCount = Number(run.sampledCount) || 0;
+  if (sampledCount === 0) return '本次未采样到可探测账号。请检查抽样和巡检配置。';
+  return '暂无巡检结果。';
+}
+
 export function formatTrigger(run) {
   if (!run) return '—';
   return run.triggerType === 'scheduled' ? '定时触发' : '手动触发';
