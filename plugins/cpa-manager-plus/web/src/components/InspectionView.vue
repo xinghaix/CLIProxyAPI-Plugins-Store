@@ -177,7 +177,19 @@
                       >
                         {{ executingIds.has(row.id) ? '…' : formatActionLabel(row.action) }}
                       </button>
+                      <template v-else-if="isAcknowledgeableResult(row)">
+                        <div v-if="row.action === 'reauth'" class="muted small-text">请在 CPA 管理台重新认证</div>
+                        <button
+                          class="btn btn-xs"
+                          :disabled="!canExecuteActions || actionInFlight || executingIds.has(row.id)"
+                          @click="confirmAcknowledge(row)"
+                        >
+                          {{ executingIds.has(row.id) ? '…' : '标记已处理' }}
+                        </button>
+                      </template>
+                      <span v-else-if="row.actionStatus === 'acknowledged'" class="muted small-text">已标记处理</span>
                       <span v-else-if="row.action === 'reauth'" class="muted small-text">请在 CPA 管理台重新认证</span>
+                      <span v-else-if="row.action === 'review'" class="muted small-text">需人工复核（无自动操作）</span>
                       <span v-else-if="row.action === 'keep'" class="muted small-text">无需处理</span>
                       <span v-else class="muted small-text">需确认</span>
                     </td>
@@ -410,6 +422,7 @@ import {
   getInspectionResultsEmptyText,
   getRunStatusLabel,
   getRunTone,
+  isAcknowledgeableResult,
   isActionableResult,
   resolveServerCodexConfig,
   toDraft,
@@ -715,6 +728,40 @@ async function runNow() {
     await refreshAll(true);
   } finally {
     running.value = false;
+  }
+}
+
+async function confirmAcknowledge(row) {
+  const ok = await showConfirm({
+    title: '标记已处理',
+    message: `确定将账号「${row.displayAccount}」标记为已处理吗？此操作仅更新本地巡检记录，不会在 CPA 上删除、禁用、启用或重新登录账号。`,
+    confirmLabel: '标记已处理',
+  });
+  if (!ok) return;
+  void acknowledgeResult(row.id);
+}
+
+async function acknowledgeResult(resultID) {
+  if (!detail.value?.run?.id || !resultID) return;
+  actionInFlight.value = true;
+  executingIds.value = new Set([resultID]);
+  try {
+    const resp = await props.proxyCall({
+      method: 'POST',
+      path: `/v0/management/codex-inspection/runs/${detail.value.run.id}/acknowledge`,
+      body: { resultIds: [resultID] },
+    });
+    detail.value = resp?.detail ?? resp;
+    await loadRunsList();
+    const failed = (resp?.outcomes || []).filter((outcome) => !outcome.success);
+    if (failed.length) {
+      error.value = '标记已处理失败，请刷新后重试。';
+    }
+  } catch (e) {
+    error.value = e.message || String(e);
+  } finally {
+    actionInFlight.value = false;
+    executingIds.value = new Set();
   }
 }
 

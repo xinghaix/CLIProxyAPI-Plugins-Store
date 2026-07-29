@@ -503,6 +503,10 @@ func (r *Runtime) ExecuteInspectionActions(ctx context.Context, runID int64, ids
 	return r.executeInspectionActions(ctx, runID, ids, false)
 }
 
+func (r *Runtime) AcknowledgeInspectionResults(ctx context.Context, runID int64, ids []int64) (map[string]any, error) {
+	return r.store.AcknowledgeInspectionResults(ctx, runID, ids)
+}
+
 func (r *Runtime) executeInspectionActions(ctx context.Context, runID int64, ids []int64, automatic bool) (map[string]any, error) {
 	results, err := r.store.InspectionResults(ctx, runID)
 	if err != nil {

@@ -260,6 +260,19 @@ func handleInspectionRoute(ctx context.Context, runtime *app.Runtime, method, pa
 		}
 		return jsonResponse(http.StatusOK, result)
 	}
+	if len(parts) == 2 && parts[1] == "acknowledge" && method == http.MethodPost {
+		var payload struct {
+			ResultIDs []int64 `json:"resultIds"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid acknowledgement"})
+		}
+		result, err := runtime.AcknowledgeInspectionResults(ctx, id, payload.ResultIDs)
+		if err != nil {
+			return errorResponse(err)
+		}
+		return jsonResponse(http.StatusOK, result)
+	}
 	return jsonResponse(http.StatusNotFound, map[string]any{"error": "inspection operation not found"})
 }
 
