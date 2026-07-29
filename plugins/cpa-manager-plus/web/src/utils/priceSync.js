@@ -449,6 +449,17 @@ export function buildManualPutBody(draft) {
   return { prices: { [entry.model]: entry.price } };
 }
 
+/** Build an encoded DELETE request for one price row. */
+export function buildDeletePriceRequest(model) {
+  const value = String(model || '').trim();
+  if (!value) return null;
+  return {
+    method: 'DELETE',
+    path: '/v0/management/model-prices',
+    query: `model=${encodeURIComponent(value)}`,
+  };
+}
+
 function nonNeg(v) {
   const n = Number(v);
   if (!Number.isFinite(n) || n < 0) return 0;

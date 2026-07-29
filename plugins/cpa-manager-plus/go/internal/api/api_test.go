@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,5 +125,49 @@ func TestUsageServiceConfigAcceptsLegacyFlatCodexSettings(t *testing.T) {
 	}
 	if settings.Workers < 1 || settings.DeleteWorkers < 1 || settings.Timeout < 1 {
 		t.Fatalf("legacy settings must seed newer required fields: %#v", settings)
+	}
+}
+
+func TestDeleteModelPrice(t *testing.T) {
+	runtime, err := app.New([]byte("data_dir: " + t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	ctx := context.Background()
+
+	put := Handle(ctx, runtime, []byte(`{"method":"PUT","path":"/v0/management/model-prices","body":{"prices":{"gpt-test":{"prompt":1,"completion":2},"acme/claude":{"prompt":3,"completion":4}}}}`))
+	if put.StatusCode != http.StatusOK {
+		t.Fatalf("put prices = %d: %s", put.StatusCode, put.Body)
+	}
+	deleteResponse := Handle(ctx, runtime, []byte(`{"method":"DELETE","path":"/v0/management/model-prices","query":"model=gpt-test"}`))
+	if deleteResponse.StatusCode != http.StatusOK || !strings.Contains(string(deleteResponse.Body), `"deleted":true`) {
+		t.Fatalf("delete model = %d: %s", deleteResponse.StatusCode, deleteResponse.Body)
+	}
+	get := Handle(ctx, runtime, []byte(`{"method":"GET","path":"/v0/management/model-prices"}`))
+	var payload struct {
+		Prices map[string]any `json:"prices"`
+	}
+	if err := json.Unmarshal(get.Body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := payload.Prices["gpt-test"]; ok {
+		t.Fatalf("deleted price remained: %#v", payload.Prices)
+	}
+	if _, ok := payload.Prices["acme/claude"]; !ok {
+		t.Fatalf("unrelated price was removed: %#v", payload.Prices)
+	}
+
+	repeat := Handle(ctx, runtime, []byte(`{"method":"DELETE","path":"/v0/management/model-prices","query":"model=gpt-test"}`))
+	if repeat.StatusCode != http.StatusOK || !strings.Contains(string(repeat.Body), `"deleted":false`) {
+		t.Fatalf("repeat delete = %d: %s", repeat.StatusCode, repeat.Body)
+	}
+	slash := Handle(ctx, runtime, []byte(`{"method":"DELETE","path":"/v0/management/model-prices","query":"model=acme%2Fclaude"}`))
+	if slash.StatusCode != http.StatusOK || !strings.Contains(string(slash.Body), `"deleted":true`) {
+		t.Fatalf("delete slash model = %d: %s", slash.StatusCode, slash.Body)
+	}
+	missing := Handle(ctx, runtime, []byte(`{"method":"DELETE","path":"/v0/management/model-prices"}`))
+	if missing.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing model = %d: %s", missing.StatusCode, missing.Body)
 	}
 }

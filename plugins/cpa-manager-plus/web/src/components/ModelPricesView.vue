@@ -252,9 +252,16 @@
               <td class="small-text">{{ row.price?.sourceModelId || '—' }}</td>
               <td class="small-text">{{ formatTimestamp(row.price?.updatedAtMs) }}</td>
               <td @click.stop>
-                <button class="btn" type="button" @click="openEdit(row)">
+                <button class="btn" type="button" :disabled="deleting" @click="openEdit(row)">
                   {{ row.hasPrice ? '编辑' : '添加' }}
                 </button>
+                <button
+                  v-if="row.hasPrice"
+                  class="btn danger"
+                  type="button"
+                  :disabled="saving || deleting"
+                  @click="confirmDeletePrice(row.model)"
+                >删除</button>
               </td>
             </tr>
           </tbody>
@@ -299,24 +306,44 @@
         </div>
         <p class="muted small-text">手动保存会强制 <code>source=manual</code>，并清空源模型 ID，避免被自动同步误覆盖。</p>
         <div class="config-actions-bar">
-          <button class="btn primary" type="button" @click="savePrice" :disabled="saving">
+          <button class="btn primary" type="button" @click="savePrice" :disabled="saving || deleting">
             {{ saving ? '保存中…' : '保存' }}
           </button>
-          <button class="btn" type="button" @click="editingModel = null">取消</button>
+          <button
+            v-if="!editingModel.isNew"
+            class="btn danger"
+            type="button"
+            :disabled="saving || deleting"
+            @click="confirmDeletePrice(editingModel.model)"
+          >{{ deleting ? '删除中…' : '删除单价' }}</button>
+          <button class="btn" type="button" :disabled="saving || deleting" @click="editingModel = null">取消</button>
         </div>
       </div>
     </div>
+
+    <ConfirmModal
+      :open="confirmOpen"
+      :title="confirmTitle"
+      :message="confirmMessage"
+      :confirm-label="confirmOkLabel"
+      :cancel-label="confirmCancelLabel"
+      :variant="confirmVariant"
+      @confirm="finishConfirm(true)"
+      @cancel="finishConfirm(false)"
+    />
   </section>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import ConfirmModal from './ConfirmModal.vue';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import {
   DEFAULT_SYNC_SETTINGS,
   PRICE_FILTERS,
   buildConfirmBody,
+  buildDeletePriceRequest,
   buildFilterCounts,
   buildManualPriceEntry,
   buildManualPutBody,
@@ -348,6 +375,7 @@ const prices = ref({});
 const usageModels = ref([]);
 const loading = ref(false);
 const saving = ref(false);
+const deleting = ref(false);
 const syncing = ref(false);
 const confirming = ref(false);
 const settingsSaving = ref(false);
@@ -358,6 +386,13 @@ const editingModel = ref(null);
 const filter = ref('all');
 const search = ref('');
 const filters = PRICE_FILTERS;
+const confirmOpen = ref(false);
+const confirmTitle = ref('确认');
+const confirmMessage = ref('');
+const confirmOkLabel = ref('确定');
+const confirmCancelLabel = ref('取消');
+const confirmVariant = ref('primary');
+let confirmResolve = null;
 
 const settings = ref({ ...DEFAULT_SYNC_SETTINGS });
 const settingsDraft = reactive({ ...DEFAULT_SYNC_SETTINGS });
@@ -460,6 +495,31 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stopPolling();
 });
+
+function showConfirm({
+  title = '确认',
+  message = '',
+  confirmLabel = '确定',
+  cancelLabel = '取消',
+  variant = 'primary',
+} = {}) {
+  confirmTitle.value = title;
+  confirmMessage.value = message;
+  confirmOkLabel.value = confirmLabel;
+  confirmCancelLabel.value = cancelLabel;
+  confirmVariant.value = variant;
+  confirmOpen.value = true;
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+  });
+}
+
+function finishConfirm(ok) {
+  confirmOpen.value = false;
+  const resolve = confirmResolve;
+  confirmResolve = null;
+  resolve?.(ok);
+}
 
 function candidateKey(c, idx) {
   return `${c.localModel}::${c.source}::${c.sourceModelId}::${idx}`;
@@ -797,6 +857,73 @@ async function savePrice() {
     error.value = e.message || String(e);
   } finally {
     saving.value = false;
+  }
+}
+
+async function confirmDeletePrice(model) {
+  const value = String(model || '').trim();
+  if (!value || deleting.value) return;
+  const ok = await showConfirm({
+    title: '删除模型单价',
+    message: `确定删除「${value}」的单价吗？用量记录不会删除；之后可手动添加或通过价格同步重新导入。`,
+    confirmLabel: '删除',
+    variant: 'danger',
+  });
+  if (!ok) return;
+  await deletePrice(value);
+}
+
+async function deletePrice(model) {
+  const request = buildDeletePriceRequest(model);
+  if (!request || deleting.value) return;
+  deleting.value = true;
+  error.value = '';
+  syncNotice.value = '';
+  try {
+    const result = await softProxyCall(props.proxyCall, request);
+    if (!result.ok) {
+      error.value = result.missing
+        ? '当前 Runtime 尚未提供模型单价删除 API。'
+        : result.error || '删除模型单价失败';
+      return;
+    }
+    if (editingModel.value?.model === model) editingModel.value = null;
+
+    const pricesRes = await softProxyCall(props.proxyCall, {
+      method: 'GET',
+      path: '/v0/management/model-prices',
+    });
+    let pricesMap = prices.value;
+    if (pricesRes.ok) {
+      pricesMap = extractPricesMap(pricesRes.data);
+      prices.value = pricesMap;
+    } else {
+      pricesMap = { ...prices.value };
+      delete pricesMap[model];
+      prices.value = pricesMap;
+    }
+
+    const statusRes = await softProxyCall(props.proxyCall, {
+      method: 'GET',
+      path: '/v0/management/model-prices/sync-status',
+    });
+    if (statusRes.ok) {
+      applyStatus(statusRes.data, pricesMap);
+    } else {
+      pendingCandidates.value = filterCandidatesWithExistingPrices(pendingCandidates.value, pricesMap);
+      if (lastResult.value) {
+        lastResult.value = {
+          ...lastResult.value,
+          candidates: pendingCandidates.value,
+          candidateCount: pendingCandidates.value.length,
+        };
+      }
+    }
+    syncNotice.value = result.data?.deleted === false
+      ? `「${model}」的单价已不存在`
+      : `已删除「${model}」的单价`;
+  } finally {
+    deleting.value = false;
   }
 }
 

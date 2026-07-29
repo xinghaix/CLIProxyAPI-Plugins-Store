@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SYNC_SETTINGS,
   buildConfirmBody,
+  buildDeletePriceRequest,
   filterCandidatesWithExistingPrices,
   removeCandidatesForModels,
   buildFilterCounts,
@@ -267,6 +268,15 @@ describe('formatters / builders', () => {
       sourceModelId: '',
       syncedAtMs: 0,
     });
+  });
+
+  it('builds an encoded DELETE request for one model price', () => {
+    expect(buildDeletePriceRequest('acme/claude')).toEqual({
+      method: 'DELETE',
+      path: '/v0/management/model-prices',
+      query: 'model=acme%2Fclaude',
+    });
+    expect(buildDeletePriceRequest('  ')).toBeNull();
   });
 
   it('builds confirm body for sync-confirm contract', () => {

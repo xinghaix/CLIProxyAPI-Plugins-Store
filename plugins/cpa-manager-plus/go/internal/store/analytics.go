@@ -93,6 +93,23 @@ func (s *Store) ReplacePrices(ctx context.Context, prices map[string]Price) erro
 	return tx.Commit()
 }
 
+// DeletePrice removes one model price. It is idempotent: deleted is false when no row exists.
+func (s *Store) DeletePrice(ctx context.Context, model string) (deleted bool, err error) {
+	model = strings.TrimSpace(model)
+	if model == "" || len(model) > 256 {
+		return false, fmt.Errorf("invalid model %q", model)
+	}
+	result, err := s.db.ExecContext(ctx, `delete from model_prices where model = ?`, model)
+	if err != nil {
+		return false, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func nullableSyncedAt(value int64) any {
 	if value == 0 {
 		return nil
