@@ -41,7 +41,7 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 )
 
-var pluginVersion = "0.5.0"
+var pluginVersion = "0.5.1"
 
 const (
 	// supportedPluginSchemaVersion 保持为 1，确保插件可加载于 schema 1 和 schema 2 host。
@@ -302,21 +302,52 @@ func listHostAuth() ([]pluginapi.HostAuthFileEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	return decodeHostAuthList(raw)
+}
+
+func decodeHostAuthList(raw json.RawMessage) ([]pluginapi.HostAuthFileEntry, error) {
 	var auths []pluginapi.HostAuthFileEntry
 	if err := json.Unmarshal(raw, &auths); err == nil {
 		return auths, nil
 	}
-	var wrapped struct {
-		Items []pluginapi.HostAuthFileEntry `json:"items"`
-		Auths []pluginapi.HostAuthFileEntry `json:"auths"`
-	}
+
+	var wrapped map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &wrapped); err != nil {
+		return nil, fmt.Errorf("decode host.auth.list response: %w", err)
+	}
+	if wrapped == nil {
+		return nil, fmt.Errorf("decode host.auth.list response: expected an array or object")
+	}
+	decodeField := func(name string) ([]pluginapi.HostAuthFileEntry, bool, error) {
+		value, ok := wrapped[name]
+		if !ok {
+			return nil, false, nil
+		}
+		var entries []pluginapi.HostAuthFileEntry
+		if err := json.Unmarshal(value, &entries); err != nil {
+			return nil, true, fmt.Errorf("decode host.auth.list %q: %w", name, err)
+		}
+		return entries, true, nil
+	}
+
+	if files, ok, err := decodeField("files"); ok || err != nil {
+		return files, err
+	}
+	items, hasItems, err := decodeField("items")
+	if err != nil {
 		return nil, err
 	}
-	if len(wrapped.Items) > 0 {
-		return wrapped.Items, nil
+	auths, hasAuths, err := decodeField("auths")
+	if err != nil {
+		return nil, err
 	}
-	return wrapped.Auths, nil
+	if hasItems && (len(items) > 0 || !hasAuths) {
+		return items, nil
+	}
+	if hasAuths {
+		return auths, nil
+	}
+	return nil, fmt.Errorf("decode host.auth.list response: unsupported payload")
 }
 
 func callHost(method string, payload any) (json.RawMessage, error) {

@@ -40,7 +40,7 @@ func TestPluginRegistrationExposesUsagePlugin(t *testing.T) {
 	if !registration.Capabilities.ManagementAPI || !registration.Capabilities.UsagePlugin {
 		t.Fatalf("capabilities = %#v", registration.Capabilities)
 	}
-	if registration.Metadata.Version != "0.5.0" {
+	if registration.Metadata.Version != "0.5.1" {
 		t.Fatalf("version = %s", registration.Metadata.Version)
 	}
 	if registration.SchemaVersion != 1 {
@@ -64,5 +64,79 @@ func TestEnvelope(t *testing.T) {
 	}
 	if !parsed.OK || !strings.Contains(string(parsed.Result), "local") {
 		t.Fatalf("unexpected envelope: %s", body)
+	}
+}
+
+func TestDecodeHostAuthList(t *testing.T) {
+	tests := []struct {
+		name         string
+		raw          string
+		wantNames    []string
+		wantProvider []string
+		wantErr      bool
+	}{
+		{
+			name:         "host files wrapper",
+			raw:          `{"files":[{"name":"codex.json","provider":"codex","auth_index":"codex-1"}]}`,
+			wantNames:    []string{"codex.json"},
+			wantProvider: []string{"codex"},
+		},
+		{
+			name: "empty files wrapper",
+			raw:  `{"files":[]}`,
+		},
+		{
+			name:      "top level array",
+			raw:       `[{"name":"xai.json","provider":"xai"}]`,
+			wantNames: []string{"xai.json"},
+		},
+		{
+			name:      "legacy items wrapper",
+			raw:       `{"items":[{"name":"items.json","provider":"codex"}]}`,
+			wantNames: []string{"items.json"},
+		},
+		{
+			name:      "legacy auths wrapper",
+			raw:       `{"auths":[{"name":"auths.json","provider":"xai"}]}`,
+			wantNames: []string{"auths.json"},
+		},
+		{
+			name:      "files takes precedence",
+			raw:       `{"files":[{"name":"files.json","provider":"codex"}],"items":[{"name":"items.json","provider":"xai"}]}`,
+			wantNames: []string{"files.json"},
+		},
+		{
+			name:    "unknown wrapper",
+			raw:     `{"entries":[]}`,
+			wantErr: true,
+		},
+		{
+			name:    "invalid JSON",
+			raw:     `{`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entries, err := decodeHostAuthList(json.RawMessage(tt.raw))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("decodeHostAuthList() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil {
+				return
+			}
+			if len(entries) != len(tt.wantNames) {
+				t.Fatalf("entry count = %d, want %d", len(entries), len(tt.wantNames))
+			}
+			for index, wantName := range tt.wantNames {
+				if entries[index].Name != wantName {
+					t.Errorf("entries[%d].Name = %q, want %q", index, entries[index].Name, wantName)
+				}
+				if index < len(tt.wantProvider) && entries[index].Provider != tt.wantProvider[index] {
+					t.Errorf("entries[%d].Provider = %q, want %q", index, entries[index].Provider, tt.wantProvider[index])
+				}
+			}
+		})
 	}
 }

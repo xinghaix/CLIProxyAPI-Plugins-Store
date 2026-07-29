@@ -185,7 +185,7 @@
                 </tbody>
               </table>
             </div>
-            <div v-if="!filteredResults.length" class="empty">当前筛选下无结果。</div>
+            <div v-if="!filteredResults.length" class="empty">{{ resultsEmptyText }}</div>
             <div v-if="pagination.count" class="pager">
               <span>{{ pagination.startItem }}–{{ pagination.endItem }} / {{ pagination.count }}</span>
               <select v-model.number="resultPageSize" class="control compact">
@@ -407,6 +407,7 @@ import {
   formatTimestamp,
   formatTrigger,
   getCanonicalActionIds,
+  getInspectionResultsEmptyText,
   getRunStatusLabel,
   getRunTone,
   isActionableResult,
@@ -526,6 +527,9 @@ const handlingCounts = computed(() => countHandlingStates(resultRows.value));
 const actionCounts = computed(() => countActions(resultRows.value));
 const filteredResults = computed(() =>
   filterInspectionResults(resultRows.value, handlingFilter.value, actionFilter.value)
+);
+const resultsEmptyText = computed(() =>
+  getInspectionResultsEmptyText(detail.value?.run, resultRows.value.length, filteredResults.value.length)
 );
 const pagination = computed(() => buildPagination(filteredResults.value, resultPage.value, resultPageSize.value));
 const canonicalIds = computed(() => getCanonicalActionIds(resultRows.value));
