@@ -2,21 +2,27 @@
 
 export const RESULT_PAGE_SIZES = [20, 50, 100];
 
-export const ACTION_FILTERS = ['all', 'reauth', 'delete', 'disable', 'enable', 'keep'];
+export const ACTION_FILTERS = ['all', 'reauth', 'delete', 'disable', 'enable', 'review', 'keep'];
 export const HANDLING_FILTERS = ['all', 'pending', 'no_action'];
 
 export const DEFAULT_SERVER_CONFIG = {
   enabled: false,
   schedule: { mode: 'interval', intervalMinutes: 60, timePoints: [], timeZone: '' },
+  targetTypes: ['codex'],
   targetType: 'codex',
   workers: 4,
   deleteWorkers: 4,
   timeout: 15000,
   retries: 0,
   userAgent: 'codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal',
+  xaiInferenceUserAgent: 'xai-grok-workspace/0.2.101',
+  xaiInferenceEnabled: false,
+  xaiInferenceModel: 'grok-4.5',
+  xaiInferencePrompt: 'Reply with exactly OK.',
   usedPercentThreshold: 100,
   sampleSize: 0,
   autoActionMode: 'none',
+  autoRecoverEnabled: false,
 };
 
 export function formatTimestamp(ms, locale = 'zh-CN') {
@@ -30,6 +36,7 @@ export function formatActionLabel(action) {
     disable: '禁用',
     enable: '启用',
     reauth: '重新登录',
+    review: '人工复核',
     keep: '保留',
   };
   return map[action] || action || '—';
@@ -49,6 +56,8 @@ export function getRunStatusLabel(status) {
   const map = {
     completed: '已完成',
     failed: '失败',
+    cancelled: '已取消',
+    interrupted: '已中断',
     running: '运行中',
   };
   return map[status] || '空闲';
@@ -56,8 +65,8 @@ export function getRunStatusLabel(status) {
 
 export function getRunTone(status) {
   if (status === 'completed') return 'good';
-  if (status === 'failed') return 'bad';
-  if (status === 'running') return 'info';
+  if (status === 'failed' || status === 'interrupted') return 'bad';
+  if (status === 'running' || status === 'cancelled') return 'info';
   return 'idle';
 }
 
@@ -83,6 +92,12 @@ export function formatSchedule(config) {
   return `每 ${sch.intervalMinutes || 60} 分钟`;
 }
 
+export function normalizeInspectionTargetTypes(value, legacyTargetType = '') {
+  const values = Array.isArray(value) ? value : String(value || legacyTargetType).split(/[,+\s]+/);
+  const selected = new Set(values.map((item) => String(item).trim().toLowerCase()));
+  return ['codex', 'xai'].filter((provider) => selected.has(provider));
+}
+
 export function resolveServerCodexConfig(raw) {
   const c = raw || {};
   const schedule = c.schedule || {};
@@ -101,6 +116,7 @@ export function resolveServerCodexConfig(raw) {
       : c.intervalMinutes > 0
         ? c.intervalMinutes
         : DEFAULT_SERVER_CONFIG.schedule.intervalMinutes;
+  const targetTypes = normalizeInspectionTargetTypes(c.targetTypes, c.targetType);
   return {
     ...DEFAULT_SERVER_CONFIG,
     ...c,
@@ -111,12 +127,18 @@ export function resolveServerCodexConfig(raw) {
       timePoints: schedule.timePoints || [],
       timeZone: typeof schedule.timeZone === 'string' ? schedule.timeZone : '',
     },
-    targetType: c.targetType || DEFAULT_SERVER_CONFIG.targetType,
+    targetTypes: targetTypes.length ? targetTypes : [...DEFAULT_SERVER_CONFIG.targetTypes],
+    targetType: (targetTypes[0] || DEFAULT_SERVER_CONFIG.targetType),
     workers: c.workers > 0 ? c.workers : DEFAULT_SERVER_CONFIG.workers,
     deleteWorkers: c.deleteWorkers > 0 ? c.deleteWorkers : DEFAULT_SERVER_CONFIG.deleteWorkers,
     timeout: c.timeout > 0 ? c.timeout : DEFAULT_SERVER_CONFIG.timeout,
     retries: c.retries !== undefined && c.retries >= 0 ? c.retries : DEFAULT_SERVER_CONFIG.retries,
     userAgent: c.userAgent || DEFAULT_SERVER_CONFIG.userAgent,
+    xaiInferenceUserAgent: c.xaiInferenceUserAgent || DEFAULT_SERVER_CONFIG.xaiInferenceUserAgent,
+    xaiInferenceEnabled: Boolean(c.xaiInferenceEnabled),
+    xaiInferenceModel: c.xaiInferenceModel || DEFAULT_SERVER_CONFIG.xaiInferenceModel,
+    xaiInferencePrompt: c.xaiInferencePrompt || DEFAULT_SERVER_CONFIG.xaiInferencePrompt,
+    autoRecoverEnabled: Boolean(c.autoRecoverEnabled),
     usedPercentThreshold:
       c.usedPercentThreshold !== undefined ? c.usedPercentThreshold : DEFAULT_SERVER_CONFIG.usedPercentThreshold,
     sampleSize: c.sampleSize !== undefined && c.sampleSize >= 0 ? c.sampleSize : DEFAULT_SERVER_CONFIG.sampleSize,
@@ -132,15 +154,21 @@ export function toDraft(config) {
     intervalMinutes: String(r.schedule.intervalMinutes),
     timePoints: (r.schedule.timePoints || []).join(', '),
     timeZone: r.schedule.timeZone || '',
+    targetTypes: r.targetTypes.join('+'),
     targetType: r.targetType,
     workers: String(r.workers),
     deleteWorkers: String(r.deleteWorkers),
     timeout: String(r.timeout),
     retries: String(r.retries),
     userAgent: r.userAgent,
+    xaiInferenceUserAgent: r.xaiInferenceUserAgent,
+    xaiInferenceEnabled: r.xaiInferenceEnabled,
+    xaiInferenceModel: r.xaiInferenceModel,
+    xaiInferencePrompt: r.xaiInferencePrompt,
     usedPercentThreshold: String(r.usedPercentThreshold),
     sampleSize: String(r.sampleSize),
     autoActionMode: r.autoActionMode,
+    autoRecoverEnabled: r.autoRecoverEnabled,
   };
 }
 
@@ -169,7 +197,7 @@ export function parseTimePoints(raw) {
 
 export function validateInspectionConfigFields(draft) {
   const errors = {};
-  if (!String(draft.targetType || '').trim()) errors.targetType = '目标类型不能为空';
+  if (!normalizeInspectionTargetTypes(draft.targetTypes, draft.targetType).length) errors.targetTypes = '请选择至少一个巡检提供商';
   const checkInt = (field, min, label) => {
     const parsed = Number(String(draft[field] ?? '').trim());
     if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < min) {
@@ -212,20 +240,27 @@ export function createConfigFromDraft(draft) {
     draft.scheduleMode === 'time_points'
       ? { mode: 'time_points', timePoints, intervalMinutes, timeZone: String(draft.timeZone || '').trim() }
       : { mode: 'interval', intervalMinutes, timePoints, timeZone: String(draft.timeZone || '').trim() };
+  const targetTypes = normalizeInspectionTargetTypes(draft.targetTypes, draft.targetType);
   return {
     enabled: Boolean(draft.enabled),
     schedule,
-    targetType: String(draft.targetType).trim(),
+    targetTypes,
+    targetType: targetTypes[0],
     workers: Number(draft.workers),
     deleteWorkers: Number(draft.deleteWorkers),
     timeout: Number(draft.timeout),
     retries: Number(draft.retries),
     userAgent: String(draft.userAgent).trim(),
+    xaiInferenceUserAgent: String(draft.xaiInferenceUserAgent || '').trim(),
+    xaiInferenceEnabled: Boolean(draft.xaiInferenceEnabled),
+    xaiInferenceModel: String(draft.xaiInferenceModel || '').trim(),
+    xaiInferencePrompt: String(draft.xaiInferencePrompt || '').trim(),
     usedPercentThreshold: Number(draft.usedPercentThreshold),
     sampleSize: Number(draft.sampleSize),
     autoActionMode: ['none', 'enable', 'disable', 'delete'].includes(draft.autoActionMode)
       ? draft.autoActionMode
       : 'none',
+    autoRecoverEnabled: Boolean(draft.autoRecoverEnabled),
   };
 }
 
@@ -237,15 +272,20 @@ export function configsEquivalent(a, b) {
       intervalMinutes: c.schedule.intervalMinutes,
       timePoints: [...(c.schedule.timePoints || [])].sort(),
       timeZone: (c.schedule.timeZone || '').trim(),
-      targetType: (c.targetType || '').trim(),
+      targetTypes: [...(c.targetTypes || [])].sort(),
       workers: c.workers,
       deleteWorkers: c.deleteWorkers,
       timeout: c.timeout,
       retries: c.retries,
       userAgent: (c.userAgent || '').trim(),
+      xaiInferenceUserAgent: (c.xaiInferenceUserAgent || '').trim(),
+      xaiInferenceEnabled: Boolean(c.xaiInferenceEnabled),
+      xaiInferenceModel: (c.xaiInferenceModel || '').trim(),
+      xaiInferencePrompt: (c.xaiInferencePrompt || '').trim(),
       usedPercentThreshold: c.usedPercentThreshold,
       sampleSize: c.sampleSize,
       autoActionMode: c.autoActionMode,
+      autoRecoverEnabled: Boolean(c.autoRecoverEnabled),
     });
   return pick(resolveServerCodexConfig(a)) === pick(resolveServerCodexConfig(b));
 }
@@ -298,7 +338,7 @@ export function countHandlingStates(items) {
 }
 
 export function countActions(items) {
-  const counts = { delete: 0, disable: 0, enable: 0, reauth: 0, keep: 0 };
+  const counts = { delete: 0, disable: 0, enable: 0, reauth: 0, review: 0, keep: 0 };
   for (const item of items || []) {
     if (counts[item.action] !== undefined) counts[item.action] += 1;
   }
@@ -308,6 +348,7 @@ export function countActions(items) {
     delete: counts.delete,
     disable: counts.disable,
     enable: counts.enable,
+    review: counts.review,
     keep: counts.keep,
   };
 }
@@ -348,6 +389,7 @@ export function buildConfigOverviewItems(config, scheduleLabel) {
       field: 'schedule',
     },
     { key: 'trigger', label: '调度方式', value: scheduleLabel, field: 'schedule' },
+    { key: 'providers', label: '巡检提供商', value: c.targetTypes.map((item) => item === 'xai' ? 'xAI' : 'Codex').join(' + '), field: 'targetTypes' },
     { key: 'threshold', label: '额度阈值', value: `${c.usedPercentThreshold}%`, field: 'usedPercentThreshold' },
     { key: 'sample', label: '抽样数量', value: sample, field: 'sampleSize' },
     {

@@ -108,6 +108,18 @@ API request body (still sent by frontend `proxyCall`):
 - `/v0/management/codex-inspection/run|runs|...`
 - `/v0/management/account-action-candidates` and `.../enable|ignore|resolve|auth-file`
 
+## Local credential health inspection
+
+Starting with **0.5.0**, account inspection runs real provider probes inside the plugin local Runtime instead of only summarizing auth-file status.
+
+- Supports **Codex**, **xAI**, and the combined **Codex + xAI** selection with per-provider sampling.
+- Uses CPA management `api-call` with `auth_index`; authentication tokens are never written to plugin SQLite, inspection logs, or browser responses.
+- Codex uses a usage probe. xAI uses billing probes and can optionally perform an inference health probe.
+- Supports schedules, manual starts, cancellation, persisted result logs, quota thresholds, and controlled automatic actions.
+- Automatic recovery only re-enables credentials that this inspection automatically disabled and recorded as owned. Invalid credentials, rate limits, protocol changes, and missing auth metadata remain manual-review outcomes.
+
+Real inspection requires the CPA management address and key in **Account action authorization**, and a target CPA that supports `/v0/management/api-call`. Start with automatic actions disabled to confirm provider responses and result classification before enabling actions.
+
 ## UI structure
 
 | Tab | Primary endpoint |

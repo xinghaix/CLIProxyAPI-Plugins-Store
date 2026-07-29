@@ -108,6 +108,18 @@ API 请求体（内部仍由前端 `proxyCall` 发送）：
 - `/v0/management/codex-inspection/run|runs|...`
 - `/v0/management/account-action-candidates` 及 `.../enable|ignore|resolve|auth-file`
 
+## 本地凭证健康巡检
+
+从 **0.5.0** 起，账号巡检在插件本地 Runtime 中执行真实 provider 探测，而不是只汇总认证文件状态。
+
+- 支持 **Codex**、**xAI** 与 **Codex + xAI** 组合；按 provider 独立抽样。
+- 通过 CPA 管理 `api-call` 与 `auth_index` 代理请求；认证 token 不会写入插件 SQLite、巡检日志或前端响应。
+- Codex 使用 usage 探测；xAI 使用 billing 探测，并可选启用 inference 健康探测。
+- 支持定时、手动启动、运行中取消、结果日志、额度阈值与受控自动处置。
+- 自动恢复只会启用由巡检自动禁用且已记录归属的凭证；认证失效、限流、协议变化或缺少认证元数据均保守地要求人工复核。
+
+真实巡检需要在「账号处置授权」中配置 CPA 管理地址和密钥，且目标 CPA 必须支持 `/v0/management/api-call`。建议先以“不自动执行”模式确认 provider 响应与结果分类，再开启自动处置。
+
 ## UI 结构
 
 | Tab | 主要 endpoint |

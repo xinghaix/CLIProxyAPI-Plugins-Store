@@ -25,8 +25,8 @@
 
     <section class="panel" v-if="activeTab === 'config'">
       <DataCard title="访问凭据" subtitle="仅浏览器缓存">
-        <p class="muted">这里输入的是 CPA <code>management key</code>，用于在浏览器访问 CPA （而非CPA Manager Plus） 的
-          <code>/v0/management/*</code> 接口</p>
+        <p class="muted">浏览器访问 CPA Manager Plus / 插件 API 所需的 CPA
+          <code>management key</code>（仅保存在本页 sessionStorage，与下方「账号处置授权」不同）。</p>
         <div class="keybar">
           <input v-model.trim="cpaKeyInput" type="password" autocomplete="off"
                  placeholder="CPA management key（当前会话临时保存）" @keyup.enter="saveCPAKey"/>
@@ -39,20 +39,38 @@
         </div>
       </DataCard>
 
-      <DataCard title="账号巡检操作授权" subtitle="仅用于启用、禁用或删除认证文件">
+      <DataCard title="本地用量采集" subtitle="写入本地 SQLite">
+        <div class="config-form-grid">
+          <label class="config-field config-field-toggle">
+            <span class="config-field-label">记录请求用量</span>
+            <button :class="['toggle-switch', {on: mgrMonitoringEnabled}]"
+                    @click="mgrMonitoringEnabled = !mgrMonitoringEnabled"
+                    :disabled="mgrSaving || !mgrConfigLoaded">
+              <span class="toggle-knob"></span>
+            </button>
+            <small class="muted">{{ mgrMonitoringEnabled ? '已启用' : '已关闭' }}</small>
+          </label>
+        </div>
+        <p class="muted small-text" style="margin-top:8px">CPA Runtime 收到的用量记录会直接写入本地 SQLite，
+          用于统计、模型价格与账号巡检。关闭后不会记录新的用量。</p>
+      </DataCard>
+
+      <DataCard title="账号处置授权" subtitle="仅用于启用、禁用或删除认证文件">
         <div class="config-form-grid">
           <label class="config-field">
             <span class="config-field-label">CPA 管理 API 地址</span>
             <input v-model.trim="mgrCPABaseInput" class="control" placeholder="http://127.0.0.1:8317"
-                   :disabled="mgrSaving"/>
+                   :disabled="mgrSaving || !mgrConfigLoaded"/>
             <small class="muted">当前绑定: {{ mgrBoundCPABase || '未绑定' }}</small>
           </label>
           <label class="config-field">
             <span class="config-field-label">CPA 管理密钥</span>
             <div class="keybar">
               <input v-model.trim="mgrCPAKeyInput" :type="mgrCPAKeyVisible ? 'text' : 'password'"
-                     autocomplete="new-password" placeholder="留空保持不变" :disabled="mgrSaving"/>
-              <button class="btn" @click="mgrCPAKeyVisible = !mgrCPAKeyVisible" :disabled="mgrSaving">
+                     autocomplete="new-password" placeholder="留空保持不变"
+                     :disabled="mgrSaving || !mgrConfigLoaded"/>
+              <button class="btn" @click="mgrCPAKeyVisible = !mgrCPAKeyVisible"
+                      :disabled="mgrSaving || !mgrConfigLoaded">
                 {{ mgrCPAKeyVisible ? '隐藏' : '显示' }}
               </button>
               <button class="btn" @click="mgrCPAKeyInput = ''; mgrCPAKeyVisible = false"
@@ -62,54 +80,24 @@
             <small class="muted">{{ mgrHasBoundKey ? '已绑定密钥（留空不修改）' : '未绑定密钥' }}</small>
           </label>
         </div>
-        <p class="muted small-text" style="margin-top:8px">仅在账号巡检中执行启用、禁用或删除认证文件时使用（加密保存在本地 SQLite）。
-          本地请求监控、模型价格同步和账号巡检读取不依赖此配置。</p>
+        <p class="muted small-text" style="margin-top:8px">仅在账号巡检/认证异常中执行启用、禁用或删除认证文件时使用（加密保存在本地 SQLite）。
+          本地请求监控、模型价格同步和账号巡检读取不依赖此配置；与上方浏览器访问密钥用途不同。</p>
       </DataCard>
 
-      <DataCard title="请求监控配置" subtitle="Collector">
-        <div class="config-form-grid">
-          <label class="config-field config-field-toggle">
-            <span class="config-field-label">请求监控</span>
-            <button :class="['toggle-switch', {on: mgrMonitoringEnabled}]"
-                    @click="mgrMonitoringEnabled = !mgrMonitoringEnabled"
-                    :disabled="mgrSaving">
-              <span class="toggle-knob"></span>
-            </button>
-            <small class="muted">{{ mgrMonitoringEnabled ? '已启用' : '已关闭' }}</small>
-          </label>
-          <label class="config-field">
-            <span class="config-field-label">Collector 模式</span>
-            <select v-model="mgrCollectorMode" class="control"
-                    :disabled="mgrSaving || !mgrMonitoringEnabled">
-              <option value="auto">自动</option>
-              <option value="http">HTTP</option>
-              <option value="resp">RESP</option>
-              <option value="subscribe">Subscribe</option>
-            </select>
-          </label>
-          <label class="config-field">
-            <span class="config-field-label">轮询间隔 (ms)</span>
-            <input v-model.trim="mgrPollIntervalMs" type="number" min="1" class="control" placeholder="500"
-                   :disabled="mgrSaving || !mgrMonitoringEnabled"/>
-            <small class="muted">须 ≤ CPA retention ({{ mgrRetentionSeconds }}s)</small>
-          </label>
-          <label class="config-field">
-            <span class="config-field-label">批量大小</span>
-            <input v-model.trim="mgrBatchSize" type="number" min="1" class="control" placeholder="100"
-                   :disabled="mgrSaving || !mgrMonitoringEnabled"/>
-          </label>
-          <label class="config-field">
-            <span class="config-field-label">查询限制</span>
-            <input v-model.trim="mgrQueryLimit" type="number" min="1" class="control" placeholder="50000"
-                   :disabled="mgrSaving || !mgrMonitoringEnabled"/>
-          </label>
+      <DataCard title="运行时信息" subtitle="只读">
+        <div class="config-meta-grid">
+          <div><span>配置来源</span><strong>{{ mgrConfigSourceLabel }}</strong></div>
+          <div><span>数据目录</span><strong>{{ mgrLoadedConfig?.dataDir || '—' }}</strong></div>
+          <div><span>队列容量</span><strong>{{ mgrLoadedConfig?.collector?.queueCapacity ?? '—' }}</strong></div>
+          <div><span>写入批量</span><strong>{{ mgrLoadedConfig?.collector?.batchSize ?? '—' }}</strong></div>
         </div>
+        <p class="muted small-text" style="margin-top:8px">队列容量和写入批量在插件启动时读取；如需调整，请修改插件 YAML 后重启 CPA。</p>
       </DataCard>
 
       <div class="config-save-block">
         <p v-if="!mgrConfigLoaded && resolvedCPAKey" class="muted small-text">正在加载插件配置…</p>
-        <p v-else-if="mgrConfigLoaded && !mgrDirty" class="muted small-text">当前与本地 Runtime 配置一致，修改账号巡检操作授权或
-          Collector 后可保存。</p>
+        <p v-else-if="mgrConfigLoaded && !mgrDirty" class="muted small-text">当前与本地 Runtime 配置一致，修改本地用量采集或
+          账号处置授权后可保存。</p>
         <p v-if="configSaveMessage" class="notice config-save-ok">{{ configSaveMessage }}</p>
         <div class="config-actions-bar">
           <button class="btn primary" @click="saveManagerConfig" :disabled="mgrSaving || !mgrConfigLoaded || !mgrDirty">
@@ -118,14 +106,6 @@
           <button class="btn" @click="loadConfig" :disabled="mgrSaving || !resolvedCPAKey">重新加载</button>
         </div>
       </div>
-
-      <DataCard title="配置元信息" subtitle="status">
-        <div class="config-meta-grid">
-          <div><span>配置来源</span><strong>{{ mgrConfigSourceLabel }}</strong></div>
-          <div><span>CPA Usage</span><strong>{{ mgrUsageEnabled ? '已启用' : '未启用' }}</strong></div>
-          <div><span>CPA Retention</span><strong>{{ mgrRetentionSeconds }}s</strong></div>
-        </div>
-      </DataCard>
     </section>
 
     <section class="panel" v-if="activeTab === 'model-prices'">
@@ -146,6 +126,7 @@ import ModelPricesView from './components/ModelPricesView.vue';
 import AccountActionsView from './components/AccountActionsView.vue';
 import InspectionView from './components/InspectionView.vue';
 import {formatHealthText, HEALTH, LEGACY_SESSION_KEY, PROXY, readCPAAuthStoreKey, SESSION_KEY} from './utils/data.js';
+import {buildManagerConfigSaveBody} from './utils/managerConfigSave.js';
 import {initThemeBridge} from './themeBridge.js';
 
 initThemeBridge();
@@ -176,23 +157,18 @@ const mgrCPABaseInput = ref('');
 const mgrCPAKeyInput = ref('');
 const mgrCPAKeyVisible = ref(false);
 const mgrMonitoringEnabled = ref(true);
-const mgrCollectorMode = ref('auto');
-const mgrPollIntervalMs = ref('500');
-const mgrBatchSize = ref('100');
-const mgrQueryLimit = ref('50000');
 const mgrBoundCPABase = ref('');
 const mgrHasBoundKey = ref(false);
 const mgrConfigSource = ref('');
-const mgrUsageEnabled = ref(false);
-const mgrRetentionSeconds = ref(60);
 const mgrLoadedConfig = ref(null);
 const mgrConfigLoaded = ref(false);
 const configSaveMessage = ref('');
 
 const mgrConfigSourceLabel = computed(() => {
+  if (mgrConfigSource.value === 'plugin') return '本地 Runtime';
   if (mgrConfigSource.value === 'env') return '环境变量';
   if (mgrConfigSource.value === 'db') return '数据库';
-  return '未配置';
+  return mgrConfigLoaded.value ? '本地 Runtime' : '未加载';
 });
 const mgrDirty = computed(() => {
   if (!mgrConfigLoaded.value) return false;
@@ -201,12 +177,7 @@ const mgrDirty = computed(() => {
   const col = c.collector || {};
   if (mgrCPABaseInput.value !== (conn.cpaBaseUrl || '')) return true;
   if (mgrCPAKeyInput.value.trim()) return true;
-  if (mgrMonitoringEnabled.value !== (col.enabled !== false)) return true;
-  if (mgrCollectorMode.value !== (col.collectorMode || 'auto')) return true;
-  if (mgrPollIntervalMs.value !== String(col.pollIntervalMs ?? 500)) return true;
-  if (mgrBatchSize.value !== String(col.batchSize ?? 100)) return true;
-  if (mgrQueryLimit.value !== String(col.queryLimit ?? 50000)) return true;
-  return false;
+  return mgrMonitoringEnabled.value !== (col.enabled !== false);
 });
 
 const resolvedCPAKey = computed(() => {
@@ -324,7 +295,7 @@ async function loadConfig() {
   configData.value = resp;
   const cfg = resp?.config || resp || {};
   mgrLoadedConfig.value = cfg;
-  mgrConfigSource.value = resp?.source || '';
+  mgrConfigSource.value = resp?.source || 'plugin';
   mgrCPABaseInput.value = cfg.cpaConnection?.cpaBaseUrl || '';
   mgrBoundCPABase.value = cfg.cpaConnection?.cpaBaseUrl || '';
   mgrHasBoundKey.value = Boolean(
@@ -333,12 +304,6 @@ async function loadConfig() {
   mgrCPAKeyInput.value = '';
   mgrCPAKeyVisible.value = false;
   mgrMonitoringEnabled.value = cfg.collector?.enabled !== false;
-  mgrCollectorMode.value = cfg.collector?.collectorMode || 'auto';
-  mgrPollIntervalMs.value = String(cfg.collector?.pollIntervalMs || 500);
-  mgrBatchSize.value = String(cfg.collector?.batchSize || 100);
-  mgrQueryLimit.value = String(cfg.collector?.queryLimit || 50000);
-  mgrUsageEnabled.value = Boolean(resp?.cpaUsage?.usageStatisticsEnabled);
-  mgrRetentionSeconds.value = resp?.cpaUsage?.redisUsageQueueRetentionSeconds || 60;
   mgrConfigLoaded.value = true;
 }
 
@@ -352,34 +317,14 @@ async function saveManagerConfig() {
   errors.config = '';
   configSaveMessage.value = '';
   try {
-    const c = mgrLoadedConfig.value || {};
-    const oldConn = c.cpaConnection || {};
-    const newBase = mgrCPABaseInput.value.trim();
-    const newMgmtKey = mgrCPAKeyInput.value.trim();
-    const cpaConnection = {};
-    if (newBase !== (oldConn.cpaBaseUrl || '') || newMgmtKey) {
-      cpaConnection.cpaBaseUrl = newBase;
-      // Never echo redacted boolean/placeholder managementKey from GET.
-      if (newMgmtKey) {
-        cpaConnection.managementKey = newMgmtKey;
-      }
-    }
-    const nextConfig = {
-      cpaConnection,
-      collector: {
-        enabled: mgrMonitoringEnabled.value,
-        collectorMode: mgrCollectorMode.value,
-        queue: c.collector?.queue || 'usage',
-        popSide: c.collector?.popSide || 'right',
-        pollIntervalMs: Number(mgrPollIntervalMs.value) || 500,
-        batchSize: Number(mgrBatchSize.value) || 100,
-        queryLimit: Number(mgrQueryLimit.value) || 50000,
-        tlsSkipVerify: Boolean(c.collector?.tlsSkipVerify),
-      },
-      externalUsageService: {enabled: false, serviceBase: ''},
-    };
-    // Local runtime expects outer {"config": ...} for /usage-service/config
-    await proxyCall({method: 'PUT', path: '/usage-service/config', body: {config: nextConfig}});
+    const body = buildManagerConfigSaveBody({
+      currentConfig: mgrLoadedConfig.value || {},
+      cpaBaseURL: mgrCPABaseInput.value,
+      managementKey: mgrCPAKeyInput.value,
+      monitoringEnabled: mgrMonitoringEnabled.value,
+    });
+    // Local runtime expects outer {"config": ...}; only dirty sections are included.
+    await proxyCall({method: 'PUT', path: '/usage-service/config', body});
     await loadConfig();
     configSaveMessage.value = '插件配置已保存并应用';
     checkHealth();

@@ -147,6 +147,14 @@ func (s *Store) migrate(ctx context.Context) error {
 			detail_json text,
 			created_at_ms integer not null
 		)`,
+		`create table if not exists inspection_disable_ownership (
+			file_name text primary key,
+			provider text,
+			auth_index text,
+			account_id text,
+			disabled_at_ms integer not null,
+			updated_at_ms integer not null
+		)`,
 		`create table if not exists dead_letter_events (id integer primary key autoincrement, payload text not null, error text not null, created_at_ms integer not null)`,
 	}
 	for _, statement := range statements {
@@ -157,8 +165,60 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.ensureModelPriceColumns(ctx); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `insert or ignore into schema_migrations(version, applied_at_ms) values(2, ?)`, time.Now().UnixMilli())
+	if err := s.ensureInspectionColumns(ctx); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `insert or ignore into schema_migrations(version, applied_at_ms) values(3, ?)`, time.Now().UnixMilli())
 	return err
+}
+
+func (s *Store) ensureInspectionColumns(ctx context.Context) error {
+	columns := map[string][]struct{ name, definition string }{
+		"codex_inspection_runs": {
+			{"trigger_key", "text"}, {"probe_set_count", "integer not null default 0"}, {"sampled_count", "integer not null default 0"},
+			{"disabled_count", "integer not null default 0"}, {"enabled_count", "integer not null default 0"}, {"delete_count", "integer not null default 0"},
+			{"disable_count", "integer not null default 0"}, {"enable_count", "integer not null default 0"}, {"reauth_count", "integer not null default 0"}, {"keep_count", "integer not null default 0"},
+		},
+		"codex_inspection_results": {
+			{"auth_index", "text"}, {"account_id", "text"}, {"state", "text"}, {"status_code", "integer"}, {"used_percent", "real"},
+			{"is_quota", "integer not null default 0"}, {"auto_recover_eligible", "integer not null default 0"}, {"executed_action", "text"},
+			{"plan_type", "text"}, {"quota_windows_json", "text"}, {"error", "text"}, {"error_kind", "text"}, {"error_detail", "text"},
+		},
+	}
+	for table, additions := range columns {
+		rows, err := s.db.QueryContext(ctx, `pragma table_info(`+table+`)`)
+		if err != nil {
+			return err
+		}
+		existing := map[string]bool{}
+		for rows.Next() {
+			var cid int
+			var name, typ string
+			var notNull, primaryKey int
+			var defaultValue any
+			if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &primaryKey); err != nil {
+				rows.Close()
+				return err
+			}
+			existing[name] = true
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		for _, addition := range additions {
+			if existing[addition.name] {
+				continue
+			}
+			if _, err := s.db.ExecContext(ctx, `alter table `+table+` add column `+addition.name+` `+addition.definition); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Store) ensureModelPriceColumns(ctx context.Context) error {

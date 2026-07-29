@@ -193,7 +193,7 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"ok": true})
 	case method == http.MethodPost && path == "/v0/management/codex-inspection/run":
-		detail, err := runtime.RunInspection(ctx)
+		detail, err := runtime.StartInspection(ctx, "manual", "")
 		if err != nil {
 			return errorResponse(err)
 		}
@@ -231,6 +231,12 @@ func handleInspectionRoute(ctx context.Context, runtime *app.Runtime, method, pa
 		}
 		return jsonResponse(http.StatusOK, detail)
 	}
+	if len(parts) == 2 && parts[1] == "cancel" && method == http.MethodPost {
+		if !runtime.CancelInspection() {
+			return jsonResponse(http.StatusConflict, map[string]any{"error": "inspection is not running"})
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"ok": true, "runId": id})
+	}
 	if len(parts) == 2 && parts[1] == "actions" && method == http.MethodPost {
 		var payload struct {
 			ResultIDs []int64 `json:"resultIds"`
@@ -238,7 +244,7 @@ func handleInspectionRoute(ctx context.Context, runtime *app.Runtime, method, pa
 		if err := json.Unmarshal(body, &payload); err != nil {
 			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid actions"})
 		}
-		result, err := runtime.Store().ExecuteInspectionActions(ctx, id, payload.ResultIDs)
+		result, err := runtime.ExecuteInspectionActions(ctx, id, payload.ResultIDs)
 		if err != nil {
 			return errorResponse(err)
 		}
