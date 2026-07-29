@@ -16,14 +16,15 @@
         </div>
         <div class="config-actions-bar" style="padding:0">
           <button class="btn" @click="refreshAll(false)" :disabled="loading || !ready">{{ loading ? '加载中…' : '刷新' }}</button>
-          <button class="btn primary" @click="confirmRunNow" :disabled="!ready || running">{{ running ? '提交中…' : '立即巡检' }}</button>
+          <button v-if="hasRunningRun" class="btn danger" @click="confirmCancelRun" :disabled="!ready || running">取消巡检</button>
+          <button class="btn primary" @click="confirmRunNow" :disabled="!ready || running || hasRunningRun">{{ running ? '提交中…' : '立即巡检' }}</button>
         </div>
       </div>
 
       <details class="inspection-info-note">
-        <summary>服务端巡检说明</summary>
+        <summary>本地巡检说明</summary>
         <ul class="inspection-info-list">
-          <li><strong>后台 Worker</strong>：定时任务由插件本地 Runtime 执行，无需保持本页打开。</li>
+          <li><strong>本地 Runtime</strong>：定时任务由插件本地 Runtime 执行，无需保持本页打开。</li>
           <li><strong>时间基准</strong>：定时时间点以本地 Runtime / 主机时区为准（可在配置中指定）。</li>
           <li><strong>自动刷新</strong>：启用定时或存在运行中批次时，每 30 秒静默刷新列表。</li>
         </ul>
@@ -160,6 +161,7 @@
                     </td>
                     <td class="small-text">
                       {{ row.actionReason || '—' }}
+                      <div v-if="row.errorKind" class="muted">{{ row.errorKind }}<template v-if="row.statusCode"> · HTTP {{ row.statusCode }}</template></div>
                       <div v-if="formatActionStatusLabel(row)" class="muted">{{ formatActionStatusLabel(row) }}</div>
                     </td>
                     <td class="small-text">
@@ -231,7 +233,7 @@
       <div class="modal-dialog card drawer inspection-drawer" role="dialog" aria-labelledby="inspection-config-title">
         <div class="drawer-head">
           <div>
-            <h2 id="inspection-config-title">服务端巡检配置</h2>
+            <h2 id="inspection-config-title">本地凭证巡检配置</h2>
             <p class="muted small-text">保存后由本地 Runtime 应用，影响定时任务与默认探测参数。</p>
           </div>
           <button type="button" class="btn" @click="closeConfigDrawer">关闭</button>
@@ -292,6 +294,12 @@
                 <option value="delete">自动删除</option>
               </select>
             </label>
+            <label class="config-field config-field-toggle">
+              <span class="config-field-label">自动恢复巡检禁用的凭证</span>
+              <button type="button" :class="['toggle-switch', { on: draft.autoRecoverEnabled }]" @click="draft.autoRecoverEnabled = !draft.autoRecoverEnabled">
+                <span class="toggle-knob"></span>
+              </button>
+            </label>
           </div>
         </section>
 
@@ -299,9 +307,13 @@
           <summary>高级参数</summary>
           <div class="config-form-grid" style="margin-top:12px">
             <label class="config-field">
-              <span class="config-field-label">目标类型</span>
-              <input v-model="draft.targetType" class="control" />
-              <small v-if="configFieldErrors.targetType" class="bad-text">{{ configFieldErrors.targetType }}</small>
+              <span class="config-field-label">巡检凭证提供商</span>
+              <select v-model="draft.targetTypes" class="control">
+                <option value="codex">Codex</option>
+                <option value="xai">xAI</option>
+                <option value="codex+xai">Codex + xAI</option>
+              </select>
+              <small v-if="configFieldErrors.targetTypes" class="bad-text">{{ configFieldErrors.targetTypes }}</small>
             </label>
             <label class="config-field">
               <span class="config-field-label">探测并发</span>
@@ -320,9 +332,31 @@
               <input v-model="draft.retries" type="number" min="0" class="control" />
             </label>
             <label class="config-field config-field-wide">
-              <span class="config-field-label">User-Agent</span>
+              <span class="config-field-label">Codex User-Agent</span>
               <input v-model="draft.userAgent" class="control" />
             </label>
+            <template v-if="draft.targetTypes.includes('xai')">
+              <label class="config-field config-field-toggle config-field-wide">
+                <span class="config-field-label">xAI inference 健康探测</span>
+                <button type="button" :class="['toggle-switch', { on: draft.xaiInferenceEnabled }]" @click="draft.xaiInferenceEnabled = !draft.xaiInferenceEnabled">
+                  <span class="toggle-knob"></span>
+                </button>
+              </label>
+              <template v-if="draft.xaiInferenceEnabled">
+                <label class="config-field">
+                  <span class="config-field-label">xAI 模型</span>
+                  <input v-model="draft.xaiInferenceModel" class="control" />
+                </label>
+                <label class="config-field config-field-wide">
+                  <span class="config-field-label">xAI inference User-Agent</span>
+                  <input v-model="draft.xaiInferenceUserAgent" class="control" />
+                </label>
+                <label class="config-field config-field-wide">
+                  <span class="config-field-label">xAI 探测提示词</span>
+                  <input v-model="draft.xaiInferencePrompt" class="control" />
+                </label>
+              </template>
+            </template>
           </div>
         </details>
 
@@ -556,6 +590,7 @@ function actionLabel(f) {
     delete: '删除',
     disable: '禁用',
     enable: '启用',
+    review: '人工复核',
     keep: '保留',
   };
   return map[f] || f;
@@ -641,6 +676,26 @@ async function confirmRunNow() {
   });
   if (!ok) return;
   void runNow();
+}
+
+async function confirmCancelRun() {
+  if (!activeRun.value?.id) return;
+  const ok = await showConfirm({
+    title: '取消巡检',
+    message: '将取消当前本地 Runtime 中正在执行的巡检；已完成的结果会被保留。是否继续？',
+    confirmLabel: '取消巡检',
+    variant: 'danger',
+  });
+  if (!ok) return;
+  running.value = true;
+  try {
+    await props.proxyCall({ method: 'POST', path: `/v0/management/codex-inspection/runs/${activeRun.value.id}/cancel` });
+    await refreshAll(true);
+  } catch (e) {
+    error.value = e.message || String(e);
+  } finally {
+    running.value = false;
+  }
 }
 
 async function runNow() {

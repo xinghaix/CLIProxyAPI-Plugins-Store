@@ -51,6 +51,8 @@ type Runtime struct {
 	inspectionMu       sync.Mutex
 	inspectionSettings CodexInspectionSettings
 	inspectionWake     chan struct{}
+	inspectionRunMu    sync.Mutex
+	inspectionCancel   context.CancelFunc
 }
 
 func New(rawConfig []byte) (*Runtime, error) {
@@ -309,35 +311,18 @@ func (r *Runtime) ExecuteCandidate(ctx context.Context, id int64, action string)
 }
 
 func (r *Runtime) RunInspection(ctx context.Context) (map[string]any, error) {
-	r.mu.Lock()
-	list := r.authList
-	r.mu.Unlock()
-	if list == nil {
-		return nil, fmt.Errorf("host auth callback is unavailable")
+	return r.runInspection(ctx, "manual", "")
+}
+
+// CancelInspection requests cancellation of the active local inspection.
+func (r *Runtime) CancelInspection() bool {
+	r.inspectionRunMu.Lock()
+	defer r.inspectionRunMu.Unlock()
+	if r.inspectionCancel == nil {
+		return false
 	}
-	auths, err := list()
-	if err != nil {
-		return nil, err
-	}
-	accounts := make([]store.InspectionAccount, 0, len(auths))
-	for _, auth := range auths {
-		if auth.Provider != "codex" {
-			continue
-		}
-		key := auth.AuthIndex
-		if key == "" {
-			key = auth.ID
-		}
-		if key == "" {
-			key = auth.Name
-		}
-		accounts = append(accounts, store.InspectionAccount{Key: key, FileName: auth.Name, DisplayName: firstNonEmpty(auth.Email, auth.Label, auth.Name), Provider: auth.Provider, Status: auth.Status, Disabled: auth.Disabled})
-	}
-	run, err := r.store.StartInspectionWithAccounts(ctx, "manual", accounts)
-	if err != nil {
-		return nil, err
-	}
-	return r.store.InspectionDetail(ctx, run.ID)
+	r.inspectionCancel()
+	return true
 }
 
 func firstNonEmpty(values ...string) string {
@@ -353,6 +338,7 @@ func (r *Runtime) Close() error {
 	if r == nil || !r.closed.CompareAndSwap(false, true) {
 		return nil
 	}
+	r.CancelInspection()
 	r.cancel()
 	done := make(chan struct{})
 	go func() { r.wait.Wait(); close(done) }()

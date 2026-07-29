@@ -22,17 +22,25 @@ type CodexInspectionSchedule struct {
 // Only enabled/schedule/autoActionMode currently drive the local scheduler; the rest
 // is persisted for UI round-trip and future engine work.
 type CodexInspectionSettings struct {
-	Enabled              bool                    `json:"enabled"`
-	Schedule             CodexInspectionSchedule `json:"schedule"`
-	TargetType           string                  `json:"targetType"`
-	Workers              int                     `json:"workers"`
-	DeleteWorkers        int                     `json:"deleteWorkers"`
-	Timeout              int                     `json:"timeout"`
-	Retries              int                     `json:"retries"`
-	UserAgent            string                  `json:"userAgent"`
-	UsedPercentThreshold float64                 `json:"usedPercentThreshold"`
-	SampleSize           int                     `json:"sampleSize"`
-	AutoActionMode       string                  `json:"autoActionMode"`
+	Enabled  bool                    `json:"enabled"`
+	Schedule CodexInspectionSchedule `json:"schedule"`
+	// TargetTypes is the canonical provider selection. TargetType remains for
+	// compatibility with settings saved by earlier plugin releases.
+	TargetTypes           []string `json:"targetTypes"`
+	TargetType            string   `json:"targetType"`
+	Workers               int      `json:"workers"`
+	DeleteWorkers         int      `json:"deleteWorkers"`
+	Timeout               int      `json:"timeout"`
+	Retries               int      `json:"retries"`
+	UserAgent             string   `json:"userAgent"`
+	XAIInferenceUserAgent string   `json:"xaiInferenceUserAgent"`
+	XAIInferenceEnabled   bool     `json:"xaiInferenceEnabled"`
+	XAIInferenceModel     string   `json:"xaiInferenceModel"`
+	XAIInferencePrompt    string   `json:"xaiInferencePrompt"`
+	UsedPercentThreshold  float64  `json:"usedPercentThreshold"`
+	SampleSize            int      `json:"sampleSize"`
+	AutoActionMode        string   `json:"autoActionMode"`
+	AutoRecoverEnabled    bool     `json:"autoRecoverEnabled"`
 }
 
 // DefaultCodexInspectionSettings returns a complete, valid inspection configuration.
@@ -45,15 +53,21 @@ func DefaultCodexInspectionSettings() CodexInspectionSettings {
 			TimePoints:      []string{},
 			TimeZone:        "",
 		},
-		TargetType:           "codex",
-		Workers:              4,
-		DeleteWorkers:        4,
-		Timeout:              15000,
-		Retries:              0,
-		UserAgent:            "codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal",
-		UsedPercentThreshold: 100,
-		SampleSize:           0,
-		AutoActionMode:       "none",
+		TargetTypes:           []string{"codex"},
+		TargetType:            "codex",
+		Workers:               4,
+		DeleteWorkers:         4,
+		Timeout:               15000,
+		Retries:               0,
+		UserAgent:             "codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal",
+		XAIInferenceUserAgent: "xai-grok-workspace/0.2.101",
+		XAIInferenceEnabled:   false,
+		XAIInferenceModel:     "grok-4.5",
+		XAIInferencePrompt:    "Reply with exactly OK.",
+		UsedPercentThreshold:  100,
+		SampleSize:            0,
+		AutoActionMode:        "none",
+		AutoRecoverEnabled:    false,
 	}
 }
 
@@ -101,10 +115,11 @@ func normalizeCodexInspectionSettings(in CodexInspectionSettings) (CodexInspecti
 	out.Schedule.TimePoints = points
 	out.Schedule.TimeZone = strings.TrimSpace(in.Schedule.TimeZone)
 
-	out.TargetType = strings.TrimSpace(in.TargetType)
-	if out.TargetType == "" {
-		out.TargetType = "codex"
+	out.TargetTypes = normalizeInspectionTargetTypes(in.TargetTypes, in.TargetType)
+	if len(out.TargetTypes) == 0 {
+		return CodexInspectionSettings{}, fmt.Errorf("codexInspection.targetTypes must include codex or xai")
 	}
+	out.TargetType = out.TargetTypes[0]
 	if in.Workers < 1 {
 		return CodexInspectionSettings{}, fmt.Errorf("codexInspection.workers must be >= 1")
 	}
@@ -125,6 +140,19 @@ func normalizeCodexInspectionSettings(in CodexInspectionSettings) (CodexInspecti
 	if out.UserAgent == "" {
 		out.UserAgent = DefaultCodexInspectionSettings().UserAgent
 	}
+	out.XAIInferenceUserAgent = strings.TrimSpace(in.XAIInferenceUserAgent)
+	if out.XAIInferenceUserAgent == "" {
+		out.XAIInferenceUserAgent = DefaultCodexInspectionSettings().XAIInferenceUserAgent
+	}
+	out.XAIInferenceEnabled = in.XAIInferenceEnabled
+	out.XAIInferenceModel = strings.TrimSpace(in.XAIInferenceModel)
+	if out.XAIInferenceModel == "" {
+		out.XAIInferenceModel = DefaultCodexInspectionSettings().XAIInferenceModel
+	}
+	out.XAIInferencePrompt = strings.TrimSpace(in.XAIInferencePrompt)
+	if out.XAIInferencePrompt == "" {
+		out.XAIInferencePrompt = DefaultCodexInspectionSettings().XAIInferencePrompt
+	}
 	if in.UsedPercentThreshold < 0 || in.UsedPercentThreshold > 100 {
 		return CodexInspectionSettings{}, fmt.Errorf("codexInspection.usedPercentThreshold must be between 0 and 100")
 	}
@@ -141,7 +169,28 @@ func normalizeCodexInspectionSettings(in CodexInspectionSettings) (CodexInspecti
 	default:
 		return CodexInspectionSettings{}, fmt.Errorf("unsupported codexInspection.autoActionMode")
 	}
+	out.AutoRecoverEnabled = in.AutoRecoverEnabled
 	return out, nil
+}
+
+func normalizeInspectionTargetTypes(values []string, legacy string) []string {
+	if values == nil {
+		values = []string{legacy}
+	}
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "codex" || value == "xai" {
+			seen[value] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(seen))
+	for _, provider := range []string{"codex", "xai"} {
+		if _, ok := seen[provider]; ok {
+			result = append(result, provider)
+		}
+	}
+	return result
 }
 
 func normalizeTimePoint(value string) (string, bool) {
