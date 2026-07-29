@@ -415,7 +415,6 @@ async function refresh(force = false) {
     ]);
     data.value = analyticsData;
     modelPrices.value = pricesData;
-    selectedEvent.value = null;
     setupTimer();
   } catch (e) {
     error.value = e.message || String(e);
