@@ -231,7 +231,7 @@
     </DataCard>
 
     <div v-if="activeDataTab === 'accounts' && selectedAccount" style="margin-top:16px">
-      <DataCard title="来源详情" :subtitle="accountSource(selectedAccount)">
+      <DataCard title="来源详情" :subtitle="accountDetailSubtitle(selectedAccount)">
         <DetailGrid :items="buildAccountDetail(selectedAccount)"/>
       </DataCard>
     </div>
@@ -269,7 +269,7 @@
 import {computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
-import { eventApiKeyDisplay, looksLikeApiKey, shortHash } from '../utils/apiKeyDisplay.js';
+import { eventApiKeyDisplay, isSensitiveSource, maskSecretSummary, shortHash } from '../utils/apiKeyDisplay.js';
 
 const props = defineProps({
   ready: {type: Boolean, default: false},
@@ -521,7 +521,12 @@ function accountSourceKey(row) {
 }
 
 function isAccountSourceApiKey(row) {
-  return looksLikeApiKey(accountSource(row));
+  return isSensitiveSource(accountSource(row), row?.auth_type);
+}
+
+function accountDetailSubtitle(row) {
+  const source = accountSource(row);
+  return isSensitiveSource(source, row?.auth_type) ? maskSecretSummary(source) : source;
 }
 
 function isAccountSourceExpanded(row) {
@@ -718,7 +723,7 @@ function buildEventTableRow(row, groupMap) {
     id: eventId,
     raw: row,
     sourceName,
-    sourceIsApiKey: looksLikeApiKey(sourceName),
+    sourceIsApiKey: isSensitiveSource(sourceName, row.auth_type),
     provider: row.auth_provider_snapshot || row.provider || '—',
     apiKeyHash: row.api_key_hash || '—',
     model: row.model || '—',
@@ -988,18 +993,43 @@ const SimpleTable = defineComponent({
 const DetailGrid = defineComponent({
   props: {items: {type: Array, default: () => []}},
   setup(props) {
-    return () => h('div', {class: 'config-meta-grid'}, props.items.map((item, idx) =>
-        h('div', {key: idx}, [h('span', item.label), h('strong', item.value)])
-    ));
+    return () => h('div', {class: 'config-meta-grid'}, props.items.map((item, idx) => {
+      const value = item.sensitive
+        ? h('strong', {class: 'sensitive-value sensitive-value-block'}, [
+            h('code', {class: 'sensitive-value-content'}, item.value),
+            h('button', {
+              type: 'button',
+              class: 'sensitive-value-toggle',
+              'aria-expanded': item.expanded,
+              'aria-label': item.expanded ? '折叠来源 API Key' : '展开来源 API Key',
+              onClick: event => {
+                event.stopPropagation();
+                item.onToggle?.();
+              },
+            }, item.expanded ? '折叠' : '展开'),
+          ])
+        : h('strong', {class: 'config-meta-value'}, item.value);
+      return h('div', {key: idx, class: item.wide ? 'config-field-wide' : ''}, [h('span', item.label), value]);
+    }));
   }
 });
 const selectedAccount = computed(() => accountApiKeyRows.value.find(r => r.id === selectedAccountId.value) || null);
 
 function buildAccountDetail(row) {
   if (!row) return [];
+  const source = accountSource(row);
+  const sensitive = isSensitiveSource(source, row.auth_type);
+  const expanded = isAccountSourceExpanded(row);
   return [
-    {label: '来源', value: accountSource(row)},
-    {label: 'Provider', value: row.auth_provider_snapshot || '—'},
+    {
+      label: '来源',
+      value: sensitive ? eventApiKeyDisplay(source, expanded) : source,
+      wide: true,
+      sensitive,
+      expanded,
+      onToggle: sensitive ? () => toggleAccountSource(row) : null,
+    },
+    {label: 'Provider', value: row.auth_provider_snapshot || '—', wide: true},
     {label: '请求', value: fmtInt(row.calls)},
     {label: '成功率', value: fmtPct(row.success_rate)},
     {label: 'Token', value: fmtCompact(row.total_tokens)},

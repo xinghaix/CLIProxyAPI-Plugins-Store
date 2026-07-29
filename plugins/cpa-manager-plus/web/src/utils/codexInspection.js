@@ -313,13 +313,22 @@ export function isServerAction(action) {
 
 export function normalizeActionStatus(item) {
   const s = item.actionStatus;
-  if (['none', 'pending', 'success', 'failed', 'skipped', 'needs_review'].includes(s)) return s;
+  if (['none', 'pending', 'success', 'failed', 'skipped', 'needs_review', 'acknowledged'].includes(s)) return s;
   return isServerAction(item.action) ? 'pending' : 'none';
 }
 
 export function isActionableResult(item) {
   const status = normalizeActionStatus(item);
   return item.id > 0 && isServerAction(item.action) && (status === 'pending' || status === 'failed');
+}
+
+export function isManualAckAction(action) {
+  return action === 'review' || action === 'reauth';
+}
+
+export function isAcknowledgeableResult(item) {
+  const status = normalizeActionStatus(item);
+  return item.id > 0 && isManualAckAction(item.action) && ['pending', 'failed', 'needs_review'].includes(status);
 }
 
 export function getCanonicalActionIds(results) {
@@ -346,6 +355,8 @@ export function getCanonicalActionIds(results) {
 }
 
 export function isNeedsHandling(item) {
+  const status = normalizeActionStatus(item);
+  if (['success', 'skipped', 'acknowledged'].includes(status)) return false;
   return item.action !== 'keep' || item.statusCode === 401;
 }
 
@@ -425,6 +436,7 @@ export function formatActionStatusLabel(item) {
   if (status === 'failed') return '执行失败';
   if (status === 'skipped') return '已跳过';
   if (status === 'needs_review') return '需人工确认';
+  if (status === 'acknowledged') return '已标记处理';
   if (status === 'pending') return '待执行';
   return '';
 }

@@ -229,9 +229,7 @@ type stats struct {
 
 type accountAPIKeyStats struct {
 	stats
-	Source   string
-	APIKey   string
-	Provider string
+	Source, APIKey, Provider, AuthType string
 }
 
 func (s *stats) add(row eventRow, price Price) {
@@ -335,6 +333,7 @@ func addAccountAPIKeyStats(group map[string]*accountAPIKeyStats, source string, 
 	if row.TimestampMS >= value.Last {
 		value.Provider = row.Provider
 		value.APIKey = apiKeySnapshot(row)
+		value.AuthType = row.AuthType
 	}
 	value.add(row, price)
 }
@@ -348,6 +347,7 @@ func accountAPIKeyStatsRows(group map[string]*accountAPIKeyStats) []map[string]a
 		row["account_snapshot"] = value.Source
 		row["api_key_hash"] = value.APIKey
 		row["auth_provider_snapshot"] = value.Provider
+		row["auth_type"] = value.AuthType
 		out = append(out, row)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -394,7 +394,7 @@ func namedKeys(values map[string]bool, key string) []map[string]string {
 	return out
 }
 func eventJSON(row eventRow, price Price) map[string]any {
-	return map[string]any{"id": row.ID, "timestamp_ms": row.TimestampMS, "event_hash": fmt.Sprint(row.ID), "provider": row.Provider, "auth_provider_snapshot": row.Provider, "model": row.Model, "api_key_hash": row.APIKeyHash, "account_snapshot": accountSnapshot(row), "auth_index": row.AuthIndex, "auth_file_snapshot": row.AuthID, "source": row.Source, "reasoning_effort": row.ReasoningEffort, "service_tier": row.ServiceTier, "input_tokens": row.InputTokens, "output_tokens": row.OutputTokens, "reasoning_tokens": row.ReasoningTokens, "cached_tokens": row.CachedTokens, "cache_read_tokens": row.CacheReadTokens, "cache_creation_tokens": row.CacheCreationTokens, "total_tokens": row.TotalTokens, "latency_ms": row.LatencyMS.Int64, "ttft_ms": row.TTFTMS.Int64, "failed": row.Failed != 0, "fail_status_code": row.FailStatus.Int64, "fail_summary": row.FailSummary.String, "cost": cost(row, price)}
+	return map[string]any{"id": row.ID, "timestamp_ms": row.TimestampMS, "event_hash": fmt.Sprint(row.ID), "provider": row.Provider, "auth_provider_snapshot": row.Provider, "auth_type": row.AuthType, "model": row.Model, "api_key_hash": row.APIKeyHash, "account_snapshot": accountSnapshot(row), "auth_index": row.AuthIndex, "auth_file_snapshot": row.AuthID, "source": sourceSnapshot(row), "reasoning_effort": row.ReasoningEffort, "service_tier": row.ServiceTier, "input_tokens": row.InputTokens, "output_tokens": row.OutputTokens, "reasoning_tokens": row.ReasoningTokens, "cached_tokens": row.CachedTokens, "cache_read_tokens": row.CacheReadTokens, "cache_creation_tokens": row.CacheCreationTokens, "total_tokens": row.TotalTokens, "latency_ms": row.LatencyMS.Int64, "ttft_ms": row.TTFTMS.Int64, "failed": row.Failed != 0, "fail_status_code": row.FailStatus.Int64, "fail_summary": row.FailSummary.String, "cost": cost(row, price)}
 }
 func failureRows(rows []eventRow, prices map[string]Price) []map[string]any {
 	out := []map[string]any{}

@@ -4,9 +4,9 @@ import "testing"
 
 func TestAggregateAccountAPIKeyStatsBySource(t *testing.T) {
 	rows := []eventRow{
-		{ID: 1, TimestampMS: 100, Model: "model", Source: "oauth@example.com", AuthIndex: "account-a", APIKeyHash: "key-1", Provider: "openai", TotalTokens: 10},
-		{ID: 2, TimestampMS: 200, Model: "model", Source: "oauth@example.com", AuthIndex: "account-b", APIKeyHash: "key-2", Provider: "xai", TotalTokens: 20},
-		{ID: 3, TimestampMS: 300, Model: "model", Source: "sk-custom-key", AuthIndex: "account-a", APIKeyHash: "key-1", Provider: "openai", TotalTokens: 30},
+		{ID: 1, TimestampMS: 100, Model: "model", Source: "oauth@example.com", AuthType: "oauth", AuthIndex: "account-a", APIKeyHash: "key-1", Provider: "openai", TotalTokens: 10},
+		{ID: 2, TimestampMS: 200, Model: "model", Source: "oauth@example.com", AuthType: "oauth", AuthIndex: "account-b", APIKeyHash: "key-2", Provider: "xai", TotalTokens: 20},
+		{ID: 3, TimestampMS: 300, Model: "model", Source: "sk-custom-key", AuthType: "apikey", AuthIndex: "account-a", APIKeyHash: "key-1", Provider: "openai", TotalTokens: 30},
 	}
 
 	result := aggregate(rows, nil, AnalyticsRequest{Limit: 100, Granularity: "hour"})
@@ -32,7 +32,10 @@ func TestAggregateAccountAPIKeyStatsBySource(t *testing.T) {
 	if oauth["account_snapshot"] != "oauth@example.com" {
 		t.Fatalf("compat account snapshot = %#v", oauth["account_snapshot"])
 	}
-	if bySource["sk-custom-key"]["calls"] != int64(1) {
+	if oauth["auth_type"] != "oauth" {
+		t.Fatalf("oauth auth type = %#v", oauth["auth_type"])
+	}
+	if bySource["sk-custom-key"]["calls"] != int64(1) || bySource["sk-custom-key"]["auth_type"] != "apikey" {
 		t.Fatalf("custom source row = %#v", bySource["sk-custom-key"])
 	}
 	if len(result["account_stats"].([]map[string]any)) != 2 || len(result["api_key_stats"].([]map[string]any)) != 2 {
@@ -60,9 +63,14 @@ func TestAccountSnapshotUsesAuthIDAndMatchesFilters(t *testing.T) {
 	}
 }
 
-func TestEventJSONIncludesSource(t *testing.T) {
-	value := eventJSON(eventRow{AuthID: "fallback-account", Source: "oauth@example.com"}, Price{})
-	if value["account_snapshot"] != "fallback-account" || value["source"] != "oauth@example.com" {
+func TestEventJSONIncludesSourceAndAuthType(t *testing.T) {
+	value := eventJSON(eventRow{AuthID: "fallback-account", Source: "oauth@example.com", AuthType: "oauth"}, Price{})
+	if value["account_snapshot"] != "fallback-account" || value["source"] != "oauth@example.com" || value["auth_type"] != "oauth" {
 		t.Fatalf("event JSON = %#v", value)
+	}
+
+	empty := eventJSON(eventRow{}, Price{})
+	if empty["source"] != "unknown" {
+		t.Fatalf("empty event source = %#v", empty["source"])
 	}
 }

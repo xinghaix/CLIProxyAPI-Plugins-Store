@@ -295,17 +295,32 @@ func (s *Store) inspectionLogs(ctx context.Context, runID int64) ([]InspectionLo
 	return logs, rows.Err()
 }
 
-func (s *Store) ExecuteInspectionActions(ctx context.Context, id int64, resultIDs []int64) (map[string]any, error) {
+func (s *Store) AcknowledgeInspectionResults(ctx context.Context, runID int64, resultIDs []int64) (map[string]any, error) {
+	if _, err := s.InspectionDetail(ctx, runID); err != nil {
+		return nil, err
+	}
+
 	outcomes := make([]map[string]any, 0, len(resultIDs))
 	for _, resultID := range resultIDs {
-		result, err := s.db.ExecContext(ctx, `update codex_inspection_results set action_status='acknowledged' where run_id=? and id=?`, id, resultID)
+		result, err := s.db.ExecContext(ctx, `
+			update codex_inspection_results
+			set executed_action='acknowledge', action_status='acknowledged', action_error=null
+			where run_id=? and id=?
+				and action in ('review', 'reauth')
+				and coalesce(action_status, 'pending') in ('pending', 'failed', 'needs_review')
+				and exists (select 1 from codex_inspection_runs where id=? and status='completed')`, runID, resultID, runID)
 		if err != nil {
 			return nil, err
 		}
 		changed, _ := result.RowsAffected()
-		outcomes = append(outcomes, map[string]any{"id": resultID, "success": changed == 1})
+		outcome := map[string]any{"id": resultID, "success": changed == 1}
+		if changed != 1 {
+			outcome["error"] = "result is not eligible for acknowledgement"
+		}
+		outcomes = append(outcomes, outcome)
 	}
-	detail, err := s.InspectionDetail(ctx, id)
+
+	detail, err := s.InspectionDetail(ctx, runID)
 	if err != nil {
 		return nil, err
 	}

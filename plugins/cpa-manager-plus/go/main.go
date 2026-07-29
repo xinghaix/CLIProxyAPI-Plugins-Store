@@ -41,7 +41,7 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 )
 
-var pluginVersion = "0.5.4"
+var pluginVersion = "0.5.5"
 
 const (
 	// supportedPluginSchemaVersion 保持为 1，确保插件可加载于 schema 1 和 schema 2 host。
