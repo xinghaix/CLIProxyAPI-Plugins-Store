@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setI18nLocale } from '../i18n/index.js';
 import {
   DEFAULT_SYNC_SETTINGS,
   buildConfirmBody,
@@ -16,6 +17,7 @@ import {
   filterModelPriceRows,
   formatMoneyPer1M,
   formatSourceLabel,
+  formatTimestamp,
   normalizeCandidates,
   normalizeSourceResults,
   normalizeSyncResult,
@@ -77,6 +79,16 @@ describe('settings', () => {
     expect(validateIntervalHours(12).ok).toBe(true);
     expect(validateIntervalHours(1).ok).toBe(false);
     expect(validateIntervalHours(6).ok).toBe(true);
+  });
+
+  it('localizes interval validation errors', () => {
+    setI18nLocale('en');
+    expect(validateIntervalHours('x').error).toBe('Interval must be a number');
+    expect(validateIntervalHours(1).error).toBe('Interval must be between 6 and 168 hours');
+
+    setI18nLocale('zh-CN');
+    expect(validateIntervalHours('x').error).toBe('间隔必须是数字');
+    expect(validateIntervalHours(1).error).toBe('间隔须在 6–168 小时');
   });
 });
 
@@ -222,12 +234,23 @@ describe('rows / filters', () => {
 });
 
 describe('formatters / builders', () => {
-  it('formats money and source labels', () => {
+  it('formats money and source labels by locale', () => {
+    setI18nLocale('en');
     expect(formatMoneyPer1M(1.2)).toBe('$1.2000');
     expect(formatMoneyPer1M(null)).toBe('—');
-    expect(formatSourceLabel('manual')).toBe('手动');
+    expect(formatSourceLabel('manual')).toBe('Manual');
     expect(formatSourceLabel('litellm')).toBe('LiteLLM');
+    expect(formatSourceLabel('openrouter')).toBe('OpenRouter');
     expect(sourceBadgeClass('manual')).toBe('source-manual');
+
+    setI18nLocale('zh-CN');
+    expect(formatSourceLabel('manual')).toBe('手动');
+  });
+
+  it('formats timestamps with localeFormat', () => {
+    setI18nLocale('en');
+    expect(formatTimestamp(0)).toBe('—');
+    expect(formatTimestamp(Date.UTC(2026, 0, 2, 3, 4, 5), 'en')).not.toBe('—');
   });
 
   it('builds manual entry with source=manual', () => {

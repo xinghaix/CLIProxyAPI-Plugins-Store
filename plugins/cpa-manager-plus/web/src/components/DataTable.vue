@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div v-if="!normalized.length" class="empty">暂无数据</div>
+    <div v-if="!normalized.length" class="empty">{{ t('common.noData') }}</div>
     <div v-else class="table-wrap">
       <table>
         <thead>
@@ -18,12 +18,15 @@
 
 <script setup>
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { formatCell } from '../utils/data.js';
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
   preferredKeys: { type: Array, default: () => [] },
 });
+
+const { t } = useI18n();
 
 const normalized = computed(() => props.rows.slice(0, 30).map(row => (row && typeof row === 'object') ? row : {value: row}));
 const columns = computed(() => {

@@ -24,86 +24,98 @@
     </section>
 
     <section class="panel" v-if="activeTab === 'config'">
-      <DataCard title="访问凭据" subtitle="仅浏览器缓存">
-        <p class="muted">浏览器访问 CPA Manager Plus / 插件 API 所需的 CPA
-          <code>management key</code>（仅保存在本页 sessionStorage，与下方「账号处置授权」不同）。</p>
+      <DataCard :title="$t('config.credentials.title')" :subtitle="$t('config.credentials.subtitle')">
+        <p class="muted">{{ $t('config.credentials.description') }}</p>
         <div class="keybar">
           <input v-model.trim="cpaKeyInput" type="password" autocomplete="off"
-                 placeholder="CPA management key（当前会话临时保存）" @keyup.enter="saveCPAKey"/>
-          <button class="btn primary" @click="saveCPAKey">保存并检测</button>
-          <button class="btn" @click="checkHealth" :disabled="loading">检测 Runtime</button>
-          <button class="btn danger" @click="clearCPAKey">清除</button>
+                 :placeholder="$t('config.credentials.keyPlaceholder')" @keyup.enter="saveCPAKey"/>
+          <button class="btn primary" @click="saveCPAKey">{{ $t('config.credentials.saveAndCheck') }}</button>
+          <button class="btn" @click="checkHealth" :disabled="loading">{{ $t('config.credentials.checkRuntime') }}</button>
+          <button class="btn danger" @click="clearCPAKey">{{ $t('common.clear') }}</button>
         </div>
         <div class="config-health-row">
           <div :class="['health-pill', health.state]"><span class="dot"></span><span>{{ health.text }}</span></div>
         </div>
       </DataCard>
 
-      <DataCard title="本地用量采集" subtitle="写入本地 SQLite">
+      <DataCard :title="$t('language.title')" :subtitle="$t('language.subtitle')">
+        <div class="config-form-grid">
+          <label class="config-field">
+            <span class="config-field-label">{{ $t('language.label') }}</span>
+            <select v-model="languageSelection" class="control">
+              <option value="follow">{{ $t('language.followCPA') }}</option>
+              <option value="en">English</option>
+              <option value="zh-CN">简体中文</option>
+              <option value="zh-TW">繁體中文（台灣）</option>
+              <option value="ru">Русский</option>
+            </select>
+            <small class="muted">{{ languageStatus }}</small>
+          </label>
+        </div>
+      </DataCard>
+
+      <DataCard :title="$t('config.collector.title')" :subtitle="$t('config.collector.subtitle')">
         <div class="config-form-grid">
           <label class="config-field config-field-toggle">
-            <span class="config-field-label">记录请求用量</span>
+            <span class="config-field-label">{{ $t('config.collector.label') }}</span>
             <button :class="['toggle-switch', {on: mgrMonitoringEnabled}]"
                     @click="mgrMonitoringEnabled = !mgrMonitoringEnabled"
                     :disabled="mgrSaving || !mgrConfigLoaded">
               <span class="toggle-knob"></span>
             </button>
-            <small class="muted">{{ mgrMonitoringEnabled ? '已启用' : '已关闭' }}</small>
+            <small class="muted">{{ mgrMonitoringEnabled ? $t('common.enabled') : $t('common.disabled') }}</small>
           </label>
         </div>
-        <p class="muted small-text" style="margin-top:8px">CPA Runtime 收到的用量记录会直接写入本地 SQLite，
-          用于统计、模型价格与账号巡检。关闭后不会记录新的用量。</p>
+        <p class="muted small-text" style="margin-top:8px">{{ $t('config.collector.description') }}</p>
       </DataCard>
 
-      <DataCard title="账号处置授权" subtitle="仅用于启用、禁用或删除认证文件">
+      <DataCard :title="$t('config.accountAuthorization.title')" :subtitle="$t('config.accountAuthorization.subtitle')">
         <div class="config-form-grid">
           <label class="config-field">
-            <span class="config-field-label">CPA 管理 API 地址</span>
+            <span class="config-field-label">{{ $t('config.accountAuthorization.baseUrl') }}</span>
             <input v-model.trim="mgrCPABaseInput" class="control" placeholder="http://127.0.0.1:8317"
                    :disabled="mgrSaving || !mgrConfigLoaded"/>
-            <small class="muted">当前绑定: {{ mgrBoundCPABase || '未绑定' }}</small>
+            <small class="muted">{{ $t('config.accountAuthorization.currentBinding', {value: mgrBoundCPABase || $t('config.accountAuthorization.unbound')}) }}</small>
           </label>
           <label class="config-field">
-            <span class="config-field-label">CPA 管理密钥</span>
+            <span class="config-field-label">{{ $t('config.accountAuthorization.managementKey') }}</span>
             <div class="keybar">
               <input v-model.trim="mgrCPAKeyInput" :type="mgrCPAKeyVisible ? 'text' : 'password'"
-                     autocomplete="new-password" placeholder="留空保持不变"
+                     autocomplete="new-password" :placeholder="$t('config.accountAuthorization.keyPlaceholder')"
                      :disabled="mgrSaving || !mgrConfigLoaded"/>
               <button class="btn" @click="mgrCPAKeyVisible = !mgrCPAKeyVisible"
                       :disabled="mgrSaving || !mgrConfigLoaded">
-                {{ mgrCPAKeyVisible ? '隐藏' : '显示' }}
+                {{ mgrCPAKeyVisible ? $t('common.hide') : $t('common.show') }}
               </button>
               <button class="btn" @click="mgrCPAKeyInput = ''; mgrCPAKeyVisible = false"
-                      :disabled="mgrSaving || !mgrCPAKeyInput">清除
+                      :disabled="mgrSaving || !mgrCPAKeyInput">{{ $t('common.clear') }}
               </button>
             </div>
-            <small class="muted">{{ mgrHasBoundKey ? '已绑定密钥（留空不修改）' : '未绑定密钥' }}</small>
+            <small class="muted">{{ mgrHasBoundKey ? $t('config.accountAuthorization.bound') : $t('config.accountAuthorization.unbound') }}</small>
           </label>
         </div>
-        <p class="muted small-text" style="margin-top:8px">真实账号巡检的 provider 探测，以及启用、禁用或删除认证文件的处置都依赖此配置（加密保存在本地 SQLite）。
-          本地请求监控和模型价格同步不依赖此配置；与上方浏览器访问密钥用途不同。</p>
+        <p class="muted small-text" style="margin-top:8px">{{ $t('config.accountAuthorization.description') }}</p>
       </DataCard>
 
-      <DataCard title="运行时信息" subtitle="只读">
+      <DataCard :title="$t('config.runtime.title')" :subtitle="$t('config.runtime.subtitle')">
         <div class="config-meta-grid">
-          <div><span>配置来源</span><strong>{{ mgrConfigSourceLabel }}</strong></div>
-          <div><span>数据目录</span><strong>{{ mgrLoadedConfig?.dataDir || '—' }}</strong></div>
-          <div><span>队列容量</span><strong>{{ mgrLoadedConfig?.collector?.queueCapacity ?? '—' }}</strong></div>
-          <div><span>写入批量</span><strong>{{ mgrLoadedConfig?.collector?.batchSize ?? '—' }}</strong></div>
+          <div><span>{{ $t('config.runtime.source') }}</span><strong>{{ mgrConfigSourceLabel }}</strong></div>
+          <div><span>{{ $t('config.runtime.dataDir') }}</span><strong>{{ mgrLoadedConfig?.dataDir || '—' }}</strong></div>
+          <div><span>{{ $t('config.runtime.queueCapacity') }}</span><strong>{{ mgrLoadedConfig?.collector?.queueCapacity ?? '—' }}</strong></div>
+          <div><span>{{ $t('config.runtime.batchSize') }}</span><strong>{{ mgrLoadedConfig?.collector?.batchSize ?? '—' }}</strong></div>
         </div>
-        <p class="muted small-text" style="margin-top:8px">队列容量和写入批量在插件启动时读取；如需调整，请修改插件 YAML 后重启 CPA。</p>
+        <p class="muted small-text" style="margin-top:8px">{{ $t('config.runtime.description') }}</p>
       </DataCard>
 
       <div class="config-save-block">
-        <p v-if="!mgrConfigLoaded && resolvedCPAKey" class="muted small-text">正在加载插件配置…</p>
-        <p v-else-if="mgrConfigLoaded && !mgrDirty" class="muted small-text">当前与本地 Runtime 配置一致，修改本地用量采集或
-          账号处置授权后可保存。</p>
+        <p v-if="!mgrConfigLoaded && resolvedCPAKey" class="muted small-text">{{ $t('config.save.loading') }}</p>
+        <p v-else-if="mgrConfigLoaded && !mgrDirty" class="muted small-text">{{ $t('config.save.clean') }}</p>
         <p v-if="configSaveMessage" class="notice config-save-ok">{{ configSaveMessage }}</p>
         <div class="config-actions-bar">
           <button class="btn primary" @click="saveManagerConfig" :disabled="mgrSaving || !mgrConfigLoaded || !mgrDirty">
-            {{ mgrSaving ? '保存中…' : '保存插件配置' }}
+            {{ mgrSaving ? $t('common.loading') : $t('config.save.savePlugin') }}
           </button>
-          <button class="btn" @click="loadConfig" :disabled="mgrSaving || !resolvedCPAKey">重新加载</button>
+          <button class="btn" @click="loadConfig" :disabled="mgrSaving || !resolvedCPAKey">{{ $t('config.save.reload') }}</button>
         </div>
       </div>
     </section>
@@ -118,7 +130,8 @@
 </template>
 
 <script setup>
-import {computed, onBeforeUnmount, onMounted, reactive, ref} from 'vue';
+import {computed, onBeforeUnmount, onMounted, reactive, ref, watch} from 'vue';
+import {useI18n} from 'vue-i18n';
 import DataCard from './components/DataCard.vue';
 import MonitoringView from './components/MonitoringView.vue';
 import DashboardView from './components/DashboardView.vue';
@@ -128,20 +141,40 @@ import InspectionView from './components/InspectionView.vue';
 import {formatHealthText, HEALTH, LEGACY_SESSION_KEY, PROXY, readCPAAuthStoreKey, SESSION_KEY} from './utils/data.js';
 import {buildManagerConfigSaveBody} from './utils/managerConfigSave.js';
 import {initThemeBridge} from './themeBridge.js';
+import {
+  clearManualLocaleOverride,
+  destroyLocaleBridge,
+  localeModeRef,
+  localeRef,
+  setManualLocale,
+} from './localeBridge.js';
 
 initThemeBridge();
 
-const tabs = [
-  {key: 'dashboard', label: '仪表盘'},
-  {key: 'monitoring', label: '请求监控'},
-  {key: 'model-prices', label: '模型单价'},
-  {key: 'account-actions', label: '认证异常'},
-  {key: 'inspection', label: '账号巡检'},
-  {key: 'config', label: '配置'},
-];
+const {t} = useI18n();
+const localeKeys = {en: 'language.English', 'zh-CN': 'language.zhCN', 'zh-TW': 'language.zhTW', ru: 'language.Russian'};
+const tabs = computed(() => [
+  {key: 'dashboard', label: t('tabs.dashboard')},
+  {key: 'monitoring', label: t('tabs.monitoring')},
+  {key: 'model-prices', label: t('tabs.modelPrices')},
+  {key: 'account-actions', label: t('tabs.accountActions')},
+  {key: 'inspection', label: t('tabs.inspection')},
+  {key: 'config', label: t('tabs.config')},
+]);
 const activeTab = ref('dashboard');
+const languageSelection = computed({
+  get: () => localeModeRef.value === 'follow' ? 'follow' : localeRef.value,
+  set: (value) => {
+    if (value === 'follow') clearManualLocaleOverride();
+    else setManualLocale(value);
+  },
+});
+const currentLanguageLabel = computed(() => t(localeKeys[localeRef.value] || 'language.English'));
+const languageStatus = computed(() => localeModeRef.value === 'follow'
+  ? t('language.following')
+  : t('language.effective', {language: currentLanguageLabel.value}));
 const loading = ref(false);
-const health = reactive({state: '', text: '未检测 Runtime'});
+const health = reactive({state: '', text: t('auth.notChecked'), messageKey: 'auth.notChecked', response: null});
 const cpaKeyInput = ref((sessionStorage.getItem(SESSION_KEY) || '').trim());
 const errors = reactive({});
 const configData = ref(null);
@@ -162,13 +195,14 @@ const mgrHasBoundKey = ref(false);
 const mgrConfigSource = ref('');
 const mgrLoadedConfig = ref(null);
 const mgrConfigLoaded = ref(false);
-const configSaveMessage = ref('');
+const configSaveMessageKey = ref('');
+const configSaveMessage = computed(() => configSaveMessageKey.value ? t(configSaveMessageKey.value) : '');
 
 const mgrConfigSourceLabel = computed(() => {
-  if (mgrConfigSource.value === 'plugin') return '本地 Runtime';
-  if (mgrConfigSource.value === 'env') return '环境变量';
-  if (mgrConfigSource.value === 'db') return '数据库';
-  return mgrConfigLoaded.value ? '本地 Runtime' : '未加载';
+  if (mgrConfigSource.value === 'plugin') return t('config.runtime.localRuntime');
+  if (mgrConfigSource.value === 'env') return t('config.runtime.environment');
+  if (mgrConfigSource.value === 'db') return t('config.runtime.database');
+  return mgrConfigLoaded.value ? t('config.runtime.localRuntime') : t('config.runtime.notLoaded');
 });
 const mgrDirty = computed(() => {
   if (!mgrConfigLoaded.value) return false;
@@ -189,7 +223,7 @@ const resolvedCPAKey = computed(() => {
   if (store) return store;
   return (sessionStorage.getItem(LEGACY_SESSION_KEY) || '').trim();
 });
-const authNotice = computed(() => resolvedCPAKey.value ? '' : '未检测到可用的 CPA management key。请在 CPA 管理台登录并勾选「记住密码」，或在「配置」Tab 临时输入 CPA remote-management.secret-key（仅保存在本页 sessionStorage）。');
+const authNotice = computed(() => resolvedCPAKey.value ? '' : t('auth.notice'));
 const activeError = computed(() => errors[activeTab.value] || '');
 
 function authHeaders(json = true) {
@@ -220,20 +254,21 @@ function formatError(status, body) {
     const code = body.code ? `[${body.code}] ` : '';
     const msg = body.error || body.message || body.msg || '';
     if (msg) {
-      if (status === 401) return 'CPA 管理鉴权失败：' + code + msg;
-      if (status === 403) return '插件 API 拒绝：' + code + msg;
-      if (status === 409) return '配置冲突：' + code + msg;
-      return code + msg;
+      const message = code + msg;
+      if (status === 401) return t('errors.authentication', {message});
+      if (status === 403) return t('errors.forbidden', {message});
+      if (status === 409) return t('errors.conflict', {message});
+      return message;
     }
   }
   if (typeof body === 'string' && body.trim()) return body.trim();
-  if (status === 401) return 'CPA 管理鉴权失败：请登录管理台或在配置 Tab 输入 CPA remote-management.secret-key';
-  if (status === 403) return '插件 API 拒绝：路径或方法不在允许范围内';
-  return 'HTTP ' + status;
+  if (status === 401) return t('errors.authenticationHint');
+  if (status === 403) return t('errors.forbiddenHint');
+  return t('errors.http', {status});
 }
 
 async function proxyCall(payload) {
-  if (!resolvedCPAKey.value) throw new Error('missing CPA management key');
+  if (!resolvedCPAKey.value) throw new Error(t('errors.missingManagementKey'));
   const res = await fetch(PROXY, {method: 'POST', headers: authHeaders(true), body: JSON.stringify(payload)});
   const body = await readJSONResponse(res);
   if (!res.ok) throw new Error(formatError(res.status, body));
@@ -243,15 +278,21 @@ async function proxyCall(payload) {
 async function checkHealth() {
   if (!resolvedCPAKey.value) {
     health.state = 'err';
-    health.text = '缺少 CPA management key';
+    health.response = null;
+    health.messageKey = 'auth.missingKey';
+    health.text = t(health.messageKey);
     return;
   }
   health.state = '';
-  health.text = '检测中…';
+  health.response = null;
+  health.messageKey = 'common.loading';
+  health.text = t(health.messageKey);
   try {
     const res = await fetch(HEALTH, {headers: authHeaders(false)});
     const body = await readJSONResponse(res);
-    if (res.ok && body && body.ok) {
+    health.response = {status: res.status, body, ok: Boolean(res.ok && body?.ok)};
+    health.messageKey = '';
+    if (health.response.ok) {
       health.state = 'ok';
       health.text = formatHealthText(body);
     } else {
@@ -260,7 +301,9 @@ async function checkHealth() {
     }
   } catch (e) {
     health.state = 'err';
-    health.text = e.message || '检测失败';
+    health.response = null;
+    health.messageKey = 'auth.checkFailed';
+    health.text = e.message || t(health.messageKey);
   }
 }
 
@@ -290,7 +333,7 @@ async function refreshActive() {
 async function loadConfig() {
   if (!resolvedCPAKey.value) return;
   mgrConfigLoaded.value = false;
-  configSaveMessage.value = '';
+  configSaveMessageKey.value = '';
   const resp = await proxyCall({method: 'GET', path: '/usage-service/config'});
   configData.value = resp;
   const cfg = resp?.config || resp || {};
@@ -309,13 +352,13 @@ async function loadConfig() {
 
 async function saveManagerConfig() {
   if (!mgrConfigLoaded.value) {
-    errors.config = '配置尚未加载完成，请稍后或点击「重新加载」';
+    errors.config = t('config.save.notLoaded');
     return;
   }
   if (!mgrDirty.value) return;
   mgrSaving.value = true;
   errors.config = '';
-  configSaveMessage.value = '';
+  configSaveMessageKey.value = '';
   try {
     const body = buildManagerConfigSaveBody({
       currentConfig: mgrLoadedConfig.value || {},
@@ -326,7 +369,7 @@ async function saveManagerConfig() {
     // Local runtime expects outer {"config": ...}; only dirty sections are included.
     await proxyCall({method: 'PUT', path: '/usage-service/config', body});
     await loadConfig();
-    configSaveMessage.value = '插件配置已保存并应用';
+    configSaveMessageKey.value = 'config.save.saved';
     checkHealth();
   } catch (e) {
     errors.config = e.message || String(e);
@@ -348,7 +391,9 @@ function clearCPAKey() {
   sessionStorage.removeItem(SESSION_KEY);
   sessionStorage.removeItem(LEGACY_SESSION_KEY);
   health.state = '';
-  health.text = '未检测 Runtime';
+  health.response = null;
+  health.messageKey = 'auth.notChecked';
+  health.text = t(health.messageKey);
 }
 
 function handleOpenMonitoring() {
@@ -367,6 +412,16 @@ function handleOpenTab(event) {
   }, 0);
 }
 
+watch(localeRef, () => {
+  if (health.response) {
+    health.text = health.response.ok
+      ? formatHealthText(health.response.body)
+      : formatError(health.response.status, health.response.body) || formatHealthText(health.response.body);
+  } else if (health.messageKey) {
+    health.text = t(health.messageKey);
+  }
+});
+
 onMounted(() => {
   checkHealth();
   refreshActive();
@@ -376,5 +431,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('cpa-manager-plus:open-monitoring', handleOpenMonitoring);
   window.removeEventListener('cpa-manager-plus:open-tab', handleOpenTab);
+  destroyLocaleBridge();
 });
 </script>
