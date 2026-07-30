@@ -127,6 +127,7 @@ func (r *Runtime) executeInspection(runCtx context.Context, settings CodexInspec
 			log("error", "保存巡检结果失败", map[string]any{"error": err.Error(), "account": result.DisplayAccount})
 			continue
 		}
+		r.applyAutoBanInspectionResult(context.WithoutCancel(runCtx), result)
 		log(resultLogLevel(result), "账号探测完成", map[string]any{"provider": result.Provider, "fileName": result.FileName, "action": result.Action, "statusCode": result.StatusCode, "usedPercent": result.UsedPercent, "errorKind": result.ErrorKind})
 	}
 	if runCtx.Err() != nil {
@@ -484,8 +485,16 @@ func (r *Runtime) executeAutomaticInspectionActions(ctx context.Context, runID i
 		return err
 	}
 	ids := []int64{}
+	autoBanEnabled := r.AutoBanSettings().Enabled
 	for _, result := range results {
-		if result.Action == settings.AutoActionMode || (settings.AutoRecoverEnabled && result.Action == "enable" && result.AutoRecoverEligible) {
+		if settings.AutoRecoverEnabled && result.Action == "enable" && result.AutoRecoverEligible {
+			if !r.autoBanBlocksInspectionRecover(result) {
+				ids = append(ids, result.ID)
+			}
+			continue
+		}
+		// Auto-Ban owns status-code-driven disable/delete actions once enabled.
+		if !autoBanEnabled && result.Action == settings.AutoActionMode {
 			ids = append(ids, result.ID)
 		}
 	}

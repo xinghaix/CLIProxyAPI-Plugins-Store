@@ -53,6 +53,10 @@ type Runtime struct {
 	inspectionWake     chan struct{}
 	inspectionRunMu    sync.Mutex
 	inspectionCancel   context.CancelFunc
+	autoBanMu          sync.Mutex
+	autoBanSettings    AutoBanSettings
+	autoBanWake        chan struct{}
+	autoBanActionMu    sync.Mutex
 }
 
 func New(rawConfig []byte) (*Runtime, error) {
@@ -69,7 +73,7 @@ func New(rawConfig []byte) (*Runtime, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	runtime := &Runtime{config: cfg, store: database, cancel: cancel, started: time.Now(), masterKey: masterKey, priceWake: make(chan struct{}, 1), inspectionWake: make(chan struct{}, 1)}
+	runtime := &Runtime{config: cfg, store: database, cancel: cancel, started: time.Now(), masterKey: masterKey, priceWake: make(chan struct{}, 1), inspectionWake: make(chan struct{}, 1), autoBanWake: make(chan struct{}, 1)}
 	if err := runtime.loadConnection(context.Background()); err != nil {
 		_ = database.Close()
 		return nil, err
@@ -82,7 +86,11 @@ func New(rawConfig []byte) (*Runtime, error) {
 		_ = database.Close()
 		return nil, err
 	}
-	runtime.writer = ingest.NewWriter(database, cfg.QueueCapacity, cfg.BatchSize)
+	if err := runtime.loadAutoBanSettings(context.Background()); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	runtime.writer = ingest.NewWriter(database, cfg.QueueCapacity, cfg.BatchSize, runtime.handleCommittedUsageEvents)
 	runtime.wait.Add(1)
 	go func() { defer runtime.wait.Done(); runtime.writer.Run(ctx) }()
 	runtime.wait.Add(1)
@@ -90,6 +98,9 @@ func New(rawConfig []byte) (*Runtime, error) {
 	// Always run the inspection scheduler loop so runtime config updates can enable it without restart.
 	runtime.wait.Add(1)
 	go func() { defer runtime.wait.Done(); runtime.scheduleInspections(ctx) }()
+	// Auto-Ban is disabled by default, but its scheduler stays ready for settings updates.
+	runtime.wait.Add(1)
+	go func() { defer runtime.wait.Done(); runtime.scheduleAutoBan(ctx) }()
 	return runtime, nil
 }
 

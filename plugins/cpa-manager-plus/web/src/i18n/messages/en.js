@@ -23,7 +23,7 @@ export default {
     dashboard: 'Dashboard',
     monitoring: 'Request Monitoring',
     modelPrices: 'Model Prices',
-    accountActions: 'Auth Exceptions',
+    accountActions: 'Account Actions',
     inspection: 'Account Inspection',
     config: 'Configuration',
   },
@@ -508,6 +508,9 @@ export default {
       resolved: 'Resolved',
       deleted: 'Deleted',
     },
+  },
+  autoBan: {
+    title: 'Auto-Ban Account Actions', subtitle: 'Manage local credentials by status-code thresholds and cooldown rules', settings: 'Runtime settings', rules: 'Rules', accounts: 'Account states', history: 'Action history', enabled: 'Enable Auto-Ban', dryRun: 'Dry-run mode (record only)', sourceUsage: 'Watch usage failures', sourceInspection: 'Watch inspection results', codexCooldownHours: 'Default Codex cooldown (hours)', schedulerSeconds: 'Check interval (seconds)', saveSettings: 'Save settings', addRule: 'Add rule', editRule: 'Edit rule', noRules: 'No rules yet', noAccounts: 'No Auto-Ban account states', refresh: 'Refresh', provider: 'Provider', accountKind: 'Credential kind', statusCodes: 'Status codes', errorKinds: 'Error kinds', threshold: 'Threshold', thresholdMode: 'Hit mode', consecutive: 'Consecutive', total: 'Window total', windowMinutes: 'Window (minutes)', action: 'Action', cooldownHours: 'Cooldown (hours)', cooldownSource: 'Cooldown source', headerOrDefault: 'Response header or default', fixed: 'Fixed duration', headerOnly: 'Response header only', respectHostCooldown: 'Respect host cooldown', dailyCap: 'Daily action cap', saveRule: 'Save rule', deleteRule: 'Delete rule', ruleDeleteConfirm: 'Delete this rule? Existing account history is preserved.', deleteNeedsCap: 'Automatic delete rules require a daily action cap', matchRequired: 'Enter at least one status code or error kind', state: 'State', lastCode: 'Last code', hits: 'Hits', cooldown: 'Cooldown left', detail: 'Detail', manual: 'Manual actions', unban: 'Unban now', disable: 'Disable', enable: 'Enable', delete: 'Delete', hold: 'Pause automation', release: 'Resume automation', resetCounters: 'Reset counters', reason: 'Operator note (optional)', confirmDelete: 'Delete this credential? This cannot be undone.', confirmAction: 'Confirm action', stateLabels: { idle: 'Normal', flagged: 'Needs review', pending_action: 'Pending', disabled: 'Disabled', cooling: 'Cooling', enabling: 'Enabling', held: 'Manual hold', deleted: 'Deleted' }, actionLabels: { review: 'Review', disable: 'Auto disable', delete: 'Auto delete', cooldown_enable: 'Cooldown then enable' }, sourceLabels: { usage: 'Usage event', inspection: 'Inspection', manual: 'Manual action', scheduler: 'Scheduler', lazy: 'Lazy recovery' }, capability: { oauth_auth_file: 'OAuth auth-file', custom_provider: 'Custom provider', unavailable: 'Observe only; cannot act automatically' }, warnings: { hostCooldown: 'This rule respects host cooldown. xAI 429/401 observes by default to avoid duplicate disable.', delete: 'Automatic deletion permanently removes credentials; set a daily cap.' },
   },
   monitoring: {
     title: 'Request Monitoring',

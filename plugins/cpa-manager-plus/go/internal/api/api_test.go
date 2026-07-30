@@ -171,3 +171,30 @@ func TestDeleteModelPrice(t *testing.T) {
 		t.Fatalf("missing model = %d: %s", missing.StatusCode, missing.Body)
 	}
 }
+
+func TestAutoBanSettingsAndRulesRoutes(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := app.New([]byte("data_dir: " + t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+
+	get := Handle(ctx, runtime, []byte(`{"method":"GET","path":"/v0/management/auto-ban/settings"}`))
+	if get.StatusCode != http.StatusOK || !strings.Contains(string(get.Body), `"enabled":false`) {
+		t.Fatalf("get auto-ban settings = %d: %s", get.StatusCode, get.Body)
+	}
+	put := Handle(ctx, runtime, []byte(`{"method":"PUT","path":"/v0/management/auto-ban/settings","body":{"enabled":true,"sources":{"usage":true,"inspection":true},"schedulerIntervalSeconds":30,"defaultCodexCooldownHours":6,"historyRetentionDays":90,"dryRun":false}}`))
+	if put.StatusCode != http.StatusOK || !strings.Contains(string(put.Body), `"defaultCodexCooldownHours":6`) {
+		t.Fatalf("put auto-ban settings = %d: %s", put.StatusCode, put.Body)
+	}
+
+	create := Handle(ctx, runtime, []byte(`{"method":"POST","path":"/v0/management/auto-ban/rules","body":{"enabled":true,"priority":90,"name":"codex-418-review","providerScope":"codex","accountKind":"oauth_auth_file","matchStatusCodes":[418],"matchErrorKinds":[],"matchBodySubstrings":[],"sourceMask":1,"thresholdMode":"consecutive","thresholdCount":1,"successResetsConsecutive":true,"action":"review","cooldownSource":"header_or_default","respectHostCooldown":false}}`))
+	if create.StatusCode != http.StatusCreated {
+		t.Fatalf("create auto-ban rule = %d: %s", create.StatusCode, create.Body)
+	}
+	list := Handle(ctx, runtime, []byte(`{"method":"GET","path":"/v0/management/auto-ban/rules"}`))
+	if list.StatusCode != http.StatusOK || !strings.Contains(string(list.Body), "codex-418-review") {
+		t.Fatalf("list auto-ban rules = %d: %s", list.StatusCode, list.Body)
+	}
+}

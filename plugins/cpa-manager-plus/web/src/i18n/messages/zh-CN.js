@@ -1,6 +1,6 @@
 export default {
   common: { all: '全部', apply: '应用', cancel: '取消', clear: '清除', close: '关闭', confirm: '确认', delete: '删除', disabled: '已关闭', enabled: '已启用', error: '错误', hide: '隐藏', loading: '加载中…', noData: '暂无数据', none: '无', refresh: '刷新', save: '保存', show: '显示', unknown: '未知' },
-  tabs: { dashboard: '仪表盘', monitoring: '请求监控', modelPrices: '模型单价', accountActions: '认证异常', inspection: '账号巡检', config: '配置' },
+  tabs: { dashboard: '仪表盘', monitoring: '请求监控', modelPrices: '模型单价', accountActions: '账号处置', inspection: '账号巡检', config: '配置' },
   language: { title: '语言设置', subtitle: '插件界面偏好', label: '显示语言', followCPA: '跟随 CPA', effective: '当前生效：{language}', following: '正在跟随 CPA 语言', English: 'English', zhCN: '简体中文', zhTW: '繁體中文（台灣）', Russian: 'Русский' },
   config: {
     credentials: { title: '访问凭据', subtitle: '仅浏览器缓存', description: '浏览器访问 CPA Manager Plus / 插件 API 所需的 CPA management key（仅保存在本页 sessionStorage，与下方「账号处置授权」不同）。', keyPlaceholder: 'CPA management key（当前会话临时保存）', saveAndCheck: '保存并检测', checkRuntime: '检测 Runtime' },
@@ -385,6 +385,9 @@ export default {
       resolved: '已解决',
       deleted: '已删除',
     },
+  },
+  autoBan: {
+    title: 'Auto-Ban 账号处置', subtitle: '按状态码、阈值与冷却规则管理本地凭据', settings: '运行设置', rules: '规则', accounts: '账号状态', history: '操作历史', enabled: '启用 Auto-Ban', dryRun: '演练模式（只记录）', sourceUsage: '监听用量失败', sourceInspection: '监听巡检结果', codexCooldownHours: 'Codex 默认冷却（小时）', schedulerSeconds: '检查间隔（秒）', saveSettings: '保存设置', addRule: '新增规则', editRule: '编辑规则', noRules: '暂无规则', noAccounts: '暂无 Auto-Ban 账号状态', refresh: '刷新', provider: '提供商', accountKind: '凭据类型', statusCodes: '状态码', errorKinds: '错误类别', threshold: '阈值', thresholdMode: '命中方式', consecutive: '连续命中', total: '窗口累计', windowMinutes: '窗口（分钟）', action: '动作', cooldownHours: '冷却（小时）', cooldownSource: '冷却来源', headerOrDefault: '响应头或默认值', fixed: '固定时长', headerOnly: '仅响应头', respectHostCooldown: '尊重宿主冷却', dailyCap: '每日动作上限', saveRule: '保存规则', deleteRule: '删除规则', ruleDeleteConfirm: '删除此规则？不会删除已记录的账号历史。', deleteNeedsCap: '自动删除规则必须设置每日动作上限', matchRequired: '至少填写一个状态码或错误类别', state: '状态', lastCode: '最后状态码', hits: '命中次数', cooldown: '冷却剩余', detail: '详情', manual: '手动操作', unban: '立即解禁', disable: '禁用', enable: '启用', delete: '删除', hold: '暂停自动处置', release: '恢复自动处置', resetCounters: '清零计数', reason: '操作说明（可选）', confirmDelete: '确认删除凭据？此操作不可恢复。', confirmAction: '确认操作', stateLabels: { idle: '正常', flagged: '待人工处理', pending_action: '待执行', disabled: '已禁用', cooling: '冷却中', enabling: '正在启用', held: '人工暂停', deleted: '已删除' }, actionLabels: { review: '人工复核', disable: '自动禁用', delete: '自动删除', cooldown_enable: '冷却后启用' }, sourceLabels: { usage: '用量事件', inspection: '巡检', manual: '人工操作', scheduler: '定时器', lazy: '惰性恢复' }, capability: { oauth_auth_file: 'OAuth 凭据文件', custom_provider: '自定义提供商', unavailable: '仅观测，无法自动处置' }, warnings: { hostCooldown: '此规则尊重宿主冷却；xAI 429/401 默认只观测，避免双重禁用。', delete: '自动删除会永久移除凭据，请确认每日上限。' },
   },
   monitoring: {
     title: '请求监控',
