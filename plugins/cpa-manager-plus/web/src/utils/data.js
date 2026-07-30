@@ -1,4 +1,6 @@
+import { translate } from '../i18n/index.js';
 import { readManagementKeyFromMCStorage } from './mcAuthStorage.js';
+import { EMPTY_VALUE, formatNumber } from './localeFormat.js';
 
 // API gateway path (formerly /proxy). proxyCall keeps the internal name and payload shape.
 export const PROXY = '/v0/management/cpa-manager-plus/api';
@@ -23,18 +25,18 @@ export function accountActionPath(id, action) {
 
 /** Format local runtime health response for the config tab pill. */
 export function formatHealthText(body) {
-  if (!body || typeof body !== 'object') return '本地 Runtime 状态未知';
+  if (!body || typeof body !== 'object') return translate('health.unknown');
   if (body.ok) {
     const mode = body.mode || 'local';
-    const parts = [`本地 Runtime 正常 · ${mode}`];
+    const parts = [`${translate('health.normal')} · ${mode}`];
     if (body.data_dir) parts.push(String(body.data_dir));
     else if (body.manager_base_url) parts.push(String(body.manager_base_url));
-    if (body.db_ok === false) parts.push('DB 异常');
+    if (body.db_ok === false) parts.push(translate('health.databaseError'));
     return parts.join(' · ');
   }
   if (body.error) return String(body.error);
-  if (body.manager_base_url) return 'Runtime 异常 · ' + body.manager_base_url;
-  return '本地 Runtime 异常';
+  if (body.manager_base_url) return `${translate('health.unhealthy')} · ${body.manager_base_url}`;
+  return translate('health.unhealthy');
 }
 
 function readManagementKeyFromParentRuntime() {
@@ -79,8 +81,8 @@ export function readCPAAuthStoreKey() {
 }
 
 export function num(v) {
-  if (v == null || v === '') return '—';
-  if (typeof v === 'number') return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(v);
+  if (v == null || v === '') return EMPTY_VALUE;
+  if (typeof v === 'number') return formatNumber(v, { maximumFractionDigits: 2 });
   return String(v);
 }
 
@@ -102,7 +104,7 @@ export function findArray(data) {
 }
 
 export function formatCell(v) {
-  if (v == null) return '—';
+  if (v == null) return EMPTY_VALUE;
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
 }

@@ -7,50 +7,50 @@
             <i aria-hidden="true"></i>{{ syncStatusText }}
           </span>
           <span :class="['status-badge', settings.enabled ? 'good' : '']">
-            <i aria-hidden="true"></i>{{ settings.enabled ? '自动同步已启用' : '自动同步已关闭' }}
+            <i aria-hidden="true"></i>{{ settings.enabled ? t('modelPrices.autoSyncOn') : t('modelPrices.autoSyncOff') }}
           </span>
           <span class="muted small-text">
-            参与同步 {{ syncModelCount }} 个模型
-            <template v-if="status.lastSyncAtMs"> · 最近同步 {{ formatTimestamp(status.lastSyncAtMs) }}</template>
+            {{ t('modelPrices.syncModels', { count: syncModelCount }) }}
+            <template v-if="status.lastSyncAtMs"> · {{ t('modelPrices.lastSync', { time: formatTimestamp(status.lastSyncAtMs, localeRef) }) }}</template>
             <template v-if="lastResult?.trigger"> · {{ triggerLabel(lastResult.trigger) }}</template>
           </span>
         </div>
         <div class="config-actions-bar" style="padding:0">
           <button class="btn" type="button" @click="refresh(true)" :disabled="loading || !ready">
-            {{ loading ? '加载中…' : '刷新' }}
+            {{ loading ? t('common.loading') : t('common.refresh') }}
           </button>
-          <button class="btn" type="button" @click="addManualPrice" :disabled="!ready">添加手动价格</button>
+          <button class="btn" type="button" @click="addManualPrice" :disabled="!ready">{{ t('modelPrices.addManual') }}</button>
           <button class="btn primary" type="button" @click="runSync" :disabled="!ready || syncing || status.running">
-            {{ syncing || status.running ? '同步中…' : '一键同步价格' }}
+            {{ syncing || status.running ? t('modelPrices.syncing') : t('modelPrices.syncNow') }}
           </button>
         </div>
       </div>
 
       <details class="inspection-info-note">
-        <summary>价格同步说明</summary>
+        <summary>{{ t('modelPrices.infoTitle') }}</summary>
         <ul class="inspection-info-list">
-          <li><strong>同步范围</strong>：已配置单价模型 ∪ 用量中出现的模型（不会灌入全站价格库）。</li>
-          <li><strong>双源</strong>：LiteLLM + OpenRouter；高置信自动写入，模糊匹配进入候选确认。</li>
-          <li><strong>手动保护</strong>：手动新增/编辑的价格标记为「手动」，默认不会被自动同步覆盖。</li>
-          <li><strong>自动同步</strong>：由插件本地 Runtime 后台执行，无需保持本页打开。</li>
+          <li><strong>{{ t('modelPrices.info.scope') }}</strong>: {{ t('modelPrices.info.scopeText') }}</li>
+          <li><strong>{{ t('modelPrices.info.dualSource') }}</strong>: {{ t('modelPrices.info.dualSourceText') }}</li>
+          <li><strong>{{ t('modelPrices.info.manualProtect') }}</strong>: {{ t('modelPrices.info.manualProtectText') }}</li>
+          <li><strong>{{ t('modelPrices.info.autoSync') }}</strong>: {{ t('modelPrices.info.autoSyncText') }}</li>
         </ul>
       </details>
 
       <div class="model-prices-settings">
         <div class="section-title">
-          <h2>自动同步设置</h2>
+          <h2>{{ t('modelPrices.settingsTitle') }}</h2>
           <button
             type="button"
             class="btn primary"
             :disabled="!ready || settingsSaving || !settingsDirty"
             @click="saveSettings"
           >
-            {{ settingsSaving ? '保存中…' : '保存设置' }}
+            {{ settingsSaving ? t('modelPrices.savingSettings') : t('modelPrices.saveSettings') }}
           </button>
         </div>
         <div class="config-form-grid model-prices-settings-grid">
           <label class="config-field config-field-toggle">
-            <span class="config-field-label">启用自动同步</span>
+            <span class="config-field-label">{{ t('modelPrices.enableAutoSync') }}</span>
             <button
               type="button"
               :class="['toggle-switch', { on: settingsDraft.enabled }]"
@@ -59,10 +59,10 @@
             >
               <span class="toggle-knob"></span>
             </button>
-            <small class="muted">{{ settingsDraft.enabled ? '已启用' : '默认关闭' }}</small>
+            <small class="muted">{{ settingsDraft.enabled ? t('common.enabled') : t('modelPrices.defaultOff') }}</small>
           </label>
           <label class="config-field">
-            <span class="config-field-label">同步间隔（小时）</span>
+            <span class="config-field-label">{{ t('modelPrices.intervalHours') }}</span>
             <input
               v-model.number="settingsDraft.intervalHours"
               type="number"
@@ -72,23 +72,23 @@
               class="control"
               :disabled="!ready || settingsSaving || !syncApiAvailable.settings"
             />
-            <small class="muted">范围 6–168，默认 12</small>
+            <small class="muted">{{ t('modelPrices.intervalHint', { min: MIN_INTERVAL_HOURS, max: MAX_INTERVAL_HOURS, default: DEFAULT_SYNC_SETTINGS.intervalHours }) }}</small>
           </label>
           <label class="config-field config-field-toggle">
-            <span class="config-field-label">保护手动价格</span>
+            <span class="config-field-label">{{ t('modelPrices.protectManual') }}</span>
             <button
               type="button"
               :class="['toggle-switch', { on: true }]"
               disabled
-              title="后端始终保护 source=manual"
+              :title="t('modelPrices.protectManualTitle')"
             >
               <span class="toggle-knob"></span>
             </button>
-            <small class="muted">始终开启：自动同步不会覆盖 source=manual</small>
+            <small class="muted">{{ t('modelPrices.protectManualHint') }}</small>
           </label>
         </div>
         <p v-if="!syncApiAvailable.settings" class="muted small-text">
-          当前 Runtime 尚未提供同步设置 API，设置区仅作展示；同步功能可用后再保存。
+          {{ t('modelPrices.settingsApiUnavailable') }}
         </p>
         <p v-if="settingsMessage" class="notice config-save-ok" style="margin-top:8px">{{ settingsMessage }}</p>
       </div>
@@ -106,11 +106,11 @@
         >
           <strong>{{ formatSourceLabel(src.source) }}</strong>
           <span v-if="src.ok">
-            目录 {{ src.modelCount }} · 匹配 {{ src.matched }} · 应用 {{ src.applied }}
-            <template v-if="src.skipped"> · 跳过 {{ src.skipped }}</template>
+            {{ t('modelPrices.sourceOk', { models: src.modelCount, matched: src.matched, applied: src.applied }) }}
+            <template v-if="src.skipped"> · {{ t('modelPrices.sourceSkipped', { count: src.skipped }) }}</template>
             <template v-if="src.durationMs"> · {{ formatDurationMs(src.durationMs) }}</template>
           </span>
-          <span v-else>获取失败{{ src.error ? `：${src.error}` : '' }}</span>
+          <span v-else>{{ src.error ? t('modelPrices.sourceFailedWithError', { error: src.error }) : t('modelPrices.sourceFailed') }}</span>
         </div>
       </div>
       <p v-if="status.lastError || lastResult?.error" class="notice error" style="margin-top:10px">
@@ -119,13 +119,13 @@
     </div>
 
     <section v-if="error" class="notice error">{{ error }}</section>
-    <section v-if="!ready" class="notice">缺少 CPA management key，无法访问插件 API。</section>
+    <section v-if="!ready" class="notice">{{ t('modelPrices.missingKey') }}</section>
     <section v-if="syncNotice" class="notice">{{ syncNotice }}</section>
 
     <DataCard
       v-if="pendingCandidates.length"
-      title="待确认候选"
-      :subtitle="`${pendingCandidates.length} 条模糊匹配`"
+      :title="t('modelPrices.candidatesTitle')"
+      :subtitle="t('modelPrices.candidatesSubtitle', { count: pendingCandidates.length })"
     >
       <div class="table-wrap monitor-table">
         <table>
@@ -138,13 +138,13 @@
                   @change="toggleSelectAllCandidates"
                 />
               </th>
-              <th>本地模型</th>
-              <th>来源</th>
-              <th>源模型</th>
-              <th>Prompt</th>
-              <th>Completion</th>
-              <th>原因</th>
-              <th>操作</th>
+              <th>{{ t('modelPrices.columns.localModel') }}</th>
+              <th>{{ t('modelPrices.columns.source') }}</th>
+              <th>{{ t('modelPrices.columns.sourceModel') }}</th>
+              <th>{{ t('modelPrices.columns.prompt') }}</th>
+              <th>{{ t('modelPrices.columns.completion') }}</th>
+              <th>{{ t('modelPrices.columns.reason') }}</th>
+              <th>{{ t('modelPrices.columns.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -160,7 +160,7 @@
               <td>
                 <span :class="['source-badge', sourceBadgeClass(c.source)]">{{ formatSourceLabel(c.source) }}</span>
               </td>
-              <td class="small-text">{{ c.sourceModelId || '—' }}</td>
+              <td class="small-text">{{ c.sourceModelId || EMPTY_VALUE }}</td>
               <td>{{ formatMoneyPer1M(c.prompt) }}</td>
               <td>{{ formatMoneyPer1M(c.completion) }}</td>
               <td class="small-text">
@@ -169,7 +169,7 @@
               </td>
               <td>
                 <button class="btn primary" type="button" :disabled="confirming" @click="confirmOne(c)">
-                  确认
+                  {{ t('modelPrices.confirm') }}
                 </button>
               </td>
             </tr>
@@ -178,15 +178,15 @@
       </div>
       <div class="config-actions-bar" style="padding-top:10px">
         <button class="btn primary" type="button" :disabled="!selectedCandidateList.length || confirming" @click="confirmSelected">
-          {{ confirming ? '确认中…' : `确认选中 (${selectedCandidateList.length})` }}
+          {{ confirming ? t('modelPrices.confirming') : t('modelPrices.confirmSelected', { count: selectedCandidateList.length }) }}
         </button>
         <button class="btn" type="button" :disabled="!pendingCandidates.length" @click="dismissCandidates">
-          忽略候选
+          {{ t('modelPrices.dismissCandidates') }}
         </button>
       </div>
     </DataCard>
 
-    <DataCard title="模型单价" :subtitle="tableSubtitle">
+    <DataCard :title="t('modelPrices.tableTitle')" :subtitle="tableSubtitle">
       <div class="model-prices-toolbar">
         <div class="segmented-control model-prices-filters">
           <button
@@ -203,7 +203,7 @@
         <input
           v-model.trim="search"
           class="control wide"
-          placeholder="搜索模型 / 来源 / 源模型"
+          :placeholder="t('modelPrices.searchPlaceholder')"
         />
       </div>
 
@@ -214,16 +214,16 @@
         <table>
           <thead>
             <tr>
-              <th>模型</th>
-              <th>Prompt/1M</th>
-              <th>Completion/1M</th>
-              <th>Cache/1M</th>
-              <th>Cache Read</th>
-              <th>Cache Creation</th>
-              <th>来源</th>
-              <th>源模型</th>
-              <th>更新时间</th>
-              <th>操作</th>
+              <th>{{ t('modelPrices.columns.model') }}</th>
+              <th>{{ t('modelPrices.columns.promptPer1M') }}</th>
+              <th>{{ t('modelPrices.columns.completionPer1M') }}</th>
+              <th>{{ t('modelPrices.columns.cachePer1M') }}</th>
+              <th>{{ t('modelPrices.columns.cacheRead') }}</th>
+              <th>{{ t('modelPrices.columns.cacheCreation') }}</th>
+              <th>{{ t('modelPrices.columns.source') }}</th>
+              <th>{{ t('modelPrices.columns.sourceModel') }}</th>
+              <th>{{ t('modelPrices.columns.updatedAt') }}</th>
+              <th>{{ t('modelPrices.columns.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -235,25 +235,25 @@
             >
               <td>
                 <div><strong>{{ row.model }}</strong></div>
-                <div v-if="!row.hasPrice && row.candidateCount" class="muted small-text">需要确认价格</div>
-                <div v-else-if="!row.hasPrice" class="muted small-text">未设置价格</div>
+                <div v-if="!row.hasPrice && row.candidateCount" class="muted small-text">{{ t('modelPrices.needsConfirm') }}</div>
+                <div v-else-if="!row.hasPrice" class="muted small-text">{{ t('modelPrices.notSet') }}</div>
               </td>
-              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.prompt) : '—' }}</td>
-              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.completion) : '—' }}</td>
-              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.cache) : '—' }}</td>
-              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.cacheRead) : '—' }}</td>
-              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.cacheCreation) : '—' }}</td>
+              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.prompt) : EMPTY_VALUE }}</td>
+              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.completion) : EMPTY_VALUE }}</td>
+              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.cache) : EMPTY_VALUE }}</td>
+              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.cacheRead) : EMPTY_VALUE }}</td>
+              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.cacheCreation) : EMPTY_VALUE }}</td>
               <td @click.stop>
                 <span v-if="row.hasPrice" :class="['source-badge', sourceBadgeClass(row.price.source)]">
                   {{ formatSourceLabel(row.price.source) }}
                 </span>
-                <span v-else class="muted">—</span>
+                <span v-else class="muted">{{ EMPTY_VALUE }}</span>
               </td>
-              <td class="small-text">{{ row.price?.sourceModelId || '—' }}</td>
-              <td class="small-text">{{ formatTimestamp(row.price?.updatedAtMs) }}</td>
+              <td class="small-text">{{ row.price?.sourceModelId || EMPTY_VALUE }}</td>
+              <td class="small-text">{{ formatTimestamp(row.price?.updatedAtMs, localeRef) }}</td>
               <td @click.stop>
                 <button class="btn" type="button" :disabled="deleting" @click="openEdit(row)">
-                  {{ row.hasPrice ? '编辑' : '添加' }}
+                  {{ row.hasPrice ? t('modelPrices.edit') : t('modelPrices.add') }}
                 </button>
                 <button
                   v-if="row.hasPrice"
@@ -261,7 +261,7 @@
                   type="button"
                   :disabled="saving || deleting"
                   @click="confirmDeletePrice(row.model)"
-                >删除</button>
+                >{{ t('common.delete') }}</button>
               </td>
             </tr>
           </tbody>
@@ -273,41 +273,41 @@
       <div class="modal-dialog card drawer">
         <div class="drawer-head">
           <div>
-            <h2>{{ editingModel.isNew ? '新增单价' : '编辑单价' }}</h2>
-            <p class="muted">{{ editingModel.model || '新模型' }} · 保存后标记为手动价格</p>
+            <h2>{{ editingModel.isNew ? t('modelPrices.drawerNew') : t('modelPrices.drawerEdit') }}</h2>
+            <p class="muted">{{ t('modelPrices.drawerSub', { model: editingModel.model || t('modelPrices.newModel') }) }}</p>
           </div>
-          <button class="btn" type="button" @click="editingModel = null">关闭</button>
+          <button class="btn" type="button" @click="editingModel = null">{{ t('common.close') }}</button>
         </div>
         <div class="config-form-grid">
           <label class="config-field">
-            <span class="config-field-label">模型名称</span>
+            <span class="config-field-label">{{ t('modelPrices.fields.modelName') }}</span>
             <input v-model.trim="editingModel.model" class="control" :disabled="!editingModel.isNew" />
           </label>
           <label class="config-field">
-            <span class="config-field-label">Prompt 价格 (per 1M tokens)</span>
+            <span class="config-field-label">{{ t('modelPrices.fields.prompt') }}</span>
             <input v-model.number="editingModel.prompt" type="number" step="0.0001" min="0" class="control" />
           </label>
           <label class="config-field">
-            <span class="config-field-label">Completion 价格 (per 1M tokens)</span>
+            <span class="config-field-label">{{ t('modelPrices.fields.completion') }}</span>
             <input v-model.number="editingModel.completion" type="number" step="0.0001" min="0" class="control" />
           </label>
           <label class="config-field">
-            <span class="config-field-label">Cache 价格 (per 1M tokens)</span>
+            <span class="config-field-label">{{ t('modelPrices.fields.cache') }}</span>
             <input v-model.number="editingModel.cache" type="number" step="0.0001" min="0" class="control" />
           </label>
           <label class="config-field">
-            <span class="config-field-label">Cache Read 价格</span>
+            <span class="config-field-label">{{ t('modelPrices.fields.cacheRead') }}</span>
             <input v-model.number="editingModel.cacheRead" type="number" step="0.0001" min="0" class="control" />
           </label>
           <label class="config-field">
-            <span class="config-field-label">Cache Creation 价格</span>
+            <span class="config-field-label">{{ t('modelPrices.fields.cacheCreation') }}</span>
             <input v-model.number="editingModel.cacheCreation" type="number" step="0.0001" min="0" class="control" />
           </label>
         </div>
-        <p class="muted small-text">手动保存会强制 <code>source=manual</code>，并清空源模型 ID，避免被自动同步误覆盖。</p>
+        <p class="muted small-text">{{ t('modelPrices.manualNote') }}</p>
         <div class="config-actions-bar">
           <button class="btn primary" type="button" @click="savePrice" :disabled="saving || deleting">
-            {{ saving ? '保存中…' : '保存' }}
+            {{ saving ? t('modelPrices.saving') : t('common.save') }}
           </button>
           <button
             v-if="!editingModel.isNew"
@@ -315,8 +315,8 @@
             type="button"
             :disabled="saving || deleting"
             @click="confirmDeletePrice(editingModel.model)"
-          >{{ deleting ? '删除中…' : '删除单价' }}</button>
-          <button class="btn" type="button" :disabled="saving || deleting" @click="editingModel = null">取消</button>
+          >{{ deleting ? t('modelPrices.deleting') : t('modelPrices.deletePrice') }}</button>
+          <button class="btn" type="button" :disabled="saving || deleting" @click="editingModel = null">{{ t('common.cancel') }}</button>
         </div>
       </div>
     </div>
@@ -336,11 +336,16 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import ConfirmModal from './ConfirmModal.vue';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
+import { localeRef } from '../localeBridge.js';
+import { EMPTY_VALUE } from '../utils/localeFormat.js';
 import {
   DEFAULT_SYNC_SETTINGS,
+  MAX_INTERVAL_HOURS,
+  MIN_INTERVAL_HOURS,
   PRICE_FILTERS,
   buildConfirmBody,
   buildDeletePriceRequest,
@@ -371,6 +376,8 @@ const props = defineProps({
   proxyCall: { type: Function, required: true },
 });
 
+const { t } = useI18n();
+
 const prices = ref({});
 const usageModels = ref([]);
 const loading = ref(false);
@@ -387,10 +394,10 @@ const filter = ref('all');
 const search = ref('');
 const filters = PRICE_FILTERS;
 const confirmOpen = ref(false);
-const confirmTitle = ref('确认');
+const confirmTitle = ref('');
 const confirmMessage = ref('');
-const confirmOkLabel = ref('确定');
-const confirmCancelLabel = ref('取消');
+const confirmOkLabel = ref('');
+const confirmCancelLabel = ref('');
 const confirmVariant = ref('primary');
 let confirmResolve = null;
 
@@ -425,34 +432,34 @@ const visibleRows = computed(() =>
 const tableSubtitle = computed(() => {
   const total = allRows.value.length;
   const shown = visibleRows.value.length;
-  if (shown === total) return `${total} 个模型`;
-  return `显示 ${shown} / ${total}`;
+  if (shown === total) return t('modelPrices.tableSubtitleAll', { count: total });
+  return t('modelPrices.tableSubtitlePartial', { shown, total });
 });
 
 const emptyTableText = computed(() => {
   if (!allRows.value.length) {
-    return '暂无模型单价。可先产生用量或手动添加，再使用「一键同步价格」。';
+    return t('modelPrices.emptyNone');
   }
-  return '当前筛选下没有匹配的模型。';
+  return t('modelPrices.emptyFilter');
 });
 
 const summary = computed(() => summarizeLastResult(lastResult.value, syncModelCount.value));
 
 const summaryCards = computed(() => [
-  { label: '参与同步', value: summary.value.targetCount, sub: '本地关心模型' },
-  { label: '已自动更新', value: summary.value.applied, sub: '高置信写入' },
-  { label: '手动保护跳过', value: summary.value.protectedSkipped, sub: 'source=manual' },
-  { label: '待确认候选', value: pendingCandidates.value.length || summary.value.candidateCount, sub: '需人工确认' },
-  { label: '未匹配', value: summary.value.unmatched, sub: '无可用源价格' },
+  { label: t('modelPrices.summary.syncTargets'), value: summary.value.targetCount, sub: t('modelPrices.summary.syncTargetsSub') },
+  { label: t('modelPrices.summary.autoUpdated'), value: summary.value.applied, sub: t('modelPrices.summary.autoUpdatedSub') },
+  { label: t('modelPrices.summary.protectedSkipped'), value: summary.value.protectedSkipped, sub: t('modelPrices.summary.protectedSkippedSub') },
+  { label: t('modelPrices.summary.pendingCandidates'), value: pendingCandidates.value.length || summary.value.candidateCount, sub: t('modelPrices.summary.pendingCandidatesSub') },
+  { label: t('modelPrices.summary.unmatched'), value: summary.value.unmatched, sub: t('modelPrices.summary.unmatchedSub') },
 ]);
 
 const sourceResults = computed(() => lastResult.value?.sources || []);
 
 const syncStatusText = computed(() => {
-  if (syncing.value || status.value.running) return '同步进行中';
-  if (status.value.lastError || lastResult.value?.error) return '最近同步有错误';
-  if (status.value.lastSuccessAtMs || lastResult.value?.finishedAtMs) return '最近同步成功';
-  return '尚未同步';
+  if (syncing.value || status.value.running) return t('modelPrices.status.running');
+  if (status.value.lastError || lastResult.value?.error) return t('modelPrices.status.error');
+  if (status.value.lastSuccessAtMs || lastResult.value?.finishedAtMs) return t('modelPrices.status.success');
+  return t('modelPrices.status.never');
 });
 
 const lastStatusTone = computed(() => {
@@ -497,16 +504,16 @@ onBeforeUnmount(() => {
 });
 
 function showConfirm({
-  title = '确认',
+  title,
   message = '',
-  confirmLabel = '确定',
-  cancelLabel = '取消',
+  confirmLabel,
+  cancelLabel,
   variant = 'primary',
 } = {}) {
-  confirmTitle.value = title;
+  confirmTitle.value = title || t('common.confirm');
   confirmMessage.value = message;
-  confirmOkLabel.value = confirmLabel;
-  confirmCancelLabel.value = cancelLabel;
+  confirmOkLabel.value = confirmLabel || t('common.confirm');
+  confirmCancelLabel.value = cancelLabel || t('common.cancel');
   confirmVariant.value = variant;
   confirmOpen.value = true;
   return new Promise((resolve) => {
@@ -528,19 +535,19 @@ function candidateKey(c, idx) {
 function filterLabel(f) {
   switch (f) {
     case 'missing':
-      return '未定价';
+      return t('modelPrices.filters.missing');
     case 'saved':
-      return '已保存';
+      return t('modelPrices.filters.saved');
     case 'candidates':
-      return '待确认';
+      return t('modelPrices.filters.candidates');
     default:
-      return '全部';
+      return t('modelPrices.filters.all');
   }
 }
 
 function triggerLabel(trigger) {
-  if (trigger === 'auto') return '自动';
-  if (trigger === 'manual') return '手动';
+  if (trigger === 'auto') return t('modelPrices.trigger.auto');
+  if (trigger === 'manual') return t('modelPrices.trigger.manual');
   return trigger || '';
 }
 
@@ -614,7 +621,7 @@ async function refresh(force = false) {
     // Apply prices first so status candidate filtering sees current map.
     let pricesMap = prices.value;
     if (!pricesRes.ok) {
-      error.value = pricesRes.error || '加载模型单价失败';
+      error.value = pricesRes.error || t('modelPrices.loadFailed');
     } else {
       pricesMap = extractPricesMap(pricesRes.data);
       prices.value = pricesMap;
@@ -628,7 +635,7 @@ async function refresh(force = false) {
       usageModels.value = [];
       if (!usageRes.missing) {
         // non-404 failure: soft notice only
-        syncNotice.value = `用量摘要暂不可用：${usageRes.error}`;
+        syncNotice.value = t('modelPrices.usageUnavailable', { error: usageRes.error });
       }
     }
 
@@ -638,7 +645,7 @@ async function refresh(force = false) {
     } else {
       syncApiAvailable.status = !statusRes.missing;
       if (!statusRes.missing) {
-        syncNotice.value = syncNotice.value || `同步状态暂不可用：${statusRes.error}`;
+        syncNotice.value = syncNotice.value || t('modelPrices.statusUnavailable', { error: statusRes.error });
       }
     }
 
@@ -662,7 +669,7 @@ async function runSync() {
   syncNotice.value = '';
   const models = buildSyncModels(prices.value, usageModels.value);
   if (!models.length) {
-    syncNotice.value = '暂无已用/已配置模型可参与同步。请先产生用量或手动添加模型单价。';
+    syncNotice.value = t('modelPrices.noModelsToSync');
     return;
   }
   syncing.value = true;
@@ -675,15 +682,15 @@ async function runSync() {
     if (!res.ok) {
       syncApiAvailable.sync = !res.missing;
       if (/409|already running|进行中/i.test(res.error || '')) {
-        syncNotice.value = '同步进行中，请稍候…';
+        syncNotice.value = t('modelPrices.syncInProgress');
         status.value = { ...status.value, running: true };
         startPolling();
         return;
       }
       if (res.missing) {
-        error.value = '当前 Runtime 尚未提供价格同步 API。';
+        error.value = t('modelPrices.syncApiMissing');
       } else {
-        error.value = res.error || '同步失败';
+        error.value = res.error || t('modelPrices.syncFailed');
       }
       return;
     }
@@ -706,7 +713,7 @@ async function runSync() {
     if (lastResult.value?.error && applied === 0) {
       error.value = lastResult.value.error;
     } else {
-      syncNotice.value = `同步完成：自动更新 ${applied}，待确认 ${cand}，未匹配 ${unmatched}`;
+      syncNotice.value = t('modelPrices.syncDone', { applied, candidates: cand, unmatched });
     }
   } finally {
     syncing.value = false;
@@ -767,15 +774,15 @@ async function saveSettings() {
     });
     if (!res.ok) {
       if (res.missing) {
-        error.value = '当前 Runtime 尚未提供同步设置 API。';
+        error.value = t('modelPrices.settingsApiMissing');
         syncApiAvailable.settings = false;
       } else {
-        error.value = res.error || '保存设置失败';
+        error.value = res.error || t('modelPrices.settingsSaveFailed');
       }
       return;
     }
     applySettings(res.data || body);
-    settingsMessage.value = '自动同步设置已保存';
+    settingsMessage.value = t('modelPrices.settingsSaved');
   } finally {
     settingsSaving.value = false;
   }
@@ -822,7 +829,7 @@ async function savePrice() {
   const putBody = buildManualPutBody(editingModel.value);
   const entry = buildManualPriceEntry(editingModel.value);
   if (!putBody || !entry) {
-    error.value = '请填写模型名称';
+    error.value = t('modelPrices.modelNameRequired');
     return;
   }
   saving.value = true;
@@ -864,9 +871,9 @@ async function confirmDeletePrice(model) {
   const value = String(model || '').trim();
   if (!value || deleting.value) return;
   const ok = await showConfirm({
-    title: '删除模型单价',
-    message: `确定删除「${value}」的单价吗？用量记录不会删除；之后可手动添加或通过价格同步重新导入。`,
-    confirmLabel: '删除',
+    title: t('modelPrices.deleteTitle'),
+    message: t('modelPrices.deleteMessage', { model: value }),
+    confirmLabel: t('common.delete'),
     variant: 'danger',
   });
   if (!ok) return;
@@ -883,8 +890,8 @@ async function deletePrice(model) {
     const result = await softProxyCall(props.proxyCall, request);
     if (!result.ok) {
       error.value = result.missing
-        ? '当前 Runtime 尚未提供模型单价删除 API。'
-        : result.error || '删除模型单价失败';
+        ? t('modelPrices.deleteApiMissing')
+        : result.error || t('modelPrices.deleteFailed');
       return;
     }
     if (editingModel.value?.model === model) editingModel.value = null;
@@ -920,8 +927,8 @@ async function deletePrice(model) {
       }
     }
     syncNotice.value = result.data?.deleted === false
-      ? `「${model}」的单价已不存在`
-      : `已删除「${model}」的单价`;
+      ? t('modelPrices.deleteAlreadyGone', { model })
+      : t('modelPrices.deleteSuccess', { model });
   } finally {
     deleting.value = false;
   }
@@ -965,7 +972,7 @@ async function dismissCandidates() {
     applyStatus(res.data.status, prices.value);
   } else if (!res.ok && !res.missing) {
     // Soft failure: local clear already applied; notice only.
-    syncNotice.value = syncNotice.value || `忽略候选未持久化：${res.error}`;
+    syncNotice.value = syncNotice.value || t('modelPrices.dismissNotPersisted', { error: res.error });
   }
 }
 
@@ -986,7 +993,7 @@ async function confirmCandidates(list) {
     for (const candidate of list) {
       const body = buildConfirmBody(candidate);
       if (!body) {
-        error.value = '候选缺少 source / sourceModelId，无法确认';
+        error.value = t('modelPrices.candidateMissing');
         continue;
       }
       const res = await softProxyCall(props.proxyCall, {
@@ -996,7 +1003,7 @@ async function confirmCandidates(list) {
       });
       if (!res.ok) {
         if (res.missing) syncApiAvailable.confirm = false;
-        error.value = res.error || '确认候选失败';
+        error.value = res.error || t('modelPrices.confirmFailed');
         continue;
       }
       applied += 1;
@@ -1033,7 +1040,7 @@ async function confirmCandidates(list) {
         candidateCount: pendingCandidates.value.length,
       };
     }
-    syncNotice.value = applied ? `已确认 ${applied} 个候选价格` : syncNotice.value;
+    syncNotice.value = applied ? t('modelPrices.confirmed', { count: applied }) : syncNotice.value;
 
     const pricesRes = await softProxyCall(props.proxyCall, {
       method: 'GET',

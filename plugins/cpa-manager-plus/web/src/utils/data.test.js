@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PROXY, HEALTH, accountActionPath, formatHealthText } from './data.js';
+import { setI18nLocale } from '../i18n/index.js';
+import { PROXY, HEALTH, accountActionPath, formatHealthText, num, formatCell } from './data.js';
 
 describe('API constants', () => {
   it('uses /api gateway instead of /proxy', () => {
@@ -37,20 +38,45 @@ describe('accountActionPath', () => {
 });
 
 describe('formatHealthText', () => {
-  it('formats local runtime ok body', () => {
+  it('formats local runtime ok body in English by default', () => {
+    setI18nLocale('en');
     const text = formatHealthText({
       ok: true,
       mode: 'local',
       data_dir: '/tmp/cpa-manager-plus',
       db_ok: true,
     });
-    expect(text).toContain('本地 Runtime 正常');
+    expect(text).toContain('Local Runtime is healthy');
     expect(text).toContain('local');
     expect(text).toContain('/tmp/cpa-manager-plus');
   });
 
-  it('surfaces errors and unknown states', () => {
+  it('follows zh-CN health copy and keeps raw backend errors', () => {
+    setI18nLocale('zh-CN');
+    const text = formatHealthText({
+      ok: true,
+      mode: 'local',
+      data_dir: '/tmp/cpa-manager-plus',
+      db_ok: false,
+    });
+    expect(text).toContain('本地 Runtime 正常');
+    expect(text).toContain('DB 异常');
     expect(formatHealthText({ ok: false, error: 'db locked' })).toBe('db locked');
     expect(formatHealthText(null)).toContain('未知');
+  });
+
+  it('uses Russian unhealthy wording', () => {
+    setI18nLocale('ru');
+    expect(formatHealthText({ ok: false })).toContain('неисправен');
+  });
+});
+
+describe('num / formatCell', () => {
+  it('formats numbers with the active locale and keeps empty markers', () => {
+    setI18nLocale('en');
+    expect(num(null)).toBe('—');
+    expect(num(1234.5)).toBe('1,234.5');
+    expect(formatCell(null)).toBe('—');
+    expect(formatCell({ a: 1 })).toBe('{"a":1}');
   });
 });

@@ -1,3 +1,6 @@
+import { translate } from '../i18n/index.js';
+import { EMPTY_VALUE, formatDateTime } from './localeFormat.js';
+
 /** Default auto-sync settings for model prices. */
 export const DEFAULT_SYNC_SETTINGS = Object.freeze({
   enabled: false,
@@ -109,9 +112,15 @@ export function clampIntervalHours(value) {
 
 export function validateIntervalHours(value) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return { ok: false, error: '间隔必须是数字' };
+  if (!Number.isFinite(n)) return { ok: false, error: translate('prices.interval.mustBeNumber') };
   if (n < MIN_INTERVAL_HOURS || n > MAX_INTERVAL_HOURS) {
-    return { ok: false, error: `间隔须在 ${MIN_INTERVAL_HOURS}–${MAX_INTERVAL_HOURS} 小时` };
+    return {
+      ok: false,
+      error: translate('prices.interval.range', {
+        min: MIN_INTERVAL_HOURS,
+        max: MAX_INTERVAL_HOURS,
+      }),
+    };
   }
   return { ok: true, value: clampIntervalHours(n) };
 }
@@ -309,16 +318,16 @@ export function normalizeSyncResult(body) {
 }
 
 export function formatMoneyPer1M(value) {
-  if (value == null || value === '') return '—';
+  if (value == null || value === '') return EMPTY_VALUE;
   const n = Number(value);
-  if (!Number.isFinite(n)) return '—';
+  if (!Number.isFinite(n)) return EMPTY_VALUE;
   return `$${n.toFixed(4)}`;
 }
 
 export function formatSourceLabel(source) {
   const s = String(source || '').trim();
-  if (!s) return '—';
-  if (s.toLowerCase() === 'manual') return '手动';
+  if (!s) return EMPTY_VALUE;
+  if (s.toLowerCase() === 'manual') return translate('prices.source.manual');
   if (s.toLowerCase() === 'litellm') return 'LiteLLM';
   if (s.toLowerCase() === 'openrouter') return 'OpenRouter';
   return s;
@@ -333,19 +342,13 @@ export function sourceBadgeClass(source) {
   return 'source-other';
 }
 
-export function formatTimestamp(ms) {
-  const n = Number(ms);
-  if (!n) return '—';
-  try {
-    return new Date(n).toLocaleString('zh-CN', { hour12: false });
-  } catch {
-    return '—';
-  }
+export function formatTimestamp(ms, locale) {
+  return formatDateTime(ms, locale);
 }
 
 export function formatDurationMs(ms) {
   const n = Number(ms);
-  if (!Number.isFinite(n) || n <= 0) return '—';
+  if (!Number.isFinite(n) || n <= 0) return EMPTY_VALUE;
   if (n < 1000) return `${Math.round(n)}ms`;
   return `${(n / 1000).toFixed(1)}s`;
 }

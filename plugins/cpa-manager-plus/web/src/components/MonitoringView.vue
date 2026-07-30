@@ -2,69 +2,69 @@
   <section class="monitoring-page">
     <div class="card filter-card monitoring-filterbar">
       <div class="filterbar-title">
-        <div class="eyebrow">REQUEST MONITORING</div>
-        <h2>请求监控</h2>
+        <div class="eyebrow">{{ t('monitoring.eyebrow') }}</div>
+        <h2>{{ t('monitoring.title') }}</h2>
       </div>
       <div class="filterbar-controls primary-filters">
         <select v-model="timeRange" class="control compact">
-          <option value="today">今天</option>
-          <option value="7d">最近 7 天</option>
-          <option value="14d">最近 14 天</option>
-          <option value="30d">最近 30 天</option>
-          <option value="all">全部</option>
-          <option value="custom">自定义</option>
+          <option value="today">{{ t('monitoring.timeRange.today') }}</option>
+          <option value="7d">{{ t('monitoring.timeRange.d7') }}</option>
+          <option value="14d">{{ t('monitoring.timeRange.d14') }}</option>
+          <option value="30d">{{ t('monitoring.timeRange.d30') }}</option>
+          <option value="all">{{ t('monitoring.timeRange.all') }}</option>
+          <option value="custom">{{ t('monitoring.timeRange.custom') }}</option>
         </select>
         <select v-model.number="autoRefreshMs" class="control compact">
-          <option :value="0">不自动刷新</option>
-          <option :value="5000">5 秒</option>
-          <option :value="15000">15 秒</option>
-          <option :value="30000">30 秒</option>
-          <option :value="60000">60 秒</option>
+          <option :value="0">{{ t('monitoring.autoRefresh.off') }}</option>
+          <option :value="5000">{{ t('monitoring.autoRefresh.seconds', { n: 5 }) }}</option>
+          <option :value="15000">{{ t('monitoring.autoRefresh.seconds', { n: 15 }) }}</option>
+          <option :value="30000">{{ t('monitoring.autoRefresh.seconds', { n: 30 }) }}</option>
+          <option :value="60000">{{ t('monitoring.autoRefresh.seconds', { n: 60 }) }}</option>
         </select>
         <input v-model.trim="searchQuery" class="control wide"
-               placeholder="全文搜索：模型 / 账号 / API Key / 路径 / trace / 错误" @keyup.enter="refresh(true)"/>
+               :placeholder="t('monitoring.searchPlaceholder')" @keyup.enter="refresh(true)"/>
       </div>
       <div class="filterbar-actions">
         <button class="btn primary" @click="refresh(true)" :disabled="loading || !ready">{{
-            loading ? '加载中…' : '刷新'
+            loading ? t('common.loading') : t('common.refresh')
           }}
         </button>
-        <button class="btn" @click="exportEventsCsv" :disabled="!eventRows.length">导出 CSV</button>
-        <button class="btn" @click="resetFilters">重置</button>
+        <button class="btn" @click="exportEventsCsv" :disabled="!eventRows.length">{{ t('monitoring.exportCsv') }}</button>
+        <button class="btn" @click="resetFilters">{{ t('monitoring.reset') }}</button>
       </div>
       <div class="filterbar-controls secondary-filters">
         <select v-model="filters.status" class="control compact">
-          <option value="all">全部状态</option>
-          <option value="success">仅成功</option>
-          <option value="failed">仅失败</option>
+          <option value="all">{{ t('monitoring.filters.allStatuses') }}</option>
+          <option value="success">{{ t('monitoring.filters.successOnly') }}</option>
+          <option value="failed">{{ t('monitoring.filters.failedOnly') }}</option>
         </select>
         <select v-model="filters.provider" class="control compact">
-          <option value="all">全部 Provider</option>
+          <option value="all">{{ t('monitoring.filters.allProviders') }}</option>
           <option v-for="item in optionProviders" :key="item" :value="item">{{ item }}</option>
         </select>
         <select v-model="filters.model" class="control compact">
-          <option value="all">全部模型</option>
+          <option value="all">{{ t('monitoring.filters.allModels') }}</option>
           <option v-for="item in optionModels" :key="item" :value="item">{{ item }}</option>
         </select>
         <select v-model="filters.account" class="control compact">
-          <option value="all">全部账号</option>
+          <option value="all">{{ t('monitoring.filters.allAccounts') }}</option>
           <option v-for="item in optionAccounts" :key="item.value" :value="item.value">{{ item.label }}</option>
         </select>
         <select v-model="filters.apiKeyHash" class="control compact">
-          <option value="all">全部 API Key</option>
+          <option value="all">{{ t('monitoring.filters.allApiKeys') }}</option>
           <option v-for="item in optionApiKeys" :key="item.value" :value="item.value">{{ item.label }}</option>
         </select>
       </div>
     </div>
 
     <div v-if="timeRange === 'custom'" class="card filter-card custom-range-bar">
-      <label>开始 <input v-model="customStart" type="datetime-local" class="control"/></label>
-      <label>结束 <input v-model="customEnd" type="datetime-local" class="control"/></label>
-      <button class="btn" @click="refresh(true)">应用</button>
+      <label>{{ t('monitoring.customStart') }} <input v-model="customStart" type="datetime-local" class="control"/></label>
+      <label>{{ t('monitoring.customEnd') }} <input v-model="customEnd" type="datetime-local" class="control"/></label>
+      <button class="btn" @click="refresh(true)">{{ t('common.apply') }}</button>
     </div>
 
     <section v-if="error" class="notice error">{{ error }}</section>
-    <section v-if="!ready" class="notice">缺少 CPA management key，无法访问插件 API。</section>
+    <section v-if="!ready" class="notice">{{ t('monitoring.missingKey') }}</section>
 
     <MetricGrid :cards="summaryCards"/>
 
@@ -73,7 +73,7 @@
               @click="activeDataTab = tab.key">{{ tab.label }} <span>{{ tab.count }}</span></button>
     </div>
 
-    <DataCard v-if="activeDataTab === 'timeline'" title="时间线">
+    <DataCard v-if="activeDataTab === 'timeline'" :title="t('monitoring.cards.timeline')">
       <div class="section-title"><span>{{ data?.granularity || 'auto' }} · {{
           formatDateTime(data?.generated_at_ms)
         }}</span></div>
@@ -85,26 +85,26 @@
           <span class="timeline-sub">{{ fmtInt(point.tokens || point.total_tokens || 0) }} tok</span>
         </div>
       </div>
-      <div v-else class="empty">暂无时间线数据</div>
+      <div v-else class="empty">{{ t('monitoring.empty.timeline') }}</div>
     </DataCard>
 
-    <DataCard v-if="activeDataTab === 'events'" title="事件流">
+    <DataCard v-if="activeDataTab === 'events'" :title="t('monitoring.cards.events')">
       <div class="table-wrap monitor-table event-stream-table">
         <table>
           <thead>
           <tr>
-            <th>来源 / API KEY</th>
-            <th>模型</th>
-            <th>强度</th>
-            <th>最近状态</th>
-            <th>请求状态</th>
-            <th>成功率</th>
-            <th>总调用</th>
-            <th>TPS</th>
-            <th>首字/耗时</th>
-            <th>时间</th>
-            <th>本次用量</th>
-            <th>本次花费</th>
+            <th>{{ t('monitoring.eventColumns.sourceApiKey') }}</th>
+            <th>{{ t('monitoring.eventColumns.model') }}</th>
+            <th>{{ t('monitoring.eventColumns.intensity') }}</th>
+            <th>{{ t('monitoring.eventColumns.recentStatus') }}</th>
+            <th>{{ t('monitoring.eventColumns.requestStatus') }}</th>
+            <th>{{ t('monitoring.eventColumns.successRate') }}</th>
+            <th>{{ t('monitoring.eventColumns.totalCalls') }}</th>
+            <th>{{ t('monitoring.eventColumns.tps') }}</th>
+            <th>{{ t('monitoring.eventColumns.ttftLatency') }}</th>
+            <th>{{ t('monitoring.eventColumns.time') }}</th>
+            <th>{{ t('monitoring.eventColumns.usage') }}</th>
+            <th>{{ t('monitoring.eventColumns.cost') }}</th>
           </tr>
           </thead>
           <tbody>
@@ -116,12 +116,12 @@
                   type="button"
                   class="sensitive-value-toggle"
                   :aria-expanded="isEventKeyExpanded(row, 'source')"
-                  :aria-label="isEventKeyExpanded(row, 'source') ? '折叠来源 API Key' : '展开来源 API Key'"
+                  :aria-label="isEventKeyExpanded(row, 'source') ? t('monitoring.labels.collapseApiKey') : t('monitoring.labels.expandApiKey')"
                   @click.stop="toggleEventKey(row, 'source')"
-                >{{ isEventKeyExpanded(row, 'source') ? '折叠' : '展开' }}</button>
+                >{{ isEventKeyExpanded(row, 'source') ? t('monitoring.labels.collapse') : t('monitoring.labels.expand') }}</button>
               </strong>
               <strong v-else>{{ row.sourceName }}</strong>
-              <div class="muted small-text">Provider: {{ row.provider }}</div>
+              <div class="muted small-text">{{ t('monitoring.labels.provider', { value: row.provider }) }}</div>
             </td>
             <td>
               <strong>{{ row.model }}</strong>
@@ -131,7 +131,7 @@
             </td>
             <td>
               <strong :class="{'blue-text': row.intensity !== '-'}">{{ row.intensity }}</strong>
-              <div class="muted small-text">等级: {{ row.tier }}</div>
+              <div class="muted small-text">{{ t('monitoring.labels.level', { value: row.tier }) }}</div>
             </td>
             <td>
               <div class="recent-status" aria-hidden="true">
@@ -143,9 +143,9 @@
                 <span v-if="row.failed" class="status-badge bad failure-trigger" tabindex="0"
                       @click.stop="toggleFailureTooltip($event, row)" @mouseenter="showFailureTooltip($event, row)"
                       @mouseleave="hideFailureTooltip">
-                  <i></i>失败
+                  <i></i>{{ t('monitoring.labels.failed') }}
                 </span>
-              <span v-else class="status-badge good"><i></i>成功</span>
+              <span v-else class="status-badge good"><i></i>{{ t('monitoring.labels.success') }}</span>
             </td>
             <td><strong :class="successRateClass(row.successRate)">{{ fmtPct(row.successRate) }}</strong></td>
             <td>{{ fmtInt(row.totalCalls) }}</td>
@@ -172,7 +172,7 @@
       <Teleport to="body">
         <div v-if="failureTooltip.visible" class="failure-tooltip-popover" :style="failureTooltip.style"
              @mouseenter="keepFailureTooltip" @mouseleave="hideFailureTooltip">
-          <button class="failure-tooltip-copy" @click.stop="copyFailureText" title="复制">⎘</button>
+          <button class="failure-tooltip-copy" @click.stop="copyFailureText" :title="t('monitoring.labels.copy')">⎘</button>
           <div v-if="failureTooltip.row?.failStatusCode" class="failure-tooltip-status">HTTP
             {{ failureTooltip.row.failStatusCode }}
           </div>
@@ -183,20 +183,20 @@
       </Teleport>
     </DataCard>
 
-    <DataCard v-if="activeDataTab === 'accounts'" title="账号汇总" subtitle="账号 / API KEY 联合维度">
+    <DataCard v-if="activeDataTab === 'accounts'" :title="t('monitoring.cards.accounts')" :subtitle="t('monitoring.cards.accountsSubtitle')">
       <div v-if="accountApiKeyRows.length" class="table-wrap monitor-table account-api-key-table">
         <table>
           <thead>
           <tr>
-            <th>账号 / API KEY</th>
-            <th>Provider</th>
-            <th>请求</th>
-            <th>成功率</th>
-            <th>Token</th>
-            <th>费用</th>
-            <th>延迟</th>
-            <th>最后出现</th>
-            <th>操作</th>
+            <th>{{ t('monitoring.accountColumns.accountApiKey') }}</th>
+            <th>{{ t('monitoring.accountColumns.provider') }}</th>
+            <th>{{ t('monitoring.accountColumns.requests') }}</th>
+            <th>{{ t('monitoring.accountColumns.successRate') }}</th>
+            <th>{{ t('monitoring.accountColumns.token') }}</th>
+            <th>{{ t('monitoring.accountColumns.cost') }}</th>
+            <th>{{ t('monitoring.accountColumns.latency') }}</th>
+            <th>{{ t('monitoring.accountColumns.lastSeen') }}</th>
+            <th>{{ t('monitoring.accountColumns.actions') }}</th>
           </tr>
           </thead>
           <tbody>
@@ -209,54 +209,54 @@
                   type="button"
                   class="sensitive-value-toggle"
                   :aria-expanded="isAccountSourceExpanded(row)"
-                  :aria-label="isAccountSourceExpanded(row) ? '折叠来源 API Key' : '展开来源 API Key'"
+                  :aria-label="isAccountSourceExpanded(row) ? t('monitoring.labels.collapseApiKey') : t('monitoring.labels.expandApiKey')"
                   @click.stop="toggleAccountSource(row)"
-                >{{ isAccountSourceExpanded(row) ? '折叠' : '展开' }}</button>
+                >{{ isAccountSourceExpanded(row) ? t('monitoring.labels.collapse') : t('monitoring.labels.expand') }}</button>
               </strong>
               <strong v-else>{{ accountSource(row) }}</strong>
             </td>
-            <td>{{ row.auth_provider_snapshot || '—' }}</td>
+            <td>{{ row.auth_provider_snapshot || EMPTY_VALUE }}</td>
             <td>{{ fmtInt(row.calls) }}</td>
             <td><strong :class="successRateClass(row.success_rate)">{{ fmtPct(row.success_rate) }}</strong></td>
             <td>{{ fmtCompact(row.total_tokens) }}</td>
             <td>{{ fmtMoney(row.cost) }}</td>
             <td>{{ fmtDuration(row.average_latency_ms) }}</td>
             <td>{{ formatDateTime(row.last_seen_ms) }}</td>
-            <td><button type="button" class="btn btn-xs" @click.stop="filterAccountAPIKey(row)">筛选</button></td>
+            <td><button type="button" class="btn btn-xs" @click.stop="filterAccountAPIKey(row)">{{ t('monitoring.labels.filter') }}</button></td>
           </tr>
           </tbody>
         </table>
       </div>
-      <div v-else class="empty">暂无账号 / API Key 汇总数据</div>
+      <div v-else class="empty">{{ t('monitoring.empty.accounts') }}</div>
     </DataCard>
 
     <div v-if="activeDataTab === 'accounts' && selectedAccount" style="margin-top:16px">
-      <DataCard title="来源详情" :subtitle="accountDetailSubtitle(selectedAccount)">
+      <DataCard :title="t('monitoring.cards.sourceDetail')" :subtitle="accountDetailSubtitle(selectedAccount)">
         <DetailGrid :items="buildAccountDetail(selectedAccount)"/>
       </DataCard>
     </div>
 
-    <DataCard v-if="activeDataTab === 'models'" title="模型维度" subtitle="model_stats / model_share">
+    <DataCard v-if="activeDataTab === 'models'" :title="t('monitoring.cards.models')" :subtitle="t('monitoring.cards.modelsSubtitle')">
       <SimpleTable :rows="modelRows" :columns="modelColumns" @select="setModelFilter"/>
     </DataCard>
 
     <div v-if="selectedEvent" class="modal-backdrop" @click.self="selectedEvent = null">
       <div class="modal-dialog card">
         <div class="modal-head">
-          <div><h2>请求详情</h2>
+          <div><h2>{{ t('monitoring.cards.requestDetail') }}</h2>
             <p class="muted">{{ formatDateTime(selectedEvent.timestamp_ms) }} ·
-              {{ selectedEvent.event_hash || selectedEvent.request_id || '—' }}</p></div>
-          <button class="btn" @click="selectedEvent = null">关闭</button>
+              {{ selectedEvent.event_hash || selectedEvent.request_id || EMPTY_VALUE }}</p></div>
+          <button class="btn" @click="selectedEvent = null">{{ t('common.close') }}</button>
         </div>
         <MetricGrid :cards="eventDetailCards"/>
         <div class="detail-grid">
-          <div><h3>基础</h3>
+          <div><h3>{{ t('monitoring.labels.basic') }}</h3>
             <pre>{{ pretty(eventBaseDetail) }}</pre>
           </div>
-          <div><h3>响应 Metadata</h3>
+          <div><h3>{{ t('monitoring.labels.responseMetadata') }}</h3>
             <pre>{{ pretty(selectedEvent.response_metadata || {}) }}</pre>
           </div>
-          <div><h3>错误 / Quota / Trace</h3>
+          <div><h3>{{ t('monitoring.labels.errorQuotaTrace') }}</h3>
             <pre>{{ pretty(eventHeaderDetail) }}</pre>
           </div>
         </div>
@@ -267,14 +267,18 @@
 
 <script setup>
 import {computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch} from 'vue';
+import {useI18n} from 'vue-i18n';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import { eventApiKeyDisplay, isSensitiveSource, maskSecretSummary, shortHash } from '../utils/apiKeyDisplay.js';
+import { EMPTY_VALUE, formatDate, formatDateTime, formatInt, formatTime } from '../utils/localeFormat.js';
 
 const props = defineProps({
   ready: {type: Boolean, default: false},
   proxyCall: {type: Function, required: true},
 });
+
+const {t} = useI18n();
 
 const data = ref(null);
 const modelPrices = ref({});
@@ -298,15 +302,14 @@ let failureHideTimer = null;
 let timer = null;
 
 const dataTabs = computed(() => [
-  {key: 'events', label: '事件流', count: eventRows.value.length},
-  {key: 'accounts', label: '账号汇总', count: accountApiKeyRows.value.length},
-  {key: 'models', label: '模型', count: modelRows.value.length},
-  {key: 'timeline', label: '时间线', count: timelineRows.value.length},
+  {key: 'events', label: t('monitoring.tabs.events'), count: eventRows.value.length},
+  {key: 'accounts', label: t('monitoring.tabs.accounts'), count: accountApiKeyRows.value.length},
+  {key: 'models', label: t('monitoring.tabs.models'), count: modelRows.value.length},
+  {key: 'timeline', label: t('monitoring.tabs.timeline'), count: timelineRows.value.length},
 ]);
 
 const summary = computed(() => data.value?.summary || {});
 const eventRows = computed(() => (data.value?.events?.items || []).map((row, idx) => ({...row, __id: idx})));
-// loadedAllEvents removed — no longer needed after KPI card cleanup
 const hasPrices = computed(() => Object.keys(modelPrices.value).length > 0);
 const summaryCards = computed(() => {
   const s = summary.value;
@@ -314,20 +317,20 @@ const summaryCards = computed(() => {
   const cacheHitTokens = Number(s.cached_tokens ?? 0) + Number(s.cache_read_tokens ?? 0);
   const inputSideTokens = Math.max(Number(s.input_tokens ?? 0), Number(s.cached_tokens ?? 0)) + Number(s.cache_read_tokens ?? 0) + Number(s.cache_creation_tokens ?? 0);
   const cacheHitRate = inputSideTokens > 0 ? cacheHitTokens / inputSideTokens : 0;
-  const tokenMix = (n) => s.total_tokens > 0 ? `${fmtPct(n / s.total_tokens)}` : '—';
+  const tokenMix = (n) => s.total_tokens > 0 ? `${fmtPct(n / s.total_tokens)}` : EMPTY_VALUE;
   return [
-    {label: '总调用', value: fmtInt(s.total_calls), sub: `${accountCount.value} 账号`},
-    {label: '调用成功率', value: fmtPct(s.success_rate), sub: fmtDuration(s.average_latency_ms)},
-    {label: '失败总数', value: fmtInt(s.failure_calls), sub: `${failedGroupCount.value} 监控组`},
+    {label: t('monitoring.kpi.totalCalls'), value: fmtInt(s.total_calls), sub: t('monitoring.kpi.accountsSub', {count: accountCount.value})},
+    {label: t('monitoring.kpi.successRate'), value: fmtPct(s.success_rate), sub: fmtDuration(s.average_latency_ms)},
+    {label: t('monitoring.kpi.failureTotal'), value: fmtInt(s.failure_calls), sub: t('monitoring.kpi.monitorGroupsSub', {count: failedGroupCount.value})},
     {
-      label: '预估花费',
+      label: t('monitoring.kpi.estimatedCost'),
       value: hasPrices.value ? fmtMoney(s.total_cost) : '--',
-      sub: hasPrices.value ? '已配置单价模型' : '未配置单价'
+      sub: hasPrices.value ? t('monitoring.kpi.pricesConfigured') : t('monitoring.kpi.pricesMissing')
     },
-    {label: '总 Tokens', value: fmtCompact(s.total_tokens), sub: `推理 ${fmtCompact(s.reasoning_tokens)}`},
-    {label: '输入 Tokens', value: fmtCompact(s.input_tokens), sub: `占比 ${tokenMix(Number(s.input_tokens ?? 0))}`},
-    {label: '输出 Tokens', value: fmtCompact(s.output_tokens), sub: `占比 ${tokenMix(Number(s.output_tokens ?? 0))}`},
-    {label: '缓存 Tokens', value: fmtCompact(totalCacheTokens), sub: `命中率 ${fmtPct(cacheHitRate)}`},
+    {label: t('monitoring.kpi.totalTokens'), value: fmtCompact(s.total_tokens), sub: t('monitoring.kpi.reasoningSub', {value: fmtCompact(s.reasoning_tokens)})},
+    {label: t('monitoring.kpi.inputTokens'), value: fmtCompact(s.input_tokens), sub: t('monitoring.kpi.shareSub', {value: tokenMix(Number(s.input_tokens ?? 0))})},
+    {label: t('monitoring.kpi.outputTokens'), value: fmtCompact(s.output_tokens), sub: t('monitoring.kpi.shareSub', {value: tokenMix(Number(s.output_tokens ?? 0))})},
+    {label: t('monitoring.kpi.cacheTokens'), value: fmtCompact(totalCacheTokens), sub: t('monitoring.kpi.hitRateSub', {value: fmtPct(cacheHitRate)})},
   ];
 });
 const eventGroupMap = computed(() => buildEventGroupMap(eventRows.value));
@@ -341,7 +344,6 @@ const failedGroupCount = computed(() => {
 const accountCount = computed(() => accountRows.value.length);
 const eventTableRows = computed(() => eventRows.value.map(row => buildEventTableRow(row, eventGroupMap.value)));
 const pagedEvents = computed(() => pageRows(eventTableRows.value, eventPage.value, eventPageSize.value));
-// eventsSubtitle removed — debug paging info no longer shown in card header
 const timelineRows = computed(() => [...(data.value?.timeline || [])].sort((a, b) => Number(b.bucket_ms || 0) - Number(a.bucket_ms || 0)));
 const maxTimelineCalls = computed(() => Math.max(1, ...timelineRows.value.map(p => Number(p.calls || p.requests || 0))));
 const modelRows = computed(() => data.value?.model_stats || data.value?.model_share || []);
@@ -363,30 +365,21 @@ const optionApiKeys = computed(() => uniqueObjects(apiKeyRows.value.map(row => (
   label: `${shortHash(row.api_key_hash || row.id)} · ${row.account_snapshot || row.auth_label_snapshot || ''}`
 }))));
 
-const accountColumns = [
-  ['account_snapshot', '账号'], ['auth_label_snapshot', '标签'], ['auth_provider_snapshot', 'Provider'], ['calls', '请求'], ['success_rate', '成功率', 'pct'], ['total_tokens', 'Token', 'int'], ['cost', '费用', 'money'], ['average_latency_ms', '延迟', 'ms'], ['last_seen_ms', '最后出现', 'time']
-];
-const apiKeyColumns = [
-  ['api_key_hash', 'API Key', 'hash'], ['account_snapshot', '账号'], ['auth_label_snapshot', '标签'], ['calls', '请求'], ['success_rate', '成功率', 'pct'], ['total_tokens', 'Token', 'int'], ['cost', '费用', 'money'], ['last_seen_ms', '最后出现', 'time']
-];
-const modelColumns = [
-  ['model', '模型'], ['calls', '请求'], ['success_calls', '成功'], ['failure_calls', '失败'], ['success_rate', '成功率', 'pct'], ['total_tokens', 'Token', 'int'], ['cost', '费用', 'money']
-];
-const channelColumns = [
-  ['auth_index', 'Auth'], ['source', 'Source'], ['account_snapshot', '账号'], ['auth_provider_snapshot', 'Provider'], ['calls', '请求'], ['success', '成功'], ['failure', '失败'], ['tokens', 'Token', 'int'], ['cost', '费用', 'money'], ['average_latency_ms', '延迟', 'ms']
-];
-const failureColumns = [
-  ['timestamp_ms', '时间', 'time'], ['source', 'Source'], ['source_hash', 'Source Hash', 'hash'], ['auth_index', 'Auth'], ['model', '模型'], ['calls', '请求'], ['failure', '失败'], ['fail_summary', '错误'], ['header_error_kind', '错误类型'], ['last_seen_ms', '最后出现', 'time']
-];
-const taskColumns = [
-  ['bucket_key', '任务'], ['source', 'Source'], ['auth_index', 'Auth'], ['total', '请求'], ['success', '成功'], ['failure', '失败'], ['models', '模型'], ['total_tokens', 'Token', 'int'], ['average_latency_ms', '延迟', 'ms'], ['last_ms', '结束', 'time']
-];
+const modelColumns = computed(() => [
+  ['model', t('monitoring.modelColumns.model')],
+  ['calls', t('monitoring.modelColumns.requests')],
+  ['success_calls', t('monitoring.modelColumns.success')],
+  ['failure_calls', t('monitoring.modelColumns.failure')],
+  ['success_rate', t('monitoring.modelColumns.successRate'), 'pct'],
+  ['total_tokens', t('monitoring.modelColumns.token'), 'int'],
+  ['cost', t('monitoring.modelColumns.cost'), 'money'],
+]);
 
 const eventDetailCards = computed(() => selectedEvent.value ? [
-  {label: '状态', value: selectedEvent.value.failed ? '失败' : '成功'},
-  {label: 'Token', value: selectedEvent.value.total_tokens ?? 0},
-  {label: '延迟', value: fmtMs(selectedEvent.value.latency_ms)},
-  {label: '费用', value: fmtMoney(calculateEventCost(selectedEvent.value, modelPrices.value))},
+  {label: t('monitoring.labels.status'), value: selectedEvent.value.failed ? t('monitoring.labels.failed') : t('monitoring.labels.success')},
+  {label: t('monitoring.labels.token'), value: selectedEvent.value.total_tokens ?? 0},
+  {label: t('monitoring.labels.latency'), value: fmtMs(selectedEvent.value.latency_ms)},
+  {label: t('monitoring.labels.cost'), value: fmtMoney(calculateEventCost(selectedEvent.value, modelPrices.value))},
 ] : []);
 const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'resolved_model', 'endpoint', 'method', 'path', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
 const eventHeaderDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['header_quota_recover_at_ms', 'header_quota_used_percent', 'header_quota_plan_type', 'header_error_kind', 'header_error_code', 'header_trace_id'])) : {});
@@ -512,7 +505,7 @@ function toggleEventKey(row, field) {
 }
 
 function accountSource(row) {
-  return String(row?.source || '').trim() || '—';
+  return String(row?.source || '').trim() || EMPTY_VALUE;
 }
 
 function accountSourceKey(row) {
@@ -548,7 +541,7 @@ function filterAccountAPIKey(row) {
   filters.value.account = 'all';
   filters.value.apiKeyHash = 'all';
   const source = accountSource(row);
-  searchQuery.value = source === '—' || source === 'unknown' ? '' : source;
+  searchQuery.value = source === EMPTY_VALUE || source === 'unknown' ? '' : source;
   refresh(true);
 }
 
@@ -672,7 +665,6 @@ function buildEventGroupMap(events) {
     const statsIncluded = event.failed === true || Number(event.input_tokens || 0) > 0 || Number(event.output_tokens || 0) > 0;
     const requestCount = prev.total + (statsIncluded ? 1 : 0);
     const successCount = prev.success + (statsIncluded && !event.failed ? 1 : 0);
-    const successRate = requestCount > 0 ? successCount / requestCount : 1;
     const pattern = [...prev.pattern, !event.failed].slice(-10);
     metricsByStream.set(key, {total: requestCount, success: successCount, pattern});
     const group = groupsByStream.get(key) ?? {calls: 0, successCalls: 0, failureCalls: 0, events: []};
@@ -687,9 +679,7 @@ function buildEventGroupMap(events) {
     group.events.sort((a, b) => Number(b.timestamp_ms || 0) - Number(a.timestamp_ms || 0));
     map.set(key, group);
   }
-  // attach per-event sliding-window snapshot for buildEventTableRow
   map._slidingWindow = new Map();
-  // re-walk sortedAsc to capture snapshot at each event position
   const sw = new Map();
   for (const event of sortedAsc) {
     const key = eventGroupKey(event);
@@ -697,13 +687,12 @@ function buildEventGroupMap(events) {
     const statsIncluded = event.failed === true || Number(event.input_tokens || 0) > 0 || Number(event.output_tokens || 0) > 0;
     const requestCount = prev.total + (statsIncluded ? 1 : 0);
     const successCount = prev.success + (statsIncluded && !event.failed ? 1 : 0);
-    const successRate = requestCount > 0 ? successCount / requestCount : 1;
     const pattern = [...prev.pattern, !event.failed].slice(-10);
     sw.set(key, {total: requestCount, success: successCount, pattern});
     if (!map._slidingWindow.has(key)) map._slidingWindow.set(key, new Map());
     map._slidingWindow.get(key).set(event.event_hash || event.request_id || `${event.timestamp_ms}-${event.__id}`, {
       requestCount,
-      successRate,
+      successRate: requestCount > 0 ? successCount / requestCount : 1,
       recentPattern: pattern,
     });
   }
@@ -712,20 +701,19 @@ function buildEventGroupMap(events) {
 
 function buildEventTableRow(row, groupMap) {
   const key = eventGroupKey(row);
-  const group = groupMap.get(key) || {};
   const eventId = row.event_hash || row.request_id || `${row.timestamp_ms}-${row.__id}`;
   const sliding = groupMap._slidingWindow?.get(key)?.get(eventId);
   const latencyMs = numberOrNull(row.latency_ms);
   const outputTokens = Number(row.output_tokens || 0);
-  const sourceName = String(row.source || '').trim() || '—';
+  const sourceName = String(row.source || '').trim() || EMPTY_VALUE;
   return {
     id: eventId,
     raw: row,
     sourceName,
     sourceIsApiKey: isSensitiveSource(sourceName, row.auth_type),
-    provider: row.auth_provider_snapshot || row.provider || '—',
-    apiKeyHash: row.api_key_hash || '—',
-    model: row.model || '—',
+    provider: row.auth_provider_snapshot || row.provider || EMPTY_VALUE,
+    apiKeyHash: row.api_key_hash || EMPTY_VALUE,
+    model: row.model || EMPTY_VALUE,
     resolvedModel: row.resolved_model || '',
     intensity: row.reasoning_effort || row.service_tier || '-',
     tier: row.service_tier || (row.reasoning_effort && row.reasoning_effort !== '-' ? 'priority' : 'default'),
@@ -750,11 +738,6 @@ function eventGroupKey(row) {
   const provider = row.auth_provider_snapshot || row.provider || '';
   const model = row.model || '';
   return [source, provider, model].join('::');
-}
-
-function normalizeRate(rate, calls, success) {
-  if (rate != null && Number.isFinite(Number(rate))) return Number(rate) > 1 ? Number(rate) / 100 : Number(rate);
-  return calls > 0 ? success / calls : null;
 }
 
 function numberOrNull(v) {
@@ -869,28 +852,29 @@ function uniqueObjects(items) {
 
 function fmtInt(v) {
   const n = Number(v || 0);
-  return Number.isFinite(n) ? new Intl.NumberFormat('zh-CN').format(n) : '—';
+  if (!Number.isFinite(n)) return EMPTY_VALUE;
+  return formatInt(n);
 }
 
 function fmtPct(v) {
-  if (v == null || Number.isNaN(Number(v))) return '—';
+  if (v == null || Number.isNaN(Number(v))) return EMPTY_VALUE;
   const n = Number(v);
   return `${(n <= 1 ? n * 100 : n).toFixed(1)}%`;
 }
 
 function fmtMoney(v) {
-  if (v == null || Number.isNaN(Number(v))) return '—';
+  if (v == null || Number.isNaN(Number(v))) return EMPTY_VALUE;
   return '$' + Number(v).toFixed(4);
 }
 
 function fmtMs(v) {
-  if (v == null || Number.isNaN(Number(v))) return '—';
+  if (v == null || Number.isNaN(Number(v))) return EMPTY_VALUE;
   return `${Math.round(Number(v))} ms`;
 }
 
 function fmtDuration(v) {
   const n = Number(v);
-  if (v == null || !Number.isFinite(n)) return '—';
+  if (v == null || !Number.isFinite(n)) return EMPTY_VALUE;
   if (n < 1000) return `${Math.round(n)} ms`;
   const sec = n / 1000;
   if (sec < 60) return `${sec.toFixed(sec < 10 ? 1 : 0)} s`;
@@ -900,20 +884,20 @@ function fmtDuration(v) {
 }
 
 function fmtSeconds(v) {
-  if (v == null || Number.isNaN(Number(v))) return '—';
+  if (v == null || Number.isNaN(Number(v))) return EMPTY_VALUE;
   return `${(Number(v) / 1000).toFixed(Number(v) >= 10000 ? 1 : 2)} s`;
 }
 
 function fmtTps(v) {
-  if (v == null || Number.isNaN(Number(v))) return '—';
+  if (v == null || Number.isNaN(Number(v))) return EMPTY_VALUE;
   return Number(v).toFixed(Number(v) >= 10 ? 0 : 1);
 }
 
 function fmtCompact(v) {
   const n = Number(v || 0);
-  if (!Number.isFinite(n)) return '—';
+  if (!Number.isFinite(n)) return EMPTY_VALUE;
   if (Math.abs(n) >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 1 : 1)}K`;
+  if (Math.abs(n) >= 1000) return `${(n / 1000).toFixed(1)}K`;
   return fmtInt(n);
 }
 
@@ -931,25 +915,6 @@ function latencyTone(v) {
 
 function latencyClass(v) {
   return `${latencyTone(v)}-text`;
-}
-
-function formatDateTime(ms) {
-  if (!ms) return '—';
-  return new Date(Number(ms)).toLocaleString('zh-CN', {hour12: false});
-}
-
-function formatDate(ms) {
-  if (!ms) return '—';
-  return new Date(Number(ms)).toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).replaceAll('/', '/');
-}
-
-function formatTime(ms) {
-  if (!ms) return '—';
-  return new Date(Number(ms)).toLocaleTimeString('zh-CN', {hour12: false});
 }
 
 function pickObject(obj, keys) {
@@ -972,8 +937,9 @@ const SimpleTable = defineComponent({
   },
   emits: ['select'],
   setup(props, {emit}) {
+    const {t: ti18n} = useI18n();
     return () => {
-      if (!props.rows.length) return h('div', {class: 'empty'}, '暂无数据');
+      if (!props.rows.length) return h('div', {class: 'empty'}, ti18n('common.noData'));
       const head = h('thead', h('tr', props.columns.map(col => h('th', col[1]))));
       const body = h('tbody', props.rows.slice(0, 250).map((row, idx) => {
         const rowId = row.id || row.model || row.api_key_hash || row.account_snapshot || idx;
@@ -992,6 +958,7 @@ const SimpleTable = defineComponent({
 const DetailGrid = defineComponent({
   props: {items: {type: Array, default: () => []}},
   setup(props) {
+    const {t: ti18n} = useI18n();
     return () => h('div', {class: 'config-meta-grid'}, props.items.map((item, idx) => {
       const value = item.sensitive
         ? h('strong', {class: 'sensitive-value sensitive-value-block'}, [
@@ -1000,12 +967,12 @@ const DetailGrid = defineComponent({
               type: 'button',
               class: 'sensitive-value-toggle',
               'aria-expanded': item.expanded,
-              'aria-label': item.expanded ? '折叠来源 API Key' : '展开来源 API Key',
+              'aria-label': item.expanded ? ti18n('monitoring.labels.collapseApiKey') : ti18n('monitoring.labels.expandApiKey'),
               onClick: event => {
                 event.stopPropagation();
                 item.onToggle?.();
               },
-            }, item.expanded ? '折叠' : '展开'),
+            }, item.expanded ? ti18n('monitoring.labels.collapse') : ti18n('monitoring.labels.expand')),
           ])
         : h('strong', {class: 'config-meta-value'}, item.value);
       return h('div', {key: idx, class: item.wide ? 'config-field-wide' : ''}, [h('span', item.label), value]);
@@ -1021,26 +988,26 @@ function buildAccountDetail(row) {
   const expanded = isAccountSourceExpanded(row);
   return [
     {
-      label: '来源',
+      label: t('monitoring.labels.source'),
       value: sensitive ? eventApiKeyDisplay(source, expanded) : source,
       wide: true,
       sensitive,
       expanded,
       onToggle: sensitive ? () => toggleAccountSource(row) : null,
     },
-    {label: 'Provider', value: row.auth_provider_snapshot || '—', wide: true},
-    {label: '请求', value: fmtInt(row.calls)},
-    {label: '成功率', value: fmtPct(row.success_rate)},
-    {label: 'Token', value: fmtCompact(row.total_tokens)},
-    {label: '费用', value: fmtMoney(row.cost)},
-    {label: '延迟', value: fmtMs(row.average_latency_ms)},
+    {label: t('monitoring.accountColumns.provider'), value: row.auth_provider_snapshot || EMPTY_VALUE, wide: true},
+    {label: t('monitoring.labels.requests'), value: fmtInt(row.calls)},
+    {label: t('monitoring.labels.successRate'), value: fmtPct(row.success_rate)},
+    {label: t('monitoring.labels.token'), value: fmtCompact(row.total_tokens)},
+    {label: t('monitoring.labels.cost'), value: fmtMoney(row.cost)},
+    {label: t('monitoring.labels.latency'), value: fmtMs(row.average_latency_ms)},
     {
-      label: '最后出现',
-      value: row.last_seen_ms ? new Date(Number(row.last_seen_ms)).toLocaleString('zh-CN', {hour12: false}) : '—'
+      label: t('monitoring.labels.lastSeen'),
+      value: formatDateTime(row.last_seen_ms)
     },
     {
-      label: 'Plan Type',
-      value: (row.plan_type || row.planType || row.auth_provider_snapshot && (row.plan_type || row.planType) ? (row.plan_type || row.planType) : '—')
+      label: t('monitoring.labels.planType'),
+      value: (row.plan_type || row.planType || EMPTY_VALUE)
     },
   ];
 }
@@ -1049,16 +1016,17 @@ const PaginationBar = defineComponent({
   props: {page: Number, pageSize: Number, total: Number},
   emits: ['page'],
   setup(props, {emit}) {
+    const {t: ti18n} = useI18n();
     return () => {
       const pages = Math.max(1, Math.ceil((props.total || 0) / (props.pageSize || 50)));
       return h('div', {class: 'pager'}, [
-        h('span', `第 ${props.page} / ${pages} 页 · ${props.total || 0} 条`),
-        h('button', {class: 'btn', disabled: props.page <= 1, onClick: () => emit('page', props.page - 1)}, '上一页'),
+        h('span', ti18n('monitoring.pagination.summary', {page: props.page, pages, total: props.total || 0})),
+        h('button', {class: 'btn', disabled: props.page <= 1, onClick: () => emit('page', props.page - 1)}, ti18n('monitoring.pagination.prev')),
         h('button', {
           class: 'btn',
           disabled: props.page >= pages,
           onClick: () => emit('page', props.page + 1)
-        }, '下一页'),
+        }, ti18n('monitoring.pagination.next')),
       ]);
     };
   }
@@ -1073,6 +1041,6 @@ function renderCell(v, type) {
   if (type === 'hash') return shortHash(v);
   if (Array.isArray(v)) return v.join(', ');
   if (v && typeof v === 'object') return JSON.stringify(v);
-  return v == null || v === '' ? '—' : String(v);
+  return v == null || v === '' ? EMPTY_VALUE : String(v);
 }
 </script>

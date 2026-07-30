@@ -1,5 +1,8 @@
 /** Server-side Codex inspection helpers (ported from CPA-Manager-Plus presentation layer). */
 
+import { translate } from '../i18n/index.js';
+import { EMPTY_VALUE, formatDateTime } from './localeFormat.js';
+
 export const RESULT_PAGE_SIZES = [20, 50, 100];
 
 export const ACTION_FILTERS = ['all', 'reauth', 'delete', 'disable', 'enable', 'review', 'keep'];
@@ -25,42 +28,44 @@ export const DEFAULT_SERVER_CONFIG = {
   autoRecoverEnabled: false,
 };
 
-export function formatTimestamp(ms, locale = 'zh-CN') {
-  if (!ms) return '—';
-  return new Date(Number(ms)).toLocaleString(locale, { hour12: false });
+export function formatTimestamp(ms, locale) {
+  return formatDateTime(ms, locale);
 }
 
 export function formatActionLabel(action) {
   const map = {
-    delete: '删除',
-    disable: '禁用',
-    enable: '启用',
-    reauth: '重新登录',
-    review: '人工复核',
-    keep: '保留',
+    delete: 'inspection.actions.delete',
+    disable: 'inspection.actions.disable',
+    enable: 'inspection.actions.enable',
+    reauth: 'inspection.actions.reauth',
+    review: 'inspection.actions.review',
+    keep: 'inspection.actions.keep',
   };
-  return map[action] || action || '—';
+  if (map[action]) return translate(map[action]);
+  return action || EMPTY_VALUE;
 }
 
 export function formatAutoActionModeLabel(mode) {
   const map = {
-    none: '不自动执行',
-    enable: '自动启用',
-    disable: '自动禁用',
-    delete: '自动删除',
+    none: 'inspection.autoAction.none',
+    enable: 'inspection.autoAction.enable',
+    disable: 'inspection.autoAction.disable',
+    delete: 'inspection.autoAction.delete',
   };
-  return map[mode] || mode || '—';
+  if (map[mode]) return translate(map[mode]);
+  return mode || EMPTY_VALUE;
 }
 
 export function getRunStatusLabel(status) {
   const map = {
-    completed: '已完成',
-    failed: '失败',
-    cancelled: '已取消',
-    interrupted: '已中断',
-    running: '运行中',
+    completed: 'inspection.runStatus.completed',
+    failed: 'inspection.runStatus.failed',
+    cancelled: 'inspection.runStatus.cancelled',
+    interrupted: 'inspection.runStatus.interrupted',
+    running: 'inspection.runStatus.running',
   };
-  return map[status] || '空闲';
+  if (map[status]) return translate(map[status]);
+  return translate('inspection.runStatus.idle');
 }
 
 export function getRunTone(status) {
@@ -71,42 +76,45 @@ export function getRunTone(status) {
 }
 
 export function getInspectionResultsEmptyText(run, rawCount = 0, filteredCount = 0) {
-  if (rawCount > 0 && filteredCount === 0) return '当前筛选下无结果。';
-  if (run?.status !== 'completed') return '暂无巡检结果。';
+  if (rawCount > 0 && filteredCount === 0) return translate('inspection.empty.filtered');
+  if (run?.status !== 'completed') return translate('inspection.empty.none');
 
   const totalFiles = Number(run.totalFiles) || 0;
-  if (totalFiles === 0) return '未发现可巡检凭据；本次未对任何账号执行真实探测。';
+  if (totalFiles === 0) return translate('inspection.empty.noCredentials');
 
   const probeSetCount = Number(run.probeSetCount) || 0;
   if (probeSetCount === 0) {
-    return `主机发现 ${totalFiles} 个凭据文件，但目标类型过滤后没有可探测账号。请检查巡检提供商。`;
+    return translate('inspection.empty.providerFiltered', { count: totalFiles });
   }
 
   const sampledCount = Number(run.sampledCount) || 0;
-  if (sampledCount === 0) return '本次未采样到可探测账号。请检查抽样和巡检配置。';
-  return '暂无巡检结果。';
+  if (sampledCount === 0) return translate('inspection.empty.noSample');
+  return translate('inspection.empty.none');
 }
 
 export function formatTrigger(run) {
-  if (!run) return '—';
-  return run.triggerType === 'scheduled' ? '定时触发' : '手动触发';
+  if (!run) return EMPTY_VALUE;
+  return run.triggerType === 'scheduled'
+    ? translate('inspection.trigger.scheduled')
+    : translate('inspection.trigger.manual');
 }
 
 export function formatDuration(run) {
-  if (!run?.startedAtMs || !run.finishedAtMs) return '—';
+  if (!run?.startedAtMs || !run.finishedAtMs) return EMPTY_VALUE;
   const seconds = Math.max(0, Math.round((run.finishedAtMs - run.startedAtMs) / 1000));
-  return `${seconds} 秒`;
+  return translate('inspection.durationSeconds', { seconds });
 }
 
 export function formatSchedule(config) {
-  if (!config) return '—';
+  if (!config) return EMPTY_VALUE;
   const sch = config.schedule || {};
   if (sch.mode === 'time_points') {
     const pts = (sch.timePoints || []).join(', ');
     const tz = (sch.timeZone || '').trim();
-    return `每日 ${pts || '—'}${tz ? ` (${tz})` : ''}`;
+    const base = translate('inspection.schedule.daily', { points: pts || EMPTY_VALUE });
+    return tz ? `${base} (${tz})` : base;
   }
-  return `每 ${sch.intervalMinutes || 60} 分钟`;
+  return translate('inspection.schedule.interval', { minutes: sch.intervalMinutes || 60 });
 }
 
 export function normalizeInspectionTargetTypes(value, legacyTargetType = '') {
@@ -214,26 +222,31 @@ export function parseTimePoints(raw) {
 
 export function validateInspectionConfigFields(draft) {
   const errors = {};
-  if (!normalizeInspectionTargetTypes(draft.targetTypes, draft.targetType).length) errors.targetTypes = '请选择至少一个巡检提供商';
-  const checkInt = (field, min, label) => {
+  if (!normalizeInspectionTargetTypes(draft.targetTypes, draft.targetType).length) {
+    errors.targetTypes = translate('inspection.validation.targetTypes');
+  }
+  const checkInt = (field, min, labelKey) => {
     const parsed = Number(String(draft[field] ?? '').trim());
     if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < min) {
-      errors[field] = `${label}须为不小于 ${min} 的整数`;
+      errors[field] = translate('inspection.validation.intMin', {
+        label: translate(labelKey),
+        min,
+      });
     }
   };
-  checkInt('workers', 1, '并发数');
-  checkInt('deleteWorkers', 1, '删除并发');
-  checkInt('timeout', 1, '超时(ms)');
-  checkInt('retries', 0, '重试次数');
-  checkInt('sampleSize', 0, '抽样数量');
+  checkInt('workers', 1, 'inspection.validation.workers');
+  checkInt('deleteWorkers', 1, 'inspection.validation.deleteWorkers');
+  checkInt('timeout', 1, 'inspection.validation.timeout');
+  checkInt('retries', 0, 'inspection.validation.retries');
+  checkInt('sampleSize', 0, 'inspection.validation.sampleSize');
   const threshold = Number(String(draft.usedPercentThreshold ?? '').trim());
   if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) {
-    errors.usedPercentThreshold = '额度阈值须在 0–100 之间';
+    errors.usedPercentThreshold = translate('inspection.validation.usedPercentThreshold');
   }
   if (draft.scheduleMode === 'interval') {
     const iv = Number(String(draft.intervalMinutes ?? '').trim());
     if (!Number.isFinite(iv) || !Number.isInteger(iv) || iv < 1) {
-      errors.intervalMinutes = '间隔分钟须为不小于 1 的整数';
+      errors.intervalMinutes = translate('inspection.validation.intervalMinutes');
     }
   }
   if (draft.scheduleMode === 'time_points') {
@@ -243,7 +256,7 @@ export function validateInspectionConfigFields(draft) {
       .filter(Boolean);
     const invalid = tokens.some((t) => !normalizeTimePoint(t));
     const points = parseTimePoints(draft.timePoints);
-    if (invalid || points.length === 0) errors.timePoints = '请填写有效时间点，如 09:00, 22:00';
+    if (invalid || points.length === 0) errors.timePoints = translate('inspection.validation.timePoints');
   }
   return errors;
 }
@@ -408,21 +421,31 @@ export function buildPagination(items, page, pageSize) {
 export function buildConfigOverviewItems(config, scheduleLabel) {
   const c = resolveServerCodexConfig(config);
   const sample =
-    c.sampleSize > 0 ? String(c.sampleSize) : '全部账号';
+    c.sampleSize > 0 ? String(c.sampleSize) : translate('inspection.overview.allAccounts');
   return [
     {
       key: 'schedule',
-      label: '定时巡检',
-      value: c.enabled ? '已启用' : '已关闭',
+      label: translate('inspection.overview.schedule'),
+      value: c.enabled ? translate('common.enabled') : translate('common.disabled'),
       field: 'schedule',
     },
-    { key: 'trigger', label: '调度方式', value: scheduleLabel, field: 'schedule' },
-    { key: 'providers', label: '巡检提供商', value: c.targetTypes.map((item) => item === 'xai' ? 'xAI' : 'Codex').join(' + '), field: 'targetTypes' },
-    { key: 'threshold', label: '额度阈值', value: `${c.usedPercentThreshold}%`, field: 'usedPercentThreshold' },
-    { key: 'sample', label: '抽样数量', value: sample, field: 'sampleSize' },
+    { key: 'trigger', label: translate('inspection.overview.trigger'), value: scheduleLabel, field: 'schedule' },
+    {
+      key: 'providers',
+      label: translate('inspection.overview.providers'),
+      value: c.targetTypes.map((item) => (item === 'xai' ? 'xAI' : 'Codex')).join(' + '),
+      field: 'targetTypes',
+    },
+    {
+      key: 'threshold',
+      label: translate('inspection.overview.threshold'),
+      value: `${c.usedPercentThreshold}%`,
+      field: 'usedPercentThreshold',
+    },
+    { key: 'sample', label: translate('inspection.overview.sample'), value: sample, field: 'sampleSize' },
     {
       key: 'auto',
-      label: '自动处置',
+      label: translate('inspection.overview.auto'),
       value: formatAutoActionModeLabel(c.autoActionMode),
       field: 'autoActionMode',
     },
@@ -432,12 +455,12 @@ export function buildConfigOverviewItems(config, scheduleLabel) {
 export function formatActionStatusLabel(item) {
   const status = normalizeActionStatus(item);
   const action = formatActionLabel(item.executedAction || item.action);
-  if (status === 'success') return `已执行：${action}`;
-  if (status === 'failed') return '执行失败';
-  if (status === 'skipped') return '已跳过';
-  if (status === 'needs_review') return '需人工确认';
-  if (status === 'acknowledged') return '已标记处理';
-  if (status === 'pending') return '待执行';
+  if (status === 'success') return translate('inspection.actionStatus.success', { action });
+  if (status === 'failed') return translate('inspection.actionStatus.failed');
+  if (status === 'skipped') return translate('inspection.actionStatus.skipped');
+  if (status === 'needs_review') return translate('inspection.actionStatus.needsReview');
+  if (status === 'acknowledged') return translate('inspection.actionStatus.acknowledged');
+  if (status === 'pending') return translate('inspection.actionStatus.pending');
   return '';
 }
 
