@@ -1,0 +1,6 @@
+524d4b3f7e6132696bda16cbd0b509a82cfed96f4f388544d5808c39a20049bd *cpa-manager-plus_0.5.6_windows_arm64.zip
+79b19c5bd36103828fabb2c071641155ac6b1b9d88d260951562743f0abc65cf  cpa-manager-plus_0.5.6_linux_arm64.zip
+aa8135f269e506350428735f006d4350fbed1e8e6b9366e34cda0a47e6dcec2d *cpa-manager-plus_0.5.6_windows_amd64.zip
+b8af7b5896fb9e3758c5ae5dac62b687538a06288f982af45b471c4931dc9bb2  cpa-manager-plus_0.5.6_darwin_arm64.zip
+bb3806b0def3ad3d41a65ac40f5ed4a797226c014652bb5c84aac223e02da982  cpa-manager-plus_0.5.6_linux_amd64.zip
+ffff4c2213872336f8a45469a6364618045907897f3cda4fb95db8992d71aab0  cpa-manager-plus_0.5.6_darwin_amd64.zip
