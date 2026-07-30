@@ -484,10 +484,13 @@ pre { margin: 0; max-height: 380px; overflow: auto; border: 1px solid var(--cpa-
 .inspection-info-list { margin: 8px 0 0; padding-left: 18px; line-height: 1.55; }
 .inspection-config-overview .section-title { margin-bottom: 10px; }
 .config-overview-chip {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0;
   text-align: left; border: 1px solid var(--cpa-border); background: var(--cpa-surface-muted);
   border-radius: var(--cpa-radius-md); padding: 10px 12px; cursor: pointer;
   transition: border-color .15s, background .15s;
 }
+.config-overview-chip .config-summary-label { line-height: 1.35; }
+.config-overview-chip .config-summary-value { line-height: 1.3; overflow-wrap: anywhere; }
 .config-overview-chip:hover { border-color: var(--cpa-primary); background: var(--cpa-surface-hover); }
 .inspection-detail-grid { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); gap: 14px; align-items: start; }
 .inspection-detail-panels { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
