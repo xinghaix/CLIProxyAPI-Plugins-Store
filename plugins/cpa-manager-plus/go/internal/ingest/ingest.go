@@ -18,13 +18,14 @@ type Writer struct {
 	queue       chan store.Event
 	store       *store.Store
 	batchSize   int
+	onCommitted func([]store.Event)
 	lastWriteMS atomic.Int64
 	dropped     atomic.Int64
 	failed      atomic.Int64
 }
 
-func NewWriter(database *store.Store, capacity, batchSize int) *Writer {
-	return &Writer{queue: make(chan store.Event, capacity), store: database, batchSize: batchSize}
+func NewWriter(database *store.Store, capacity, batchSize int, onCommitted func([]store.Event)) *Writer {
+	return &Writer{queue: make(chan store.Event, capacity), store: database, batchSize: batchSize, onCommitted: onCommitted}
 }
 
 func (w *Writer) Enqueue(record pluginapi.UsageRecord) {
@@ -44,10 +45,13 @@ func (w *Writer) Run(ctx context.Context) {
 		if len(batch) == 0 {
 			return
 		}
-		if _, err := w.store.InsertEvents(ctx, batch); err != nil {
+		if _, committed, err := w.store.InsertEventsCommitted(ctx, batch); err != nil {
 			w.failed.Add(int64(len(batch)))
 		} else {
 			w.lastWriteMS.Store(time.Now().UnixMilli())
+			if len(committed) > 0 && w.onCommitted != nil {
+				w.onCommitted(committed)
+			}
 		}
 		batch = batch[:0]
 	}

@@ -145,6 +145,7 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 		cfg := runtime.Config()
 		baseURL, hasKey := runtime.Connection()
 		inspection := runtime.CodexInspectionSettings()
+		autoBan := runtime.AutoBanSettings()
 		return jsonResponse(http.StatusOK, map[string]any{
 			"source": "plugin",
 			"config": map[string]any{
@@ -159,6 +160,7 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 					"batchSize":     cfg.BatchSize,
 				},
 				"codexInspection": inspection,
+				"autoBan":         autoBan,
 			},
 		})
 	case method == http.MethodPut && path == "/usage-service/config":
@@ -180,6 +182,8 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 			}
 		}
 		return Handle(ctx, runtime, []byte(`{"method":"GET","path":"/usage-service/config"}`))
+	case strings.HasPrefix(path, "/v0/management/auto-ban"):
+		return handleAutoBanRoute(ctx, runtime, method, path, request.Query, request.Body)
 	case method == http.MethodGet && path == "/v0/management/account-action-candidates":
 		query, err := url.ParseQuery(request.Query)
 		if err != nil {
@@ -274,6 +278,147 @@ func handleInspectionRoute(ctx context.Context, runtime *app.Runtime, method, pa
 		return jsonResponse(http.StatusOK, result)
 	}
 	return jsonResponse(http.StatusNotFound, map[string]any{"error": "inspection operation not found"})
+}
+
+func handleAutoBanRoute(ctx context.Context, runtime *app.Runtime, method, path, queryRaw string, body json.RawMessage) Response {
+	const prefix = "/v0/management/auto-ban"
+	rest := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	parts := []string{}
+	if rest != "" {
+		parts = strings.Split(rest, "/")
+	}
+	query, err := url.ParseQuery(queryRaw)
+	if err != nil {
+		return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid query"})
+	}
+	if len(parts) == 1 && parts[0] == "settings" {
+		switch method {
+		case http.MethodGet:
+			return jsonResponse(http.StatusOK, runtime.AutoBanSettings())
+		case http.MethodPut:
+			var settings app.AutoBanSettings
+			if err := json.Unmarshal(rawBody(body), &settings); err != nil {
+				return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid auto-ban settings"})
+			}
+			if err := runtime.UpdateAutoBanSettings(ctx, settings); err != nil {
+				return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
+			}
+			return jsonResponse(http.StatusOK, runtime.AutoBanSettings())
+		default:
+			return jsonResponse(http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		}
+	}
+	if len(parts) == 1 && parts[0] == "rules" {
+		switch method {
+		case http.MethodGet:
+			rules, err := runtime.Store().ListAutoBanRules(ctx)
+			if err != nil {
+				return errorResponse(err)
+			}
+			return jsonResponse(http.StatusOK, map[string]any{"items": rules})
+		case http.MethodPost:
+			var rule store.AutoBanRule
+			if err := json.Unmarshal(rawBody(body), &rule); err != nil {
+				return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid auto-ban rule"})
+			}
+			created, err := runtime.Store().UpsertAutoBanRule(ctx, rule)
+			if err != nil {
+				return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
+			}
+			return jsonResponse(http.StatusCreated, created)
+		default:
+			return jsonResponse(http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		}
+	}
+	if len(parts) == 2 && parts[0] == "rules" {
+		id, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || id < 1 {
+			return jsonResponse(http.StatusNotFound, map[string]any{"error": "auto-ban rule not found"})
+		}
+		switch method {
+		case http.MethodGet:
+			rule, err := runtime.Store().GetAutoBanRule(ctx, id)
+			if err != nil {
+				return jsonResponse(http.StatusNotFound, map[string]any{"error": err.Error()})
+			}
+			return jsonResponse(http.StatusOK, rule)
+		case http.MethodPatch:
+			var rule store.AutoBanRule
+			if err := json.Unmarshal(rawBody(body), &rule); err != nil {
+				return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid auto-ban rule"})
+			}
+			rule.ID = id
+			updated, err := runtime.Store().UpsertAutoBanRule(ctx, rule)
+			if err != nil {
+				return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
+			}
+			return jsonResponse(http.StatusOK, updated)
+		case http.MethodDelete:
+			if err := runtime.Store().DeleteAutoBanRule(ctx, id); err != nil {
+				return jsonResponse(http.StatusNotFound, map[string]any{"error": err.Error()})
+			}
+			return jsonResponse(http.StatusOK, map[string]any{"ok": true})
+		default:
+			return jsonResponse(http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		}
+	}
+	if len(parts) == 1 && parts[0] == "accounts" && method == http.MethodGet {
+		items, err := runtime.Store().ListAutoBanAccounts(ctx, strings.TrimSpace(query.Get("state")), strings.TrimSpace(query.Get("provider")), strings.TrimSpace(query.Get("q")), int(intQuery(query, "limit", 200)))
+		if err != nil {
+			return errorResponse(err)
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"items": items})
+	}
+	if len(parts) >= 2 && parts[0] == "accounts" {
+		id, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || id < 1 {
+			return jsonResponse(http.StatusNotFound, map[string]any{"error": "auto-ban account not found"})
+		}
+		if len(parts) == 2 && method == http.MethodGet {
+			state, err := runtime.Store().GetAutoBanAccountByID(ctx, id)
+			if err != nil {
+				return jsonResponse(http.StatusNotFound, map[string]any{"error": err.Error()})
+			}
+			history, err := runtime.Store().ListAutoBanHistory(ctx, state.AccountKey, int(intQuery(query, "history_limit", 50)))
+			if err != nil {
+				return errorResponse(err)
+			}
+			return jsonResponse(http.StatusOK, map[string]any{"account": state, "history": history})
+		}
+		if len(parts) == 3 && parts[2] == "history" && method == http.MethodGet {
+			state, err := runtime.Store().GetAutoBanAccountByID(ctx, id)
+			if err != nil {
+				return jsonResponse(http.StatusNotFound, map[string]any{"error": err.Error()})
+			}
+			history, err := runtime.Store().ListAutoBanHistory(ctx, state.AccountKey, int(intQuery(query, "limit", 100)))
+			if err != nil {
+				return errorResponse(err)
+			}
+			return jsonResponse(http.StatusOK, map[string]any{"items": history})
+		}
+		if len(parts) == 3 && parts[2] == "actions" && method == http.MethodPost {
+			var payload struct {
+				Action string `json:"action"`
+				Reason string `json:"reason"`
+			}
+			if err := json.Unmarshal(rawBody(body), &payload); err != nil {
+				return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid auto-ban action"})
+			}
+			state, err := runtime.ExecuteAutoBanAccountAction(ctx, id, strings.TrimSpace(payload.Action), strings.TrimSpace(payload.Reason))
+			if err != nil {
+				return jsonResponse(http.StatusConflict, map[string]any{"error": err.Error()})
+			}
+			return jsonResponse(http.StatusOK, state)
+		}
+		if len(parts) == 3 && parts[2] == "reset-counters" && method == http.MethodPost {
+			state, err := runtime.ExecuteAutoBanAccountAction(ctx, id, "reset_counters", "")
+			if err != nil {
+				return jsonResponse(http.StatusConflict, map[string]any{"error": err.Error()})
+			}
+			return jsonResponse(http.StatusOK, state)
+		}
+	}
+	return jsonResponse(http.StatusNotFound, map[string]any{"error": "auto-ban operation not found"})
 }
 
 func candidateAction(path string) (int64, string, bool) {

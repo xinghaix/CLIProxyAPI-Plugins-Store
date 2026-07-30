@@ -36,12 +36,20 @@ type Event struct {
 }
 
 func (s *Store) InsertEvents(ctx context.Context, events []Event) (int, error) {
+	inserted, _, err := s.InsertEventsCommitted(ctx, events)
+	return inserted, err
+}
+
+// InsertEventsCommitted persists events and returns only rows newly inserted in this call.
+// Consumers must use the returned slice for side effects so duplicate usage events are not
+// evaluated more than once.
+func (s *Store) InsertEventsCommitted(ctx context.Context, events []Event) (int, []Event, error) {
 	if len(events) == 0 {
-		return 0, nil
+		return 0, nil, nil
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	defer tx.Rollback()
 	stmt, err := tx.PrepareContext(ctx, `insert or ignore into usage_events (
@@ -51,10 +59,11 @@ func (s *Store) InsertEvents(ctx context.Context, events []Event) (int, error) {
 		response_headers_json, created_at_ms
 	) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	defer stmt.Close()
 	inserted := 0
+	committed := make([]Event, 0, len(events))
 	now := time.Now().UnixMilli()
 	for _, event := range events {
 		result, err := stmt.ExecContext(ctx,
@@ -65,21 +74,22 @@ func (s *Store) InsertEvents(ctx context.Context, events []Event) (int, error) {
 			nullableString(event.FailSummary), nullableString(event.ResponseHeadersJSON), now,
 		)
 		if err != nil {
-			return 0, fmt.Errorf("insert usage event: %w", err)
+			return 0, nil, fmt.Errorf("insert usage event: %w", err)
 		}
 		if rows, _ := result.RowsAffected(); rows > 0 {
 			inserted += int(rows)
+			committed = append(committed, event)
 			if event.Failed && event.AuthID != "" {
 				if err := upsertFailureCandidateTx(ctx, tx, event, now); err != nil {
-					return 0, err
+					return 0, nil, err
 				}
 			}
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	return inserted, nil
+	return inserted, committed, nil
 }
 
 func boolInt(value bool) int {

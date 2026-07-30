@@ -55,6 +55,12 @@
         </div>
       </div>
 
+      <div v-if="autoBanSettings" class="inspection-auto-ban-note">
+        <strong>{{ t('autoBan.title') }}</strong>
+        <span :class="['status-badge', autoBanSettings.enabled ? 'good' : 'idle']">{{ autoBanSettings.enabled ? t('common.enabled') : t('common.disabled') }}</span>
+        <span class="muted small-text">{{ t('autoBan.subtitle') }}</span>
+      </div>
+
       <div class="inspection-summary-shell">
         <MetricGrid class="inspection-summary-grid" :cards="summaryCards" />
       </div>
@@ -523,6 +529,7 @@ const configOverview = computed(() => {
   void localeTick.value;
   return buildConfigOverviewItems(managerConfig.value?.codexInspection, savedScheduleLabel.value);
 });
+const autoBanSettings = computed(() => managerConfig.value?.autoBan || null);
 
 const activeRun = computed(() => detail.value?.run ?? runs.value[0] ?? null);
 const runTone = computed(() => getRunTone(activeRun.value?.status));

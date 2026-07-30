@@ -1,6 +1,6 @@
 export default {
   common: { all: '全部', apply: '套用', cancel: '取消', clear: '清除', close: '關閉', confirm: '確認', delete: '刪除', disabled: '已關閉', enabled: '已啟用', error: '錯誤', hide: '隱藏', loading: '載入中…', noData: '暫無資料', none: '無', refresh: '重新整理', save: '儲存', show: '顯示', unknown: '未知' },
-  tabs: { dashboard: '儀表板', monitoring: '請求監控', modelPrices: '模型單價', accountActions: '認證異常', inspection: '帳號巡檢', config: '設定' },
+  tabs: { dashboard: '儀表板', monitoring: '請求監控', modelPrices: '模型單價', accountActions: '帳號處置', inspection: '帳號巡檢', config: '設定' },
   language: { title: '語言設定', subtitle: '外掛介面偏好', label: '顯示語言', followCPA: '跟隨 CPA', effective: '目前生效：{language}', following: '正在跟隨 CPA 語言', English: 'English', zhCN: '简体中文', zhTW: '繁體中文（台灣）', Russian: 'Русский' },
   config: {
     credentials: { title: '存取憑據', subtitle: '僅瀏覽器快取', description: '瀏覽器存取 CPA Manager Plus / 外掛 API 所需的 CPA management key（僅儲存在本頁 sessionStorage，與下方「帳號處置授權」不同）。', keyPlaceholder: 'CPA management key（目前工作階段暫存）', saveAndCheck: '儲存並檢測', checkRuntime: '檢測 Runtime' },
@@ -385,6 +385,9 @@ export default {
       resolved: '已解決',
       deleted: '已刪除',
     },
+  },
+  autoBan: {
+    title: 'Auto-Ban 帳號處置', subtitle: '依狀態碼、閾值與冷卻規則管理本機憑據', settings: '執行設定', rules: '規則', accounts: '帳號狀態', history: '操作歷史', enabled: '啟用 Auto-Ban', dryRun: '演練模式（僅記錄）', sourceUsage: '監聽用量失敗', sourceInspection: '監聽巡檢結果', codexCooldownHours: 'Codex 預設冷卻（小時）', schedulerSeconds: '檢查間隔（秒）', saveSettings: '儲存設定', addRule: '新增規則', editRule: '編輯規則', noRules: '暫無規則', noAccounts: '暫無 Auto-Ban 帳號狀態', refresh: '重新整理', provider: '提供商', accountKind: '憑據類型', statusCodes: '狀態碼', errorKinds: '錯誤類別', threshold: '閾值', thresholdMode: '命中方式', consecutive: '連續命中', total: '視窗累計', windowMinutes: '視窗（分鐘）', action: '動作', cooldownHours: '冷卻（小時）', cooldownSource: '冷卻來源', headerOrDefault: '回應標頭或預設值', fixed: '固定時長', headerOnly: '僅回應標頭', respectHostCooldown: '遵守宿主冷卻', dailyCap: '每日動作上限', saveRule: '儲存規則', deleteRule: '刪除規則', ruleDeleteConfirm: '刪除此規則？既有帳號歷史會保留。', deleteNeedsCap: '自動刪除規則必須設定每日動作上限', matchRequired: '至少填寫一個狀態碼或錯誤類別', state: '狀態', lastCode: '最後狀態碼', hits: '命中次數', cooldown: '剩餘冷卻', detail: '詳情', manual: '手動操作', unban: '立即解禁', disable: '停用', enable: '啟用', delete: '刪除', hold: '暫停自動處置', release: '恢復自動處置', resetCounters: '清零計數', reason: '操作說明（選填）', confirmDelete: '確定刪除憑據？此操作無法復原。', confirmAction: '確認操作', stateLabels: { idle: '正常', flagged: '待人工處理', pending_action: '待執行', disabled: '已停用', cooling: '冷卻中', enabling: '正在啟用', held: '人工暫停', deleted: '已刪除' }, actionLabels: { review: '人工覆核', disable: '自動停用', delete: '自動刪除', cooldown_enable: '冷卻後啟用' }, sourceLabels: { usage: '用量事件', inspection: '巡檢', manual: '人工操作', scheduler: '排程器', lazy: '惰性恢復' }, capability: { oauth_auth_file: 'OAuth 憑據檔', custom_provider: '自訂提供商', unavailable: '僅觀測，無法自動處置' }, warnings: { hostCooldown: '此規則遵守宿主冷卻；xAI 429/401 預設僅觀測，避免重複停用。', delete: '自動刪除會永久移除憑據，請確認每日上限。' },
   },
   monitoring: {
     title: '請求監控',

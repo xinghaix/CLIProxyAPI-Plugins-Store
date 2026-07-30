@@ -107,6 +107,7 @@ API request body (still sent by frontend `proxyCall`):
 - `/v0/management/monitoring/analytics`
 - `/v0/management/codex-inspection/run|runs|...`
 - `/v0/management/account-action-candidates` and `.../enable|ignore|resolve|auth-file`
+- `/v0/management/auto-ban/settings|rules|accounts|...`
 
 ## Local credential health inspection
 
@@ -119,6 +120,17 @@ Starting with **0.5.0**, account inspection runs real provider probes inside the
 - Automatic recovery only re-enables credentials that this inspection automatically disabled and recorded as owned. Invalid credentials, rate limits, protocol changes, and missing auth metadata remain manual-review outcomes.
 
 Real inspection requires the CPA management address and key in **Account action authorization**, and a target CPA that supports `/v0/management/api-call`. Start with automatic actions disabled to confirm provider responses and result classification before enabling actions.
+
+## Auto-Ban (status-code account actions)
+
+Auto-Ban is disabled by default. When enabled, it evaluates persisted usage failures and inspection results against provider, status-code/error-kind, consecutive-hit, or fixed-window rules, then records independent account state and append-only action history.
+
+- **Codex OAuth** defaults `429` to disable plus cooldown recovery. It prefers `X-Ratelimit-Reset` or `Retry-After`, then uses the configurable 5-hour default; `401` defaults to disable. Automatic deletion must be explicitly selected in a rule and have a daily cap.
+- **xAI OAuth** may disable quota exhaustion. Its `429` and `401/402/403` defaults observe only, avoiding duplicate action with CPA conductor cooldown. Rules remain editable and show the host-cooldown warning.
+- **Custom providers** retain status-code, threshold, and audit visibility. Automatic actions are possible only when the credential maps to a manageable CPA auth-file; pure API-key/provider configuration remains a manual-review outcome.
+- The **Auth exceptions** tab provides rule editing, account state, cooldown timing, detailed history, and manual unban/disable/delete/hold/release controls. Manual holds take precedence over automatic recovery.
+
+Auto-Ban state and history never persist tokens or full authentication headers. Validate rules in dry-run mode before enabling real actions.
 
 ## UI structure
 

@@ -107,6 +107,7 @@ API 请求体（内部仍由前端 `proxyCall` 发送）：
 - `/v0/management/monitoring/analytics`
 - `/v0/management/codex-inspection/run|runs|...`
 - `/v0/management/account-action-candidates` 及 `.../enable|ignore|resolve|auth-file`
+- `/v0/management/auto-ban/settings|rules|accounts|...`
 
 ## 本地凭证健康巡检
 
@@ -119,6 +120,17 @@ API 请求体（内部仍由前端 `proxyCall` 发送）：
 - 自动恢复只会启用由巡检自动禁用且已记录归属的凭证；认证失效、限流、协议变化或缺少认证元数据均保守地要求人工复核。
 
 真实巡检需要在「账号处置授权」中配置 CPA 管理地址和密钥，且目标 CPA 必须支持 `/v0/management/api-call`。建议先以“不自动执行”模式确认 provider 响应与结果分类，再开启自动处置。
+
+## Auto-Ban（按状态码账号处置）
+
+Auto-Ban 默认关闭。启用后，插件会使用已落库的 usage 失败事件和巡检结果，按 provider、状态码/错误类别、连续或窗口累计命中次数匹配规则，并写入独立的账号状态与追加式操作历史。
+
+- **Codex OAuth** 默认将 `429` 禁用并冷却后自动启用：优先采用 `X-Ratelimit-Reset` 或 `Retry-After`，缺失时使用可配置的默认 5 小时；`401` 默认禁用。自动删除必须由单独规则显式选择并设置每日上限。
+- **xAI OAuth** 对额度耗尽可禁用；`429`、`401/402/403` 默认只观测，避免与 CPA conductor 内置冷却重复处置。规则可调整，但会显示宿主冷却提示。
+- **自定义 provider** 会记录状态码、阈值和审计历史；只有能映射为 CPA auth-file 的凭证可以自动禁用、启用或删除。纯 API key/provider 配置会降级为人工复核，不会伪造“软封禁”。
+- 「认证异常」Tab 提供规则编辑、账号状态、冷却倒计时、历史详情和手动解禁/禁用/删除/暂停/恢复入口。人工暂停优先于自动恢复。
+
+所有 token 和完整认证头都不会写入 Auto-Ban 状态或历史。请先在测试规则或演练模式确认命中结果，再开启真实动作。
 
 ## UI 结构
 
