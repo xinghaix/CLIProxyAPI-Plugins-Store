@@ -221,6 +221,7 @@ func includes(values []string, got string) bool {
 
 type stats struct {
 	Calls, Success, Failure, Input, Output, Reasoning, Cached, CacheRead, CacheCreation, Tokens int64
+	CacheHitTokens, CacheHitInputTokens                                                         int64
 	Latency                                                                                     int64
 	LatencySamples                                                                              int64
 	Cost                                                                                        float64
@@ -245,6 +246,9 @@ func (s *stats) add(row eventRow, price Price) {
 	s.Cached += row.CachedTokens
 	s.CacheRead += row.CacheReadTokens
 	s.CacheCreation += row.CacheCreationTokens
+	hitTokens, inputTokens := cacheHitTotals(row)
+	s.CacheHitTokens += hitTokens
+	s.CacheHitInputTokens += inputTokens
 	s.Tokens += row.TotalTokens
 	if row.LatencyMS.Valid {
 		s.Latency += row.LatencyMS.Int64
@@ -264,8 +268,29 @@ func (s stats) json() map[string]any {
 	if s.LatencySamples > 0 {
 		avg = float64(s.Latency) / float64(s.LatencySamples)
 	}
-	return map[string]any{"calls": s.Calls, "total_calls": s.Calls, "success_calls": s.Success, "failure_calls": s.Failure, "success_rate": rate, "input_tokens": s.Input, "output_tokens": s.Output, "reasoning_tokens": s.Reasoning, "cached_tokens": s.Cached, "cache_read_tokens": s.CacheRead, "cache_creation_tokens": s.CacheCreation, "total_tokens": s.Tokens, "tokens": s.Tokens, "average_latency_ms": avg, "cost": s.Cost, "total_cost": s.Cost, "last_seen_ms": s.Last}
+	return map[string]any{"calls": s.Calls, "total_calls": s.Calls, "success_calls": s.Success, "failure_calls": s.Failure, "success_rate": rate, "input_tokens": s.Input, "output_tokens": s.Output, "reasoning_tokens": s.Reasoning, "cached_tokens": s.Cached, "cache_read_tokens": s.CacheRead, "cache_creation_tokens": s.CacheCreation, "cache_hit_tokens": s.CacheHitTokens, "cache_hit_input_tokens": s.CacheHitInputTokens, "cache_hit_rate": cacheHitRate(s.CacheHitTokens, s.CacheHitInputTokens), "total_tokens": s.Tokens, "tokens": s.Tokens, "average_latency_ms": avg, "cost": s.Cost, "total_cost": s.Cost, "last_seen_ms": s.Last}
 }
+func cacheHitTotals(row eventRow) (hitTokens, inputTokens int64) {
+	cached := max64(row.CachedTokens, 0)
+	cacheRead := max64(row.CacheReadTokens, 0)
+	cacheCreation := max64(row.CacheCreationTokens, 0)
+	// Keep the historical monitoring KPI denominator so the new event field is
+	// consistent with the existing summary cards across the plugin.
+	inputTokens = max64(max64(row.InputTokens, 0), cached) + cacheRead + cacheCreation
+	return cached + cacheRead, inputTokens
+}
+
+func cacheHitRate(hitTokens, inputTokens int64) float64 {
+	if inputTokens <= 0 {
+		return 0
+	}
+	rate := float64(max64(hitTokens, 0)) / float64(inputTokens)
+	if rate > 1 {
+		return 1
+	}
+	return rate
+}
+
 func cost(row eventRow, price Price) float64 {
 	return (float64(max64(row.InputTokens-row.CachedTokens, 0))*price.Prompt + float64(row.OutputTokens)*price.Completion + float64(row.CachedTokens)*price.Cache + float64(row.CacheReadTokens)*price.CacheRead + float64(row.CacheCreationTokens)*price.CacheCreation) / 1_000_000
 }
@@ -394,7 +419,39 @@ func namedKeys(values map[string]bool, key string) []map[string]string {
 	return out
 }
 func eventJSON(row eventRow, price Price) map[string]any {
-	return map[string]any{"id": row.ID, "timestamp_ms": row.TimestampMS, "event_hash": fmt.Sprint(row.ID), "provider": row.Provider, "auth_provider_snapshot": row.Provider, "auth_type": row.AuthType, "model": row.Model, "api_key_hash": row.APIKeyHash, "account_snapshot": accountSnapshot(row), "auth_index": row.AuthIndex, "auth_file_snapshot": row.AuthID, "source": sourceSnapshot(row), "reasoning_effort": row.ReasoningEffort, "service_tier": row.ServiceTier, "input_tokens": row.InputTokens, "output_tokens": row.OutputTokens, "reasoning_tokens": row.ReasoningTokens, "cached_tokens": row.CachedTokens, "cache_read_tokens": row.CacheReadTokens, "cache_creation_tokens": row.CacheCreationTokens, "total_tokens": row.TotalTokens, "latency_ms": row.LatencyMS.Int64, "ttft_ms": row.TTFTMS.Int64, "failed": row.Failed != 0, "fail_status_code": row.FailStatus.Int64, "fail_summary": row.FailSummary.String, "cost": cost(row, price)}
+	hitTokens, inputTokens := cacheHitTotals(row)
+	return map[string]any{
+		"id":                     row.ID,
+		"timestamp_ms":           row.TimestampMS,
+		"event_hash":             fmt.Sprint(row.ID),
+		"provider":               row.Provider,
+		"auth_provider_snapshot": row.Provider,
+		"auth_type":              row.AuthType,
+		"model":                  row.Model,
+		"api_key_hash":           row.APIKeyHash,
+		"account_snapshot":       accountSnapshot(row),
+		"auth_index":             row.AuthIndex,
+		"auth_file_snapshot":     row.AuthID,
+		"source":                 sourceSnapshot(row),
+		"reasoning_effort":       row.ReasoningEffort,
+		"service_tier":           row.ServiceTier,
+		"input_tokens":           row.InputTokens,
+		"output_tokens":          row.OutputTokens,
+		"reasoning_tokens":       row.ReasoningTokens,
+		"cached_tokens":          row.CachedTokens,
+		"cache_read_tokens":      row.CacheReadTokens,
+		"cache_creation_tokens":  row.CacheCreationTokens,
+		"cache_hit_tokens":       hitTokens,
+		"cache_hit_input_tokens": inputTokens,
+		"cache_hit_rate":         cacheHitRate(hitTokens, inputTokens),
+		"total_tokens":           row.TotalTokens,
+		"latency_ms":             row.LatencyMS.Int64,
+		"ttft_ms":                row.TTFTMS.Int64,
+		"failed":                 row.Failed != 0,
+		"fail_status_code":       row.FailStatus.Int64,
+		"fail_summary":           row.FailSummary.String,
+		"cost":                   cost(row, price),
+	}
 }
 func failureRows(rows []eventRow, prices map[string]Price) []map[string]any {
 	out := []map[string]any{}

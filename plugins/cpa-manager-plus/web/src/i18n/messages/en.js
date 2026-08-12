@@ -591,6 +591,7 @@ export default {
       ttftLatency: 'TTFT / latency',
       time: 'Time',
       usage: 'This usage',
+      cacheHitRate: 'Cache hit rate',
       cost: 'This cost',
     },
     accountColumns: {

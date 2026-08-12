@@ -104,6 +104,7 @@
             <th>{{ t('monitoring.eventColumns.ttftLatency') }}</th>
             <th>{{ t('monitoring.eventColumns.time') }}</th>
             <th>{{ t('monitoring.eventColumns.usage') }}</th>
+            <th>{{ t('monitoring.eventColumns.cacheHitRate') }}</th>
             <th>{{ t('monitoring.eventColumns.cost') }}</th>
           </tr>
           </thead>
@@ -162,6 +163,7 @@
               <strong>{{ fmtCompact(row.totalTokens) }}</strong>
               <div class="muted small-text usage-breakdown">{{ row.usageText }}</div>
             </td>
+            <td><strong>{{ fmtPct(row.cacheHitRate) }}</strong></td>
             <td><strong>{{ fmtMoney(row.cost) }}</strong></td>
           </tr>
           </tbody>
@@ -314,9 +316,7 @@ const hasPrices = computed(() => Object.keys(modelPrices.value).length > 0);
 const summaryCards = computed(() => {
   const s = summary.value;
   const totalCacheTokens = Number(s.cached_tokens ?? 0) + Number(s.cache_read_tokens ?? 0) + Number(s.cache_creation_tokens ?? 0);
-  const cacheHitTokens = Number(s.cached_tokens ?? 0) + Number(s.cache_read_tokens ?? 0);
-  const inputSideTokens = Math.max(Number(s.input_tokens ?? 0), Number(s.cached_tokens ?? 0)) + Number(s.cache_read_tokens ?? 0) + Number(s.cache_creation_tokens ?? 0);
-  const cacheHitRate = inputSideTokens > 0 ? cacheHitTokens / inputSideTokens : 0;
+  const cacheHitRate = computeCacheHitRate(s);
   const tokenMix = (n) => s.total_tokens > 0 ? `${fmtPct(n / s.total_tokens)}` : EMPTY_VALUE;
   return [
     {label: t('monitoring.kpi.totalCalls'), value: fmtInt(s.total_calls), sub: t('monitoring.kpi.accountsSub', {count: accountCount.value})},
@@ -381,7 +381,7 @@ const eventDetailCards = computed(() => selectedEvent.value ? [
   {label: t('monitoring.labels.latency'), value: fmtMs(selectedEvent.value.latency_ms)},
   {label: t('monitoring.labels.cost'), value: fmtMoney(calculateEventCost(selectedEvent.value, modelPrices.value))},
 ] : []);
-const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'resolved_model', 'endpoint', 'method', 'path', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
+const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'resolved_model', 'endpoint', 'method', 'path', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'cache_input_mode', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
 const eventHeaderDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['header_quota_recover_at_ms', 'header_quota_used_percent', 'header_quota_plan_type', 'header_error_kind', 'header_error_code', 'header_trace_id'])) : {});
 
 watch([timeRange, searchQuery, filters], () => {
@@ -642,7 +642,7 @@ function decodeDetailObject(obj) {
 }
 
 function exportEventsCsv() {
-  const cols = ['timestamp_ms', 'failed', 'model', 'auth_index', 'account_snapshot', 'api_key_hash', 'method', 'path', 'total_tokens', 'latency_ms', 'fail_status_code', 'fail_summary', 'header_trace_id'];
+  const cols = ['timestamp_ms', 'failed', 'model', 'auth_index', 'account_snapshot', 'api_key_hash', 'method', 'path', 'total_tokens', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'latency_ms', 'fail_status_code', 'fail_summary', 'header_trace_id'];
   const csv = [cols.join(','), ...eventRows.value.map(row => cols.map(c => csvCell(row[c])).join(','))].join('\n');
   const blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
@@ -727,6 +727,7 @@ function buildEventTableRow(row, groupMap) {
     timestampMs: row.timestamp_ms,
     totalTokens: Number(row.total_tokens || 0),
     usageText: buildUsageText(row),
+    cacheHitRate: computeCacheHitRate(row),
     cost: calculateEventCost(row, modelPrices.value),
     failStatusCode: numberOrNull(row.fail_status_code),
     failSummary: row.fail_summary || '',
@@ -755,6 +756,17 @@ function buildUsageText(row) {
   const cached = Number(row.cached_tokens || row.cache_read_tokens || row.cache_creation_tokens || 0);
   if (cached > 0) parts.push(`C ${fmtCompact(cached)}`);
   return parts.join(' · ');
+}
+
+function computeCacheHitRate(row) {
+  const explicit = Number(row?.cache_hit_rate);
+  if (Number.isFinite(explicit)) return Math.min(Math.max(explicit, 0), 1);
+  const inputTokens = Math.max(Number(row?.input_tokens || 0), 0);
+  const cachedTokens = Math.max(Number(row?.cached_tokens || 0), 0);
+  const cacheReadTokens = Math.max(Number(row?.cache_read_tokens || 0), 0);
+  const cacheCreationTokens = Math.max(Number(row?.cache_creation_tokens || 0), 0);
+  const denominator = Math.max(inputTokens, cachedTokens) + cacheReadTokens + cacheCreationTokens;
+  return denominator > 0 ? Math.min((cachedTokens + cacheReadTokens) / denominator, 1) : 0;
 }
 
 const TOKENS_PER_PRICE_UNIT = 1000000;

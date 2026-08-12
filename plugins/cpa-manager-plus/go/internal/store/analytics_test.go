@@ -74,3 +74,35 @@ func TestEventJSONIncludesSourceAndAuthType(t *testing.T) {
 		t.Fatalf("empty event source = %#v", empty["source"])
 	}
 }
+
+func TestCacheHitRateIsExposedForEventsAndAggregates(t *testing.T) {
+	rows := []eventRow{
+		{ID: 1, TimestampMS: 100, Model: "gpt-test", InputTokens: 1_000, CachedTokens: 400, TotalTokens: 1_000},
+		{ID: 2, TimestampMS: 200, Provider: "anthropic", Model: "gpt-test", InputTokens: 100, CacheReadTokens: 30, CacheCreationTokens: 20, TotalTokens: 150},
+	}
+	result := aggregate(rows, nil, AnalyticsRequest{Limit: 100, Granularity: "hour"})
+	summary := result["summary"].(map[string]any)
+	if summary["cache_hit_tokens"] != int64(430) || summary["cache_hit_input_tokens"] != int64(1_150) {
+		t.Fatalf("cache totals = %#v", summary)
+	}
+	if rate := summary["cache_hit_rate"].(float64); rate < 0.3739 || rate > 0.3740 {
+		t.Fatalf("summary cache hit rate = %v, want about %v", rate, 430.0/1150.0)
+	}
+	modelStats := result["model_stats"].([]map[string]any)
+	if len(modelStats) != 1 || modelStats[0]["cache_hit_rate"] != summary["cache_hit_rate"] {
+		t.Fatalf("model cache hit rate = %#v, summary = %#v", modelStats, summary)
+	}
+	events := result["events"].(map[string]any)["items"].([]map[string]any)
+	if len(events) != 2 || events[0]["cache_hit_rate"] != 0.4 || events[1]["cache_hit_rate"] != 0.2 {
+		t.Fatalf("event cache hit rate = %#v", events)
+	}
+}
+
+func TestCacheHitRateClampsMalformedValues(t *testing.T) {
+	if got := cacheHitRate(1_500, 1_000); got != 1 {
+		t.Fatalf("cache hit rate = %v, want 1", got)
+	}
+	if got := cacheHitRate(1_500, 0); got != 0 {
+		t.Fatalf("empty cache hit rate = %v, want 0", got)
+	}
+}

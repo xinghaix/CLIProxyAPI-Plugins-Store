@@ -468,6 +468,7 @@ export default {
       ttftLatency: '首字/耗时',
       time: '时间',
       usage: '本次用量',
+      cacheHitRate: '缓存命中率',
       cost: '本次花费',
     },
     accountColumns: {

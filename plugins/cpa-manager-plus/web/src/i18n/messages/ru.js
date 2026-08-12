@@ -468,6 +468,7 @@ export default {
       ttftLatency: 'TTFT / задержка',
       time: 'Время',
       usage: 'Использование',
+      cacheHitRate: 'Попадание в кэш',
       cost: 'Стоимость',
     },
     accountColumns: {

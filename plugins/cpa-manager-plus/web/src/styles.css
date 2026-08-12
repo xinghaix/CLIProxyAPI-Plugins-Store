@@ -348,7 +348,7 @@ pre { margin: 0; max-height: 380px; overflow: auto; border: 1px solid var(--cpa-
 .timeline-value { font-weight: 700; }
 .timeline-sub, .small-text { color: var(--cpa-text-tertiary); font-size: 11px; }
 .monitor-table table { min-width: 980px; }
-.event-stream-table table { min-width: 1360px; }
+.event-stream-table table { min-width: 1440px; }
 .event-stream-table th, .event-stream-table td { border-right: 1px solid color-mix(in srgb, var(--cpa-border) 70%, transparent); }
 .event-stream-table th:last-child, .event-stream-table td:last-child { border-right: 0; }
 .sensitive-value { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
