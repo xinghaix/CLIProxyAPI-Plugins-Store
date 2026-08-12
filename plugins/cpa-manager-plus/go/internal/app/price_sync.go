@@ -85,6 +85,18 @@ func (r *Runtime) UpdatePriceSyncSettings(ctx context.Context, settings PriceSyn
 	return nil
 }
 
+func (r *Runtime) LookupPriceSources(ctx context.Context, model string) (pricesync.LookupResult, error) {
+	r.mu.Lock()
+	do := r.httpDo
+	r.mu.Unlock()
+	if do == nil {
+		return pricesync.LookupResult{}, fmt.Errorf("host HTTP callback is unavailable")
+	}
+	return pricesync.Lookup(ctx, model, func(ctx context.Context, target string, headers http.Header) (pricesync.HTTPResponse, error) {
+		return do(ctx, http.MethodGet, target, headers, nil)
+	})
+}
+
 func (r *Runtime) SyncPrices(ctx context.Context) (pricesync.Result, error) {
 	if !r.syncMu.TryLock() {
 		return pricesync.Result{}, fmt.Errorf("price sync is already running")

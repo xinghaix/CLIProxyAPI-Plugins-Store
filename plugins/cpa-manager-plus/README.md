@@ -138,7 +138,7 @@ Auto-Ban 默认关闭。启用后，插件会使用已落库的 usage 失败事�
 |-----|---------------|
 | 仪表盘 | `GET /v0/management/dashboard/summary` |
 | 请求监控 / 用量 | `POST /v0/management/monitoring/analytics` |
-| 模型单价 | `GET/PUT /v0/management/model-prices` |
+| 模型单价 | `GET/PUT /v0/management/model-prices`、`GET /v0/management/model-prices/source-lookup` |
 | 认证异常 | `GET/POST/DELETE .../account-action-candidates...` |
 | 账号巡检 | `GET/POST .../codex-inspection/...` |
 | 配置 | `GET/PUT /usage-service/config` |

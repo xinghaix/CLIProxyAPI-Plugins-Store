@@ -305,6 +305,57 @@
             <input v-model.number="editingModel.cacheCreation" type="number" step="0.0001" min="0" class="control" />
           </label>
         </div>
+        <div class="price-source-picker">
+          <div class="section-title">
+            <div>
+              <h3>{{ t('modelPrices.sourcePicker.title') }}</h3>
+              <p class="muted small-text">{{ t('modelPrices.sourcePicker.subtitle') }}</p>
+            </div>
+            <button
+              class="btn"
+              type="button"
+              :disabled="sourceLookupLoading || saving || deleting || !editingModel.model.trim()"
+              @click="lookupEditingPriceSources"
+            >
+              {{ sourceLookupLoading ? t('modelPrices.sourcePicker.loading') : t('modelPrices.sourcePicker.fetch') }}
+            </button>
+          </div>
+          <p v-if="sourceLookupError" class="notice error">{{ sourceLookupError }}</p>
+          <p v-else-if="sourceLookupLoaded && !sourceLookupSources.length" class="muted small-text">
+            {{ t('modelPrices.sourcePicker.empty') }}
+          </p>
+          <div v-else-if="sourceLookupSources.length" class="price-source-options">
+            <label
+              v-for="source in sourceLookupSources"
+              :key="`${source.source}:${source.sourceModelId}`"
+              class="price-source-option"
+              :class="{ selected: selectedSourceKey === priceSourceKey(source) }"
+            >
+              <input
+                v-model="selectedSourceKey"
+                type="radio"
+                name="model-price-source"
+                :value="priceSourceKey(source)"
+                :disabled="saving || deleting"
+              />
+              <span class="price-source-option-main">
+                <strong>{{ formatSourceLabel(source.source) }}</strong>
+                <span class="muted small-text">{{ source.sourceModelId }}</span>
+              </span>
+              <span class="price-source-option-values">
+                {{ formatMoneyPer1M(source.prompt) }} / {{ formatMoneyPer1M(source.completion) }}
+              </span>
+            </label>
+            <button
+              class="btn"
+              type="button"
+              :disabled="!selectedSource || saving || deleting"
+              @click="applySelectedSource"
+            >
+              {{ t('modelPrices.sourcePicker.apply') }}
+            </button>
+          </div>
+        </div>
         <p class="muted small-text">{{ t('modelPrices.manualNote') }}</p>
         <div class="config-actions-bar">
           <button class="btn primary" type="button" @click="savePrice" :disabled="saving || deleting">
@@ -343,6 +394,7 @@ import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import { localeRef } from '../localeBridge.js';
 import { EMPTY_VALUE } from '../utils/localeFormat.js';
+import { buildPriceSourceLookupRequest, buildSourcePriceEntry, normalizePriceSourceLookup } from '../utils/priceSourceLookup.js';
 import {
   DEFAULT_SYNC_SETTINGS,
   MAX_INTERVAL_HOURS,
@@ -391,6 +443,11 @@ const error = ref('');
 const syncNotice = ref('');
 const settingsMessage = ref('');
 const editingModel = ref(null);
+const sourceLookupLoading = ref(false);
+const sourceLookupLoaded = ref(false);
+const sourceLookupError = ref('');
+const sourceLookupSources = ref([]);
+const selectedSourceKey = ref('');
 const filter = ref('all');
 const search = ref('');
 const filters = PRICE_FILTERS;
@@ -789,7 +846,16 @@ async function saveSettings() {
   }
 }
 
+function resetSourceLookup() {
+  sourceLookupLoading.value = false;
+  sourceLookupLoaded.value = false;
+  sourceLookupError.value = '';
+  sourceLookupSources.value = [];
+  selectedSourceKey.value = '';
+}
+
 function addManualPrice() {
+  resetSourceLookup();
   editingModel.value = {
     isNew: true,
     model: '',
@@ -802,6 +868,7 @@ function addManualPrice() {
 }
 
 function openEdit(row) {
+  resetSourceLookup();
   if (!row) return;
   if (row.hasPrice && row.price) {
     editingModel.value = {
@@ -826,6 +893,62 @@ function openEdit(row) {
   };
 }
 
+function priceSourceKey(source) {
+  return `${source?.source || ''}:${source?.sourceModelId || ''}`;
+}
+
+const selectedSource = computed(() => sourceLookupSources.value.find(
+  (source) => priceSourceKey(source) === selectedSourceKey.value,
+) || null);
+
+async function lookupEditingPriceSources() {
+  const request = buildPriceSourceLookupRequest(editingModel.value?.model);
+  if (!request || sourceLookupLoading.value) return;
+  sourceLookupLoading.value = true;
+  sourceLookupLoaded.value = false;
+  sourceLookupError.value = '';
+  sourceLookupSources.value = [];
+  selectedSourceKey.value = '';
+  try {
+    const res = await softProxyCall(props.proxyCall, request);
+    if (!res.ok) {
+      sourceLookupError.value = res.missing
+        ? t('modelPrices.sourcePicker.apiMissing')
+        : res.error || t('modelPrices.sourcePicker.failed');
+      return;
+    }
+    const lookup = normalizePriceSourceLookup(res.data);
+    sourceLookupSources.value = lookup.sources;
+    sourceLookupLoaded.value = true;
+    if (lookup.sources.length) {
+      selectedSourceKey.value = priceSourceKey(lookup.sources[0]);
+    }
+  } finally {
+    sourceLookupLoading.value = false;
+  }
+}
+
+function applySelectedSource() {
+  const entry = buildSourcePriceEntry(editingModel.value?.model, selectedSource.value);
+  if (!entry || !editingModel.value) return;
+  if (selectedSource.value?.available?.length) {
+    const fields = new Set(selectedSource.value.available);
+    if (!fields.has('prompt')) entry.price.prompt = editingModel.value.prompt;
+    if (!fields.has('completion')) entry.price.completion = editingModel.value.completion;
+    if (!fields.has('cache')) entry.price.cache = editingModel.value.cache;
+    if (!fields.has('cacheRead')) entry.price.cacheRead = editingModel.value.cacheRead;
+    if (!fields.has('cacheCreation')) entry.price.cacheCreation = editingModel.value.cacheCreation;
+  }
+  editingModel.value.prompt = entry.price.prompt;
+  editingModel.value.completion = entry.price.completion;
+  editingModel.value.cache = entry.price.cache;
+  editingModel.value.cacheRead = entry.price.cacheRead;
+  editingModel.value.cacheCreation = entry.price.cacheCreation;
+  syncNotice.value = t('modelPrices.sourcePicker.applied', {
+    source: formatSourceLabel(entry.selectedSource.source),
+  });
+}
+
 async function savePrice() {
   const putBody = buildManualPutBody(editingModel.value);
   const entry = buildManualPriceEntry(editingModel.value);
@@ -842,6 +965,7 @@ async function savePrice() {
       path: '/v0/management/model-prices',
       body: putBody,
     });
+    resetSourceLookup();
     editingModel.value = null;
     const pricesRes = await softProxyCall(props.proxyCall, {
       method: 'GET',
@@ -895,7 +1019,10 @@ async function deletePrice(model) {
         : result.error || t('modelPrices.deleteFailed');
       return;
     }
-    if (editingModel.value?.model === model) editingModel.value = null;
+    if (editingModel.value?.model === model) {
+      resetSourceLookup();
+      editingModel.value = null;
+    }
 
     const pricesRes = await softProxyCall(props.proxyCall, {
       method: 'GET',
@@ -1100,6 +1227,61 @@ defineExpose({ refresh });
 }
 .model-prices-settings-grid {
   margin-top: 0;
+}
+.price-source-picker {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--cpa-border);
+  border-radius: 10px;
+  background: var(--cpa-surface-muted);
+}
+.price-source-picker .section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.price-source-picker h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.price-source-picker p {
+  margin: 4px 0 0;
+}
+.price-source-options {
+  display: grid;
+  gap: 8px;
+}
+.price-source-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--cpa-border);
+  border-radius: 8px;
+  background: var(--cpa-surface);
+  cursor: pointer;
+}
+.price-source-option.selected {
+  border-color: var(--cpa-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cpa-primary) 30%, transparent);
+}
+.price-source-option-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.price-source-option-main .small-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.price-source-option-values {
+  color: var(--cpa-text-secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .model-prices-source-results {
   display: flex;

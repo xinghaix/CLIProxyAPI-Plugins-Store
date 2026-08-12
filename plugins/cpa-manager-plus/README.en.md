@@ -138,7 +138,7 @@ Auto-Ban state and history never persist tokens or full authentication headers. 
 |-----|------------------|
 | Dashboard | `GET /v0/management/dashboard/summary` |
 | Monitoring / usage | `POST /v0/management/monitoring/analytics` |
-| Model prices | `GET/PUT /v0/management/model-prices` |
+| Model prices | `GET/PUT /v0/management/model-prices`, `GET /v0/management/model-prices/source-lookup` |
 | Auth exceptions | `GET/POST/DELETE .../account-action-candidates...` |
 | Account inspection | `GET/POST .../codex-inspection/...` |
 | Settings | `GET/PUT /usage-service/config` |

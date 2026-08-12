@@ -94,6 +94,20 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 			return errorResponse(err)
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"models": models})
+	case method == http.MethodGet && path == "/v0/management/model-prices/source-lookup":
+		query, err := url.ParseQuery(request.Query)
+		if err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid query"})
+		}
+		model := strings.TrimSpace(query.Get("model"))
+		if model == "" || len(model) > 256 {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "model is required"})
+		}
+		result, err := runtime.LookupPriceSources(ctx, model)
+		if err != nil {
+			return errorResponse(err)
+		}
+		return jsonResponse(http.StatusOK, result)
 	case method == http.MethodPost && path == "/v0/management/model-prices/sync":
 		result, err := runtime.SyncPrices(ctx)
 		if err != nil {

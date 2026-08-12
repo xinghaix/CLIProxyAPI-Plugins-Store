@@ -10,6 +10,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/app"
+	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 )
 
 func TestLocalDispatcherStoresAndQueriesPrices(t *testing.T) {
@@ -41,6 +42,34 @@ func TestLocalDispatcherStoresAndQueriesPrices(t *testing.T) {
 	response = Handle(context.Background(), runtime, []byte(`{"method":"POST","path":"/v0/management/monitoring/analytics","body":{"from_ms":0,"to_ms":4102444800000,"include":{"events_page":{"limit":50},"granularity":"hour"}}}`))
 	if response.StatusCode != http.StatusOK || !json.Valid(response.Body) {
 		t.Fatalf("analytics = %d: %s", response.StatusCode, response.Body)
+	}
+}
+
+func TestPriceSourceLookupRoute(t *testing.T) {
+	runtime, err := app.New([]byte("data_dir: " + t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	runtime.SetHTTPDo(func(_ context.Context, method, target string, _ http.Header, _ []byte) (pricesync.HTTPResponse, error) {
+		if method != http.MethodGet {
+			t.Fatalf("unexpected method: %s", method)
+		}
+		switch target {
+		case pricesync.ModelsDevURL:
+			return pricesync.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"xai":{"models":{"gpt-test":{"id":"gpt-test","cost":{"input":2,"output":6}}}}}`)}, nil
+		case pricesync.LiteLLMURL:
+			return pricesync.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{}`)}, nil
+		case pricesync.OpenRouterURL:
+			return pricesync.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"data":[]}`)}, nil
+		default:
+			t.Fatalf("unexpected URL: %s", target)
+			return pricesync.HTTPResponse{}, nil
+		}
+	})
+	response := Handle(context.Background(), runtime, []byte(`{"method":"GET","path":"/v0/management/model-prices/source-lookup","query":"model=gpt-test"}`))
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"models.dev:xai"`) {
+		t.Fatalf("lookup = %d: %s", response.StatusCode, response.Body)
 	}
 }
 
