@@ -107,6 +107,7 @@
           <strong>{{ formatSourceLabel(src.source) }}</strong>
           <span v-if="src.ok">
             {{ t('modelPrices.sourceOk', { models: src.modelCount, matched: src.matched, applied: src.applied }) }}
+            <template v-if="src.priority"> · {{ t('modelPrices.sourcePriority', { priority: src.priority }) }}</template>
             <template v-if="src.skipped"> · {{ t('modelPrices.sourceSkipped', { count: src.skipped }) }}</template>
             <template v-if="src.durationMs"> · {{ formatDurationMs(src.durationMs) }}</template>
           </span>
@@ -1163,6 +1164,11 @@ defineExpose({ refresh });
   color: var(--cpa-success);
   background: var(--cpa-success-soft);
   border-color: color-mix(in srgb, var(--cpa-success) 30%, var(--cpa-border));
+}
+.source-badge.source-models-dev {
+  color: var(--cpa-primary);
+  background: color-mix(in srgb, var(--cpa-primary) 16%, var(--cpa-surface));
+  border-color: color-mix(in srgb, var(--cpa-primary) 38%, var(--cpa-border));
 }
 .clickable {
   cursor: pointer;

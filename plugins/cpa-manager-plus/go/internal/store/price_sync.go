@@ -10,9 +10,10 @@ import (
 )
 
 type SyncUpsertResult struct {
-	Imported        int
-	ProtectedManual int
-	Skipped         int
+	Imported         int
+	ProtectedManual  int
+	Skipped          int
+	ImportedBySource map[string]int
 }
 
 func (s *Store) UpsertSyncedPrices(ctx context.Context, prices map[string]Price) (SyncUpsertResult, error) {
@@ -31,7 +32,7 @@ func (s *Store) UpsertSyncedPrices(ctx context.Context, prices map[string]Price)
 		return SyncUpsertResult{}, err
 	}
 	defer upsert.Close()
-	result := SyncUpsertResult{}
+	result := SyncUpsertResult{ImportedBySource: map[string]int{}}
 	now := time.Now().UnixMilli()
 	for model, price := range prices {
 		model = strings.TrimSpace(model)
@@ -58,6 +59,7 @@ func (s *Store) UpsertSyncedPrices(ctx context.Context, prices map[string]Price)
 			return SyncUpsertResult{}, err
 		}
 		result.Imported++
+		result.ImportedBySource[price.Source]++
 	}
 	if err := tx.Commit(); err != nil {
 		return SyncUpsertResult{}, err

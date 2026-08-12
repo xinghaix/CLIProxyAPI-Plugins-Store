@@ -116,6 +116,9 @@ func (r *Runtime) SyncPrices(ctx context.Context) (pricesync.Result, error) {
 			result.Imported = upsert.Imported
 			result.Skipped += upsert.Skipped
 			result.ProtectedManual = upsert.ProtectedManual
+			for index := range result.SourceResults {
+				result.SourceResults[index].Applied = upsert.ImportedBySource[result.SourceResults[index].Source]
+			}
 			result.Prices, _ = r.store.Prices(ctx)
 			// Drop fuzzy candidates for models that already have a local price
 			// (exact match just written, previously confirmed, or manual).

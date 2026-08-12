@@ -209,6 +209,7 @@ describe('normalizeSourceResults / candidates', () => {
   it('handles object map of sources', () => {
     const list = normalizeSourceResults({ litellm: { ok: true, matched: 3 } });
     expect(list[0].source).toBe('litellm');
+    expect(list[0].priority).toBe(0);
     expect(list[0].matched).toBe(3);
   });
 
@@ -239,9 +240,11 @@ describe('formatters / builders', () => {
     expect(formatMoneyPer1M(1.2)).toBe('$1.2000');
     expect(formatMoneyPer1M(null)).toBe('—');
     expect(formatSourceLabel('manual')).toBe('Manual');
+    expect(formatSourceLabel('models.dev:xai')).toBe('Models.dev · xAI');
     expect(formatSourceLabel('litellm')).toBe('LiteLLM');
     expect(formatSourceLabel('openrouter')).toBe('OpenRouter');
     expect(sourceBadgeClass('manual')).toBe('source-manual');
+    expect(sourceBadgeClass('models.dev:xai')).toBe('source-models-dev');
 
     setI18nLocale('zh-CN');
     expect(formatSourceLabel('manual')).toBe('手动');

@@ -144,6 +144,18 @@ Auto-Ban 默认关闭。启用后，插件会使用已落库的 usage 失败事�
 | 配置 | `GET/PUT /usage-service/config` |
 | 健康 | `GET /v0/management/cpa-manager-plus/health` |
 
+## 价格同步来源
+
+模型价格同步按以下优先级处理：
+
+1. `models.dev:xai`
+2. `models.dev:openrouter`
+3. `models.dev:other`
+4. `litellm`
+5. `openrouter`
+
+高优先级来源提供的字段不会被低优先级来源覆盖；低优先级来源只会补齐缺失字段。精确匹配自动写入，模糊匹配只进入候选确认。`models.dev` 为社区维护目录，具体 provider 价格不代表实际账单。
+
 ## 配置：`plugins.configs.cpa-manager-plus`
 
 | 字段 | 说明 |

@@ -144,6 +144,18 @@ Auto-Ban state and history never persist tokens or full authentication headers. 
 | Settings | `GET/PUT /usage-service/config` |
 | Health | `GET /v0/management/cpa-manager-plus/health` |
 
+## Price sync sources
+
+Model price synchronization uses the following priority order:
+
+1. `models.dev:xai`
+2. `models.dev:openrouter`
+3. `models.dev:other`
+4. `litellm`
+5. `openrouter`
+
+Higher-priority fields are never overwritten by lower-priority sources; lower-priority sources only fill missing fields. Exact matches are written automatically, while fuzzy matches remain pending candidates. `models.dev` is a community-maintained catalog, so provider prices are not guaranteed to equal an account's actual bill.
+
 ## Configuration: `plugins.configs.cpa-manager-plus`
 
 | Field | Description |

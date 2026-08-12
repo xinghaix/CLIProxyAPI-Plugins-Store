@@ -157,6 +157,7 @@ function normalizeOneSourceResult(item) {
     ok,
     error: error ? String(error) : '',
     modelCount: Number(item.modelCount ?? item.ModelCount ?? item.models ?? item.Models ?? 0) || 0,
+    priority: Number(item.priority ?? item.Priority ?? 0) || 0,
     matched: Number(item.matched ?? item.Matched ?? 0) || 0,
     applied: Number(item.applied ?? item.Applied ?? 0) || 0,
     skipped: Number(item.skipped ?? item.Skipped ?? 0) || 0,
@@ -328,6 +329,10 @@ export function formatSourceLabel(source) {
   const s = String(source || '').trim();
   if (!s) return EMPTY_VALUE;
   if (s.toLowerCase() === 'manual') return translate('prices.source.manual');
+  if (s.toLowerCase() === 'models.dev:xai') return 'Models.dev · xAI';
+  if (s.toLowerCase() === 'models.dev:openrouter') return 'Models.dev · OpenRouter';
+  if (s.toLowerCase() === 'models.dev:other') return 'Models.dev · Other';
+  if (s.toLowerCase() === 'models.dev') return 'Models.dev';
   if (s.toLowerCase() === 'litellm') return 'LiteLLM';
   if (s.toLowerCase() === 'openrouter') return 'OpenRouter';
   return s;
@@ -338,6 +343,7 @@ export function sourceBadgeClass(source) {
   if (s === 'manual') return 'source-manual';
   if (s === 'litellm') return 'source-litellm';
   if (s === 'openrouter') return 'source-openrouter';
+  if (s === 'models.dev:xai' || s === 'models.dev:openrouter' || s === 'models.dev:other' || s === 'models.dev') return 'source-models-dev';
   if (!s) return 'source-empty';
   return 'source-other';
 }

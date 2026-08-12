@@ -345,8 +345,8 @@ export default {
     info: {
       scope: 'Sync scope',
       scopeText: 'Configured unit-price models ∪ models seen in usage (does not import the full public catalog).',
-      dualSource: 'Dual sources',
-      dualSourceText: 'LiteLLM + OpenRouter; high-confidence matches write automatically, fuzzy matches become candidates for review.',
+      dualSource: 'Price sources',
+      dualSourceText: 'Models.dev is checked first by provider priority, then LiteLLM and OpenRouter fill missing fields; fuzzy matches become candidates for review.',
       manualProtect: 'Manual protection',
       manualProtectText: 'Prices added or edited manually are marked “manual” and are not overwritten by auto-sync by default.',
       autoSync: 'Auto-sync',
@@ -364,6 +364,7 @@ export default {
     protectManualHint: 'Always on: auto-sync never overwrites source=manual',
     settingsApiUnavailable: 'This Runtime does not expose the sync settings API yet. Settings are display-only until sync support is available.',
     sourceOk: 'Catalog {models} · matched {matched} · applied {applied}',
+    sourcePriority: 'priority {priority}',
     sourceSkipped: 'skipped {count}',
     sourceFailed: 'Fetch failed',
     sourceFailedWithError: 'Fetch failed: {error}',

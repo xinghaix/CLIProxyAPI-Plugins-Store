@@ -222,8 +222,8 @@ export default {
     info: {
       scope: '同步範圍',
       scopeText: '已設定單價模型 ∪ 用量中出現的模型（不會灌入全站價格庫）。',
-      dualSource: '雙源',
-      dualSourceText: 'LiteLLM + OpenRouter；高信心自動寫入，模糊比對進入候選確認。',
+      dualSource: '價格來源',
+      dualSourceText: '依供應商優先順序先查詢 Models.dev，再由 LiteLLM 與 OpenRouter 補齊缺少欄位；模糊比對進入候選確認。',
       manualProtect: '手動保護',
       manualProtectText: '手動新增/編輯的價格標記為「手動」，預設不會被自動同步覆寫。',
       autoSync: '自動同步',
@@ -241,6 +241,7 @@ export default {
     protectManualHint: '始終開啟：自動同步不會覆寫 source=manual',
     settingsApiUnavailable: '目前 Runtime 尚未提供同步設定 API，設定區僅供展示；同步功能可用後再儲存。',
     sourceOk: '目錄 {models} · 比對 {matched} · 套用 {applied}',
+    sourcePriority: '優先級 {priority}',
     sourceSkipped: '略過 {count}',
     sourceFailed: '取得失敗',
     sourceFailedWithError: '取得失敗：{error}',
