@@ -73,21 +73,6 @@
               @click="activeDataTab = tab.key">{{ tab.label }} <span>{{ tab.count }}</span></button>
     </div>
 
-    <DataCard v-if="activeDataTab === 'timeline'" :title="t('monitoring.cards.timeline')">
-      <div class="section-title"><span>{{ data?.granularity || 'auto' }} · {{
-          formatDateTime(data?.generated_at_ms)
-        }}</span></div>
-      <div class="timeline-bars" v-if="timelineRows.length">
-        <div v-for="point in timelineRows" :key="point.label + point.bucket_ms" class="timeline-row">
-          <span class="timeline-label">{{ point.label }}</span>
-          <div class="timeline-track"><i :style="{width: barWidth(point.calls || point.requests || 0)}"></i></div>
-          <span class="timeline-value">{{ fmtInt(point.calls || point.requests || 0) }}</span>
-          <span class="timeline-sub">{{ fmtInt(point.tokens || point.total_tokens || 0) }} tok</span>
-        </div>
-      </div>
-      <div v-else class="empty">{{ t('monitoring.empty.timeline') }}</div>
-    </DataCard>
-
     <DataCard v-if="activeDataTab === 'events'" :title="t('monitoring.cards.events')">
       <div class="table-wrap monitor-table event-stream-table">
         <table>
@@ -307,7 +292,6 @@ const dataTabs = computed(() => [
   {key: 'events', label: t('monitoring.tabs.events'), count: eventRows.value.length},
   {key: 'accounts', label: t('monitoring.tabs.accounts'), count: accountApiKeyRows.value.length},
   {key: 'models', label: t('monitoring.tabs.models'), count: modelRows.value.length},
-  {key: 'timeline', label: t('monitoring.tabs.timeline'), count: timelineRows.value.length},
 ]);
 
 const summary = computed(() => data.value?.summary || {});
@@ -344,8 +328,6 @@ const failedGroupCount = computed(() => {
 const accountCount = computed(() => accountRows.value.length);
 const eventTableRows = computed(() => eventRows.value.map(row => buildEventTableRow(row, eventGroupMap.value)));
 const pagedEvents = computed(() => pageRows(eventTableRows.value, eventPage.value, eventPageSize.value));
-const timelineRows = computed(() => [...(data.value?.timeline || [])].sort((a, b) => Number(b.bucket_ms || 0) - Number(a.bucket_ms || 0)));
-const maxTimelineCalls = computed(() => Math.max(1, ...timelineRows.value.map(p => Number(p.calls || p.requests || 0))));
 const modelRows = computed(() => data.value?.model_stats || data.value?.model_share || []);
 const channelRows = computed(() => data.value?.channel_share || []);
 const accountRows = computed(() => data.value?.account_stats || []);
@@ -447,7 +429,6 @@ function buildAnalyticsRequest() {
     include: {
       summary: true,
       summary_comparison: true,
-      timeline: true,
       hourly_distribution: true,
       model_share: true,
       channel_share: true,
@@ -819,10 +800,6 @@ function getServiceTierMultiplier(model, tier) {
     return 2;
   }
   return 1;
-}
-
-function barWidth(value) {
-  return `${Math.max(2, Math.round((Number(value || 0) / maxTimelineCalls.value) * 100))}%`;
 }
 
 function pretty(v) {
