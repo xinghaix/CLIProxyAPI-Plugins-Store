@@ -238,6 +238,7 @@
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
+import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
 
 const props = defineProps({
   ready: { type: Boolean, default: false },
@@ -320,7 +321,7 @@ const summaryCards = computed(() => {
     {label:'总 Tokens', value: fmtCompact(s.total_tokens), sub:`推理 ${fmtCompact(reasoningTokens)}`},
     {label:'输入 Tokens', value: fmtCompact(s.input_tokens), sub:`占比 ${fmtPct(totalTokens > 0 ? Number(s.input_tokens ?? 0) / totalTokens : 0)}`},
     {label:'输出 Tokens', value: fmtCompact(s.output_tokens), sub:`占比 ${fmtPct(totalTokens > 0 ? Number(s.output_tokens ?? 0) / totalTokens : 0)}`},
-    {label:'缓存 Tokens', value: fmtCompact(cacheTokens), sub:`命中率 ${fmtPct(cacheHitRate)}`},
+    {label:'缓存 Tokens', value: fmtCompact(cacheTokens), sub:`命中率 ${fmtCacheHitRate(cacheHitRate)}`},
   ];
 });
 
@@ -640,14 +641,8 @@ function heatmapCellTitle(wi, hi, cell){
 }
 function weekdayLabel(idx){ return ['周日','周一','周二','周三','周四','周五','周六'][idx] || ''; }
 
-function computeCacheHitRate(s){
-  const inputTokens = Number(s?.input_tokens ?? 0);
-  const cacheReadTokens = Number(s?.cache_read_tokens ?? 0);
-  const cacheCreationTokens = Number(s?.cache_creation_tokens ?? 0);
-  const cachedTokens = Number(s?.cached_tokens ?? 0);
-  const totalInput = Math.max(inputTokens, cachedTokens) + cacheReadTokens + cacheCreationTokens;
-  const hitTokens = cachedTokens + cacheReadTokens;
-  return totalInput > 0 ? hitTokens / totalInput : 0;
+function fmtCacheHitRate(value){
+  return formatCacheHitRate(value, fmtPct);
 }
 function defaultFilters(){ return {timeRange:'24h', granularity:'auto', model:'all', apiKeyHash:'all', provider:'all', authFile:'all', status:'all', searchQuery:'', minLatencyMs:'all', cacheStatus:'all'}; }
 function unique(values){ return Array.from(new Set(values.map(v => String(v || '').trim()).filter(Boolean))).sort(); }

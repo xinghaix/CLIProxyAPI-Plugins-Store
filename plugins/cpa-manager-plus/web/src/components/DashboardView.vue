@@ -325,6 +325,7 @@ import { computed, defineComponent, h, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
+import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
 import { localeRef } from '../localeBridge.js';
 import {
   EMPTY_VALUE,
@@ -490,7 +491,7 @@ const analyticsKpi = computed(() => {
     {
       label: t('dashboard.analyticsKpi.cacheTokens'),
       value: fmtCompact(cacheTokens),
-      sub: t('monitoring.kpi.hitRateSub', { value: fmtPct(computeCacheHitRate(s)) }),
+      sub: t('monitoring.kpi.hitRateSub', { value: fmtCacheHitRate(computeCacheHitRate(s)) }),
     },
   ];
 });
@@ -934,14 +935,8 @@ function weekdayLabel(idx) {
   return formatWeekdayIndex(idx, localeRef.value);
 }
 
-function computeCacheHitRate(s) {
-  const inputTokens = Number(s?.input_tokens ?? 0);
-  const cacheReadTokens = Number(s?.cache_read_tokens ?? 0);
-  const cacheCreationTokens = Number(s?.cache_creation_tokens ?? 0);
-  const cachedTokens = Number(s?.cached_tokens ?? 0);
-  const totalInput = Math.max(inputTokens, cachedTokens) + cacheReadTokens + cacheCreationTokens;
-  const hitTokens = cachedTokens + cacheReadTokens;
-  return totalInput > 0 ? hitTokens / totalInput : 0;
+function fmtCacheHitRate(value) {
+  return formatCacheHitRate(value, fmtPct);
 }
 
 function defaultFilters() {

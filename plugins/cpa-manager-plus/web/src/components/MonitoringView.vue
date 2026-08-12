@@ -144,11 +144,11 @@
               <div>{{ formatDate(row.timestampMs) }}</div>
               <div>{{ formatTime(row.timestampMs) }}</div>
             </td>
-            <td>
+            <td class="usage-cell">
               <strong>{{ fmtCompact(row.totalTokens) }}</strong>
-              <div class="muted small-text usage-breakdown">{{ row.usageText }}</div>
+              <span class="muted small-text usage-breakdown">{{ row.usageText }}</span>
             </td>
-            <td><strong>{{ fmtPct(row.cacheHitRate) }}</strong></td>
+            <td><strong>{{ fmtCacheHitRate(row.cacheHitRate) }}</strong></td>
             <td><strong>{{ fmtMoney(row.cost) }}</strong></td>
           </tr>
           </tbody>
@@ -259,6 +259,7 @@ import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import { eventApiKeyDisplay, isSensitiveSource, maskSecretSummary, shortHash } from '../utils/apiKeyDisplay.js';
 import { EMPTY_VALUE, formatDate, formatDateTime, formatInt, formatTime } from '../utils/localeFormat.js';
+import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
 
 const props = defineProps({
   ready: {type: Boolean, default: false},
@@ -314,7 +315,7 @@ const summaryCards = computed(() => {
     {label: t('monitoring.kpi.totalTokens'), value: fmtCompact(s.total_tokens), sub: t('monitoring.kpi.reasoningSub', {value: fmtCompact(s.reasoning_tokens)})},
     {label: t('monitoring.kpi.inputTokens'), value: fmtCompact(s.input_tokens), sub: t('monitoring.kpi.shareSub', {value: tokenMix(Number(s.input_tokens ?? 0))})},
     {label: t('monitoring.kpi.outputTokens'), value: fmtCompact(s.output_tokens), sub: t('monitoring.kpi.shareSub', {value: tokenMix(Number(s.output_tokens ?? 0))})},
-    {label: t('monitoring.kpi.cacheTokens'), value: fmtCompact(totalCacheTokens), sub: t('monitoring.kpi.hitRateSub', {value: fmtPct(cacheHitRate)})},
+    {label: t('monitoring.kpi.cacheTokens'), value: fmtCompact(totalCacheTokens), sub: t('monitoring.kpi.hitRateSub', {value: fmtCacheHitRate(cacheHitRate)})},
   ];
 });
 const eventGroupMap = computed(() => buildEventGroupMap(eventRows.value));
@@ -739,15 +740,8 @@ function buildUsageText(row) {
   return parts.join(' · ');
 }
 
-function computeCacheHitRate(row) {
-  const explicit = Number(row?.cache_hit_rate);
-  if (Number.isFinite(explicit)) return Math.min(Math.max(explicit, 0), 1);
-  const inputTokens = Math.max(Number(row?.input_tokens || 0), 0);
-  const cachedTokens = Math.max(Number(row?.cached_tokens || 0), 0);
-  const cacheReadTokens = Math.max(Number(row?.cache_read_tokens || 0), 0);
-  const cacheCreationTokens = Math.max(Number(row?.cache_creation_tokens || 0), 0);
-  const denominator = Math.max(inputTokens, cachedTokens) + cacheReadTokens + cacheCreationTokens;
-  return denominator > 0 ? Math.min((cachedTokens + cacheReadTokens) / denominator, 1) : 0;
+function fmtCacheHitRate(value) {
+  return formatCacheHitRate(value, fmtPct, EMPTY_VALUE);
 }
 
 const TOKENS_PER_PRICE_UNIT = 1000000;
