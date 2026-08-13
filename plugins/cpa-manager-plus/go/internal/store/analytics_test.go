@@ -1,6 +1,10 @@
 package store
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+	"time"
+)
 
 func TestAggregateAccountAPIKeyStatsBySource(t *testing.T) {
 	rows := []eventRow{
@@ -95,6 +99,35 @@ func TestCacheHitRateIsExposedForEventsAndAggregates(t *testing.T) {
 	events := result["events"].(map[string]any)["items"].([]map[string]any)
 	if len(events) != 2 || events[0]["cache_hit_rate"] != 0.4 || events[1]["cache_hit_rate"] != 0.2 {
 		t.Fatalf("event cache hit rate = %#v", events)
+	}
+}
+
+func TestAggregateHeatmapBucketsByUTCWeekdayAndHour(t *testing.T) {
+	sundayAfternoon := time.Date(2024, 1, 7, 15, 10, 0, 0, time.UTC).UnixMilli()
+	mondayMorning := time.Date(2024, 1, 8, 9, 5, 0, 0, time.UTC).UnixMilli()
+	result := aggregate([]eventRow{
+		{ID: 1, TimestampMS: sundayAfternoon, Model: "a", TotalTokens: 10, Failed: 1},
+		{ID: 2, TimestampMS: sundayAfternoon + 1000, Model: "a", TotalTokens: 20},
+		{ID: 3, TimestampMS: mondayMorning, Model: "b", TotalTokens: 5},
+	}, nil, AnalyticsRequest{Limit: 100, Granularity: "hour"})
+	points := result["heatmap"].([]map[string]any)
+	if len(points) != 2 {
+		t.Fatalf("heatmap points = %d, want 2: %#v", len(points), points)
+	}
+	byKey := map[string]map[string]any{}
+	for _, point := range points {
+		byKey[fmt.Sprintf("%v-%v", point["weekday"], point["hour"])] = point
+	}
+	sunday := byKey["0-15"]
+	if sunday == nil || sunday["calls"] != int64(2) {
+		t.Fatalf("sunday afternoon = %#v", sunday)
+	}
+	if sunday["failure_rate"].(float64) < 0.49 || sunday["failure_rate"].(float64) > 0.51 {
+		t.Fatalf("sunday failure rate = %#v", sunday["failure_rate"])
+	}
+	monday := byKey["1-9"]
+	if monday == nil || monday["calls"] != int64(1) {
+		t.Fatalf("monday morning = %#v", monday)
 	}
 }
 

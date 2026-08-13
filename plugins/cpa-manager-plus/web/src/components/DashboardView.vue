@@ -432,7 +432,12 @@ const trendMetrics = computed(() => [
 ]);
 
 const aSummary = computed(() => analyticsData.value?.summary || {});
-const timelineRows = computed(() => [...(analyticsData.value?.timeline || [])].sort((a, b) => Number(b.bucket_ms || 0) - Number(a.bucket_ms || 0)));
+const timelineRows = computed(() => [...(analyticsData.value?.timeline || [])]
+  .map((point) => ({
+    ...point,
+    label: point.label || (point.bucket_ms ? formatBucketDateTime(point.bucket_ms, localeRef.value) : EMPTY_VALUE),
+  }))
+  .sort((a, b) => Number(b.bucket_ms || 0) - Number(a.bucket_ms || 0)));
 const modelRows = computed(() => analyticsData.value?.model_stats || analyticsData.value?.model_share || []);
 const apiKeyRows = computed(() => analyticsData.value?.api_key_stats || []);
 const credentialRows = computed(() => analyticsData.value?.credential_stats || []);
@@ -922,13 +927,13 @@ function heatmapMaxValue() {
 }
 
 function heatmapCellStyle(cell) {
-  if (!cell) return { background: 'transparent' };
+  if (!cell) return {};
   const v = heatmapCellValue(cell);
   const max = heatmapMaxValue();
   let ratio = v / max;
   if (heatmapScaleMode.value === 'byWeekday' || heatmapScaleMode.value === 'byHour') ratio = Math.min(ratio, 1);
-  const alpha = Math.max(0.08, ratio);
-  return { background: `color-mix(in srgb, var(--cpa-primary) ${Math.round(alpha * 100)}%, transparent)` };
+  const mix = Math.round(14 + Math.max(0, Math.min(1, ratio)) * 72);
+  return { background: `color-mix(in srgb, var(--cpa-ink) ${mix}%, transparent)` };
 }
 
 function heatmapCellTitle(wi, hi, cell) {

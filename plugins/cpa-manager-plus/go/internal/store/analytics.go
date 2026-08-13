@@ -308,6 +308,7 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 	byKey := map[string]*stats{}
 	byAccountAPIKey := map[string]*accountAPIKeyStats{}
 	byBucket := map[string]*stats{}
+	byHeat := map[string]*stats{}
 	providers := map[string]bool{}
 	models := map[string]bool{}
 	accounts := map[string]bool{}
@@ -328,6 +329,8 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 		addAccountAPIKeyStats(byAccountAPIKey, sourceSnapshot(row), row, price)
 		bucket := row.TimestampMS / bucketSize * bucketSize
 		addStats(byBucket, fmt.Sprint(bucket), row, price)
+		heatAt := time.UnixMilli(row.TimestampMS).UTC()
+		addStats(byHeat, fmt.Sprintf("%d-%02d", int(heatAt.Weekday()), heatAt.Hour()), row, price)
 		providers[row.Provider] = true
 		models[row.Model] = true
 		accounts[account] = true
@@ -336,7 +339,7 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 			events = append(events, eventJSON(row, price))
 		}
 	}
-	return map[string]any{"summary": total.json(), "timeline": statsRows(byBucket, "bucket_ms"), "model_stats": statsRows(byModel, "model"), "model_share": statsRows(byModel, "model"), "account_stats": statsRows(byAccount, "account_snapshot"), "credential_stats": statsRows(byAccount, "auth_file"), "api_key_stats": statsRows(byKey, "api_key_hash"), "account_api_key_stats": accountAPIKeyStatsRows(byAccountAPIKey), "events": map[string]any{"items": events}, "filter_options": map[string]any{"providers": keysOf(providers), "model_stats": namedKeys(models, "model"), "auth_files": keysOf(accounts)}, "granularity": request.Granularity, "generated_at_ms": time.Now().UnixMilli(), "heatmap": []any{}, "anomaly_points": []any{}, "recent_failures": failureRows(rows, prices)}
+	return map[string]any{"summary": total.json(), "timeline": statsRows(byBucket, "bucket_ms"), "model_stats": statsRows(byModel, "model"), "model_share": statsRows(byModel, "model"), "account_stats": statsRows(byAccount, "account_snapshot"), "credential_stats": statsRows(byAccount, "auth_file"), "api_key_stats": statsRows(byKey, "api_key_hash"), "account_api_key_stats": accountAPIKeyStatsRows(byAccountAPIKey), "events": map[string]any{"items": events}, "filter_options": map[string]any{"providers": keysOf(providers), "model_stats": namedKeys(models, "model"), "auth_files": keysOf(accounts)}, "granularity": request.Granularity, "generated_at_ms": time.Now().UnixMilli(), "heatmap": heatmapRows(byHeat), "anomaly_points": []any{}, "recent_failures": failureRows(rows, prices)}
 }
 func addStats(group map[string]*stats, key string, row eventRow, price Price) {
 	if key == "" {
@@ -381,6 +384,35 @@ func accountAPIKeyStatsRows(group map[string]*accountAPIKeyStats) []map[string]a
 			return leftSource < rightSource
 		}
 		return out[i]["calls"].(int64) > out[j]["calls"].(int64)
+	})
+	return out
+}
+
+func heatmapRows(group map[string]*stats) []map[string]any {
+	out := make([]map[string]any, 0, len(group))
+	for key, value := range group {
+		var weekday, hour int
+		if _, err := fmt.Sscanf(key, "%d-%d", &weekday, &hour); err != nil {
+			continue
+		}
+		row := value.json()
+		row["weekday"] = weekday
+		row["hour"] = hour
+		row["success"] = value.Success
+		row["failure"] = value.Failure
+		if value.Calls > 0 {
+			row["failure_rate"] = float64(value.Failure) / float64(value.Calls)
+		} else {
+			row["failure_rate"] = 0.0
+		}
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		leftDay, rightDay := out[i]["weekday"].(int), out[j]["weekday"].(int)
+		if leftDay != rightDay {
+			return leftDay < rightDay
+		}
+		return out[i]["hour"].(int) < out[j]["hour"].(int)
 	})
 	return out
 }

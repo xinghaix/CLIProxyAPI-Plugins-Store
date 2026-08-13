@@ -414,6 +414,22 @@ function handleOpenTab(event) {
   }, 0);
 }
 
+function passVerticalWheelToPage(event) {
+  if (event.ctrlKey || event.defaultPrevented) return;
+  const scroller = event.target?.closest?.('.table-wrap, .heatmap-grid-wrap, .run-history-list, .log-list, .history-list, .failure-list');
+  if (!scroller) return;
+  const dy = event.deltaY;
+  const dx = event.deltaX;
+  if (Math.abs(dy) <= Math.abs(dx)) return;
+  const canScrollY = scroller.scrollHeight - scroller.clientHeight > 1;
+  const atTop = scroller.scrollTop <= 0;
+  const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+  if (canScrollY && ((dy < 0 && !atTop) || (dy > 0 && !atBottom))) return;
+  const page = document.scrollingElement || document.documentElement;
+  page.scrollTop += dy;
+  event.preventDefault();
+}
+
 watch(localeRef, () => {
   if (health.response) {
     health.text = health.response.ok
@@ -429,10 +445,12 @@ onMounted(() => {
   refreshActive();
   window.addEventListener('cpa-manager-plus:open-monitoring', handleOpenMonitoring);
   window.addEventListener('cpa-manager-plus:open-tab', handleOpenTab);
+  document.addEventListener('wheel', passVerticalWheelToPage, {passive: false, capture: true});
 });
 onBeforeUnmount(() => {
   window.removeEventListener('cpa-manager-plus:open-monitoring', handleOpenMonitoring);
   window.removeEventListener('cpa-manager-plus:open-tab', handleOpenTab);
+  document.removeEventListener('wheel', passVerticalWheelToPage, {capture: true});
   destroyLocaleBridge();
 });
 </script>
