@@ -81,24 +81,19 @@
         <table>
           <thead>
           <tr>
-            <th>{{ t('monitoring.eventColumns.sourceApiKey') }}</th>
-            <th>{{ t('monitoring.eventColumns.model') }}</th>
-            <th>{{ t('monitoring.eventColumns.intensity') }}</th>
-            <th>{{ t('monitoring.eventColumns.recentStatus') }}</th>
-            <th>{{ t('monitoring.eventColumns.requestStatus') }}</th>
-            <th>{{ t('monitoring.eventColumns.successRate') }}</th>
-            <th>{{ t('monitoring.eventColumns.totalCalls') }}</th>
-            <th>{{ t('monitoring.eventColumns.tps') }}</th>
-            <th>{{ t('monitoring.eventColumns.ttftLatency') }}</th>
-            <th>{{ t('monitoring.eventColumns.time') }}</th>
-            <th>{{ t('monitoring.eventColumns.usage') }}</th>
-            <th>{{ t('monitoring.eventColumns.cacheHitRate') }}</th>
-            <th>{{ t('monitoring.eventColumns.cost') }}</th>
+            <th :title="t('monitoring.eventHints.sourceHeader')">{{ t('monitoring.eventColumns.sourceApiKey') }}</th>
+            <th :title="t('monitoring.eventHints.modelHeader')">{{ t('monitoring.eventColumns.model') }}</th>
+            <th :title="t('monitoring.eventHints.statusHeader')">{{ t('monitoring.eventColumns.requestStatus') }}</th>
+            <th :title="t('monitoring.eventHints.healthHeader')">{{ t('monitoring.eventColumns.health') }}</th>
+            <th :title="t('monitoring.eventHints.speedHeader')">{{ t('monitoring.eventColumns.speed') }}</th>
+            <th :title="t('monitoring.eventHints.timeHeader')">{{ t('monitoring.eventColumns.time') }}</th>
+            <th :title="t('monitoring.eventHints.usageHeader')">{{ t('monitoring.eventColumns.usage') }}</th>
+            <th :title="t('monitoring.eventHints.costHeader')">{{ t('monitoring.eventColumns.cost') }}</th>
           </tr>
           </thead>
           <tbody>
           <tr v-for="row in pagedEvents" :key="row.id" @click="selectedEvent = row.raw" class="clickable">
-            <td>
+            <td :title="t('monitoring.eventHints.sourceHeader')">
               <strong v-if="row.sourceIsApiKey" class="sensitive-value">
                 {{ eventApiKeyDisplay(row.sourceName, isEventKeyExpanded(row, 'source')) }}
                 <button
@@ -112,47 +107,46 @@
               <strong v-else>{{ row.sourceName }}</strong>
               <div class="muted small-text">{{ t('monitoring.labels.provider', { value: row.provider }) }}</div>
             </td>
-            <td>
+            <td :title="row.hints.model">
               <strong>{{ row.model }}</strong>
-              <div v-if="row.resolvedModel && row.resolvedModel !== row.model" class="muted small-text">
-                {{ row.resolvedModel }}
-              </div>
+              <div class="muted small-text">{{ row.modelMeta }}</div>
             </td>
-            <td>
-              <strong :class="{'blue-text': row.intensity !== '-'}">{{ row.intensity }}</strong>
-              <div class="muted small-text">{{ t('monitoring.labels.level', { value: row.tier }) }}</div>
-            </td>
-            <td>
-              <div class="recent-status" aria-hidden="true">
-                <span v-for="(success, idx) in row.recentPattern" :key="idx"
-                      :class="['pattern-bar', success ? 'good' : 'bad']"></span>
-              </div>
-            </td>
-            <td>
+            <td :title="row.hints.status">
                 <span v-if="row.failed" class="status-badge bad failure-trigger" tabindex="0"
                       @click.stop="toggleFailureTooltip($event, row)" @mouseenter="showFailureTooltip($event, row)"
                       @mouseleave="hideFailureTooltip">
                   <i></i>{{ t('monitoring.labels.failed') }}
                 </span>
               <span v-else class="status-badge good"><i></i>{{ t('monitoring.labels.success') }}</span>
+              <div class="muted small-text status-meta">
+                <span>{{ row.protocolLabel }}</span>
+                <span>{{ t('monitoring.eventMeta.recent') }}</span>
+                <div class="recent-status" :aria-label="row.hints.status">
+                  <span v-for="(success, idx) in row.recentPattern" :key="idx"
+                        :class="['pattern-bar', success ? 'good' : 'bad']"></span>
+                </div>
+              </div>
             </td>
-            <td><strong :class="successRateClass(row.successRate)">{{ fmtPct(row.successRate) }}</strong></td>
-            <td>{{ fmtInt(row.totalCalls) }}</td>
-            <td>{{ fmtTps(row.tps) }}</td>
-            <td>
-              <div :class="latencyClass(row.ttftMs)">{{ fmtSeconds(row.ttftMs) }}</div>
-              <div :class="latencyClass(row.latencyMs)">{{ fmtSeconds(row.latencyMs) }}</div>
+            <td :title="row.hints.health">
+              <strong :class="successRateClass(row.successRate)">{{ fmtPct(row.successRate) }}</strong>
+              <div class="muted small-text">{{ row.callsSub }}</div>
             </td>
-            <td>
+            <td :title="row.hints.speed">
+              <div :class="latencyClass(row.ttftMs)">{{ fmtSeconds(row.ttftMs) }} / {{ fmtSeconds(row.latencyMs) }}</div>
+              <div class="muted small-text">{{ row.tpsSub }}</div>
+            </td>
+            <td :title="t('monitoring.eventHints.timeHeader')">
               <div>{{ formatDate(row.timestampMs) }}</div>
               <div>{{ formatTime(row.timestampMs) }}</div>
             </td>
-            <td class="usage-cell">
+            <td class="usage-cell" :title="row.hints.usage">
               <strong>{{ fmtCompact(row.totalTokens) }}</strong>
-              <span class="muted small-text usage-breakdown">{{ row.usageText }}</span>
+              <div class="muted small-text usage-breakdown">{{ row.usageText }}</div>
             </td>
-            <td><strong>{{ fmtCacheHitRate(row.cacheHitRate) }}</strong></td>
-            <td><strong>{{ fmtMoney(row.cost) }}</strong></td>
+            <td :title="row.hints.cost">
+              <strong>{{ fmtMoney(row.cost) }}</strong>
+              <div class="muted small-text">{{ row.cacheSub }}</div>
+            </td>
           </tr>
           </tbody>
         </table>
@@ -227,7 +221,14 @@
     </div>
 
     <DataCard v-if="activeDataTab === 'models'">
-      <SimpleTable :rows="modelRows" :columns="modelColumns" @select="setModelFilter"/>
+      <SimpleTable
+        :rows="modelRows"
+        :columns="modelColumns"
+        selectable
+        :selected-id="selectedModelId"
+        @select="selectModel"
+        @filter="applyModelFilter"
+      />
     </DataCard>
 
     <div v-if="selectedEvent" class="modal-backdrop" @click.self="selectedEvent = null">
@@ -263,6 +264,10 @@ import MetricGrid from './MetricGrid.vue';
 import { eventApiKeyDisplay, isSensitiveSource, maskSecretSummary, shortHash } from '../utils/apiKeyDisplay.js';
 import { EMPTY_VALUE, formatDate, formatDateTime, formatInt, formatTime } from '../utils/localeFormat.js';
 import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
+import { requestProtocolLabel } from '../utils/requestProtocol.js';
+import { buildUsageIOC } from '../utils/usageBreakdown.js';
+import { canApplySelectedFilter, rowIdentity } from '../utils/rowFilter.js';
+import { buildEventHints, buildModelMeta, formatCacheSub, formatCallsSub, formatTpsSub } from '../utils/eventStreamDisplay.js';
 
 const props = defineProps({
   ready: {type: Boolean, default: false},
@@ -285,6 +290,7 @@ const selectedEvent = ref(null);
 const eventPage = ref(1);
 const eventPageSize = ref(50);
 const selectedAccountId = ref('');
+const selectedModelId = ref('');
 const expandedEventKeys = ref(new Set());
 const expandedAccountSources = ref(new Set());
 const filters = ref(defaultFilters());
@@ -358,8 +364,9 @@ const modelColumns = computed(() => [
   ['success_calls', t('monitoring.modelColumns.success')],
   ['failure_calls', t('monitoring.modelColumns.failure')],
   ['success_rate', t('monitoring.modelColumns.successRate'), 'pct'],
-  ['total_tokens', t('monitoring.modelColumns.token'), 'int'],
+  ['total_tokens', t('monitoring.modelColumns.token'), 'usage'],
   ['cost', t('monitoring.modelColumns.cost'), 'money'],
+  ['actions', t('monitoring.accountColumns.actions'), 'filter'],
 ]);
 
 const eventDetailCards = computed(() => selectedEvent.value ? [
@@ -368,7 +375,7 @@ const eventDetailCards = computed(() => selectedEvent.value ? [
   {label: t('monitoring.labels.latency'), value: fmtMs(selectedEvent.value.latency_ms)},
   {label: t('monitoring.labels.cost'), value: fmtMoney(calculateEventCost(selectedEvent.value, modelPrices.value))},
 ] : []);
-const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'resolved_model', 'endpoint', 'method', 'path', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'cache_input_mode', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
+const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'resolved_model', 'endpoint', 'method', 'path', 'protocol', 'executor_type', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'cache_input_mode', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
 const eventHeaderDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['header_quota_recover_at_ms', 'header_quota_used_percent', 'header_quota_plan_type', 'header_error_kind', 'header_error_code', 'header_trace_id'])) : {});
 
 watch([timeRange, searchQuery, filters], () => {
@@ -541,6 +548,15 @@ function setApiKeyFilter(row) {
   refresh(true);
 }
 
+function selectModel(row) {
+  selectedModelId.value = rowIdentity(row);
+}
+
+function applyModelFilter(row) {
+  if (!canApplySelectedFilter(selectedModelId.value, row)) return;
+  setModelFilter(row);
+}
+
 function setModelFilter(row) {
   filters.value.model = row.model || 'all';
   refresh(true);
@@ -628,7 +644,7 @@ function decodeDetailObject(obj) {
 }
 
 function exportEventsCsv() {
-  const cols = ['timestamp_ms', 'failed', 'model', 'auth_index', 'account_snapshot', 'api_key_hash', 'method', 'path', 'total_tokens', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'latency_ms', 'fail_status_code', 'fail_summary', 'header_trace_id'];
+  const cols = ['timestamp_ms', 'failed', 'protocol', 'executor_type', 'model', 'auth_index', 'account_snapshot', 'api_key_hash', 'method', 'path', 'total_tokens', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'latency_ms', 'fail_status_code', 'fail_summary', 'header_trace_id'];
   const csv = [cols.join(','), ...eventRows.value.map(row => cols.map(c => csvCell(row[c])).join(','))].join('\n');
   const blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
@@ -692,7 +708,7 @@ function buildEventTableRow(row, groupMap) {
   const latencyMs = numberOrNull(row.latency_ms);
   const outputTokens = Number(row.output_tokens || 0);
   const sourceName = String(row.source || '').trim() || EMPTY_VALUE;
-  return {
+  const built = {
     id: eventId,
     raw: row,
     sourceName,
@@ -705,6 +721,7 @@ function buildEventTableRow(row, groupMap) {
     tier: row.service_tier || (row.reasoning_effort && row.reasoning_effort !== '-' ? 'priority' : 'default'),
     recentPattern: (sliding?.recentPattern || []).slice(-5),
     failed: Boolean(row.failed),
+    protocolLabel: requestProtocolLabel(row, t),
     successRate: sliding?.successRate ?? (row.failed ? 0 : 1),
     totalCalls: sliding?.requestCount ?? 1,
     tps: latencyMs && latencyMs > 0 ? outputTokens / (latencyMs / 1000) : null,
@@ -718,6 +735,22 @@ function buildEventTableRow(row, groupMap) {
     failStatusCode: numberOrNull(row.fail_status_code),
     failSummary: row.fail_summary || '',
   };
+  built.modelMeta = buildModelMeta(built, t);
+  built.callsSub = formatCallsSub(fmtInt(built.totalCalls), t);
+  built.tpsSub = formatTpsSub(fmtTps(built.tps), t);
+  built.cacheSub = formatCacheSub(fmtCacheHitRate(built.cacheHitRate), t);
+  built.hints = buildEventHints({
+    ...built,
+    successRateText: fmtPct(built.successRate),
+    totalCallsText: fmtInt(built.totalCalls),
+    ttftText: fmtSeconds(built.ttftMs),
+    latencyText: fmtSeconds(built.latencyMs),
+    tpsText: fmtTps(built.tps),
+    totalTokensText: fmtCompact(built.totalTokens),
+    costText: fmtMoney(built.cost),
+    cacheText: fmtCacheHitRate(built.cacheHitRate),
+  }, t);
+  return built;
 }
 
 function eventGroupKey(row) {
@@ -733,15 +766,7 @@ function numberOrNull(v) {
 }
 
 function buildUsageText(row) {
-  const total = Number(row.total_tokens || 0);
-  if (total === 0) return '0';
-  const parts = [];
-  parts.push(`I ${fmtCompact(row.input_tokens)}`);
-  parts.push(`O ${fmtCompact(row.output_tokens)}`);
-  if (Number(row.reasoning_tokens || 0) > 0) parts.push(`R ${fmtCompact(row.reasoning_tokens)}`);
-  const cached = Number(row.cached_tokens || row.cache_read_tokens || row.cache_creation_tokens || 0);
-  if (cached > 0) parts.push(`C ${fmtCompact(cached)}`);
-  return parts.join(' · ');
+  return buildUsageIOC(row, fmtCompact);
 }
 
 function fmtCacheHitRate(value) {
@@ -922,20 +947,33 @@ const SimpleTable = defineComponent({
     selectable: {type: Boolean, default: false},
     selectedId: {type: [String, Number], default: ''}
   },
-  emits: ['select'],
+  emits: ['select', 'filter'],
   setup(props, {emit}) {
     const {t: ti18n} = useI18n();
     return () => {
       if (!props.rows.length) return h('div', {class: 'empty'}, ti18n('common.noData'));
       const head = h('thead', h('tr', props.columns.map(col => h('th', col[1]))));
       const body = h('tbody', props.rows.slice(0, 250).map((row, idx) => {
-        const rowId = row.id || row.model || row.api_key_hash || row.account_snapshot || idx;
-        const isSelected = props.selectedId && String(props.selectedId) === String(rowId);
+        const rowId = rowIdentity(row, idx);
+        const isSelected = canApplySelectedFilter(props.selectedId, {id: rowId});
         return h('tr', {
               class: props.selectable ? ['clickable', isSelected ? 'selected-row' : ''].filter(Boolean).join(' ') : 'clickable',
               key: idx,
               onClick: () => emit('select', row)
-            }, props.columns.map(col => h('td', renderCell(row[col[0]], col[2])))
+            }, props.columns.map(col => {
+              if (col[2] === 'filter') {
+                return h('td', h('button', {
+                  type: 'button',
+                  class: 'btn btn-xs',
+                  disabled: !isSelected,
+                  onClick: (event) => {
+                    event.stopPropagation();
+                    if (isSelected) emit('filter', row);
+                  },
+                }, ti18n('monitoring.labels.filter')));
+              }
+              return h('td', renderCell(row[col[0]], col[2], row));
+            }))
         );
       }));
       return h('div', {class: 'table-wrap monitor-table'}, h('table', [head, body]));
@@ -1019,7 +1057,13 @@ const PaginationBar = defineComponent({
   }
 });
 
-function renderCell(v, type) {
+function renderCell(v, type, row) {
+  if (type === 'usage') {
+    return h('div', {class: 'usage-cell'}, [
+      h('strong', fmtCompact(row?.total_tokens)),
+      h('div', {class: 'muted small-text usage-breakdown'}, buildUsageIOC(row, fmtCompact)),
+    ]);
+  }
   if (type === 'pct') return fmtPct(v);
   if (type === 'money') return fmtMoney(v);
   if (type === 'ms') return fmtMs(v);

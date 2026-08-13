@@ -79,6 +79,28 @@ func TestEventJSONIncludesSourceAndAuthType(t *testing.T) {
 	}
 }
 
+func TestEventJSONIncludesRequestProtocol(t *testing.T) {
+	websocket := eventJSON(eventRow{ExecutorType: "CodexWebsocketsExecutor"}, Price{})
+	if websocket["executor_type"] != "CodexWebsocketsExecutor" || websocket["protocol"] != "websocket" {
+		t.Fatalf("websocket event JSON = %#v", websocket)
+	}
+
+	xai := eventJSON(eventRow{ExecutorType: "XAIWebsocketsExecutor"}, Price{})
+	if xai["protocol"] != "websocket" {
+		t.Fatalf("xai websocket protocol = %#v", xai["protocol"])
+	}
+
+	httpRow := eventJSON(eventRow{ExecutorType: "OpenAICompatExecutor"}, Price{})
+	if httpRow["executor_type"] != "OpenAICompatExecutor" || httpRow["protocol"] != "http" {
+		t.Fatalf("http event JSON = %#v", httpRow)
+	}
+
+	empty := eventJSON(eventRow{}, Price{})
+	if empty["executor_type"] != "" || empty["protocol"] != "http" {
+		t.Fatalf("empty protocol = %#v / %#v", empty["executor_type"], empty["protocol"])
+	}
+}
+
 func TestCacheHitRateIsExposedForEventsAndAggregates(t *testing.T) {
 	rows := []eventRow{
 		{ID: 1, TimestampMS: 100, Model: "gpt-test", InputTokens: 1_000, CachedTokens: 400, TotalTokens: 1_000},

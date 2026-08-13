@@ -329,6 +329,7 @@ import { useI18n } from 'vue-i18n';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
+import { buildUsageIOC } from '../utils/usageBreakdown.js';
 import { localeRef } from '../localeBridge.js';
 import {
   EMPTY_VALUE,
@@ -560,7 +561,7 @@ const modelColumns = computed(() => [
   ['success_calls', t('dashboard.columns.success'), 'int'],
   ['failure_calls', t('dashboard.columns.failure'), 'int'],
   ['success_rate', t('dashboard.columns.successRate'), 'pct'],
-  ['total_tokens', t('dashboard.columns.token'), 'int'],
+  ['total_tokens', t('dashboard.columns.token'), 'usage'],
   ['cost', t('dashboard.columns.cost'), 'money'],
 ]);
 const apiKeyColumns = computed(() => [
@@ -1068,7 +1069,7 @@ const SimpleTable = defineComponent({
                   onClick: () => emit('select', row),
                 }
               : { key: idx },
-            props.columns.map(c => h('td', renderCell(row[c[0]], c[2]))),
+            props.columns.map(c => h('td', renderCell(row[c[0]], c[2], row))),
           );
         }),
       );
@@ -1088,7 +1089,13 @@ const DetailGrid = defineComponent({
   },
 });
 
-function renderCell(v, type) {
+function renderCell(v, type, row) {
+  if (type === 'usage') {
+    return h('div', {class: 'usage-cell'}, [
+      h('strong', fmtCompact(row?.total_tokens)),
+      h('div', {class: 'muted small-text usage-breakdown'}, buildUsageIOC(row, fmtCompact)),
+    ]);
+  }
   if (type === 'pct') return fmtPct(v);
   if (type === 'money') return fmtMoney(v);
   if (type === 'ms') return fmtDuration(v);

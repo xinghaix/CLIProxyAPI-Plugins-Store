@@ -450,6 +450,14 @@ func namedKeys(values map[string]bool, key string) []map[string]string {
 	}
 	return out
 }
+func requestProtocol(executorType string) string {
+	name := strings.ToLower(strings.TrimSpace(executorType))
+	if strings.Contains(name, "websocket") {
+		return "websocket"
+	}
+	return "http"
+}
+
 func eventJSON(row eventRow, price Price) map[string]any {
 	hitTokens, inputTokens := cacheHitTotals(row)
 	return map[string]any{
@@ -459,6 +467,8 @@ func eventJSON(row eventRow, price Price) map[string]any {
 		"provider":               row.Provider,
 		"auth_provider_snapshot": row.Provider,
 		"auth_type":              row.AuthType,
+		"executor_type":          row.ExecutorType,
+		"protocol":               requestProtocol(row.ExecutorType),
 		"model":                  row.Model,
 		"api_key_hash":           row.APIKeyHash,
 		"account_snapshot":       accountSnapshot(row),

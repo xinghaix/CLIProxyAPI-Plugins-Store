@@ -239,6 +239,7 @@ import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } 
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
+import { buildUsageIOC } from '../utils/usageBreakdown.js';
 
 const props = defineProps({
   ready: { type: Boolean, default: false },
@@ -364,7 +365,7 @@ const apiKeyRankColumns = [
   ['api_key_hash','API Key','hash'], ['calls','请求','int'], ['success_rate','成功率','pct'], ['total_tokens','Token','int'], ['cost','费用','money'],
 ];
 const modelColumns = [
-  ['model','模型'], ['provider','Provider'], ['calls','请求','int'], ['success_calls','成功','int'], ['failure_calls','失败','int'], ['success_rate','成功率','pct'], ['total_tokens','Token','int'], ['cost','费用','money'],
+  ['model','模型'], ['provider','Provider'], ['calls','请求','int'], ['success_calls','成功','int'], ['failure_calls','失败','int'], ['success_rate','成功率','pct'], ['total_tokens','Token','usage'], ['cost','费用','money'],
 ];
 const apiKeyColumns = [
   ['api_key_hash','API Key','hash'], ['account_snapshot','账号'], ['provider','Provider'], ['calls','请求','int'], ['success_rate','成功率','pct'], ['total_tokens','Token','int'], ['cost','费用','money'], ['last_seen_ms','最后','time'],
@@ -676,7 +677,7 @@ const SimpleTable = defineComponent({
           ? {key:idx, class:['clickable', isSelected ? 'selected-row' : ''].filter(Boolean).join(' '), onClick:()=>emit('select', row)}
           : {key:idx};
         return h('tr', rowProps,
-          props.columns.map(col => h('td', renderCell(row[col[0]], col[2])))
+          props.columns.map(col => h('td', renderCell(row[col[0]], col[2], row)))
         );
       }));
       return h('div', {class:'table-wrap monitor-table'}, h('table', [head, body]));
@@ -691,7 +692,13 @@ const DetailGrid = defineComponent({
     ));
   }
 });
-function renderCell(v, type){
+function renderCell(v, type, row){
+  if(type === 'usage'){
+    return h('div', {class:'usage-cell'}, [
+      h('strong', fmtCompact(row?.total_tokens)),
+      h('div', {class:'muted small-text usage-breakdown'}, buildUsageIOC(row, fmtCompact)),
+    ]);
+  }
   if(type === 'pct') return fmtPct(v);
   if(type === 'money') return fmtMoney(v);
   if(type === 'ms') return fmtDuration(v);
