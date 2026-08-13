@@ -2,7 +2,9 @@
   <main class="page">
     <section class="toolbar">
       <nav class="tabs" aria-label="CPA Manager Plus tabs">
-        <button v-for="tab in tabs" :key="tab.key" :class="['tab', {active: activeTab === tab.key}]"
+        <button v-for="tab in tabs" :key="tab.key"
+                :class="['tab', 'top-tab', {active: activeTab === tab.key}]"
+                :aria-current="activeTab === tab.key ? 'page' : undefined"
                 @click="selectTab(tab.key)">{{ tab.label }}
         </button>
       </nav>

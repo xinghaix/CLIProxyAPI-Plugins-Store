@@ -69,11 +69,14 @@
     <MetricGrid :cards="summaryCards"/>
 
     <div class="monitor-tabs card">
-      <button v-for="tab in dataTabs" :key="tab.key" :class="['tab', {active: activeDataTab === tab.key}]"
-              @click="activeDataTab = tab.key">{{ tab.label }} <span>{{ tab.count }}</span></button>
+      <div class="monitor-tabs-list">
+        <button v-for="tab in dataTabs" :key="tab.key" :class="['tab', {active: activeDataTab === tab.key}]"
+                @click="activeDataTab = tab.key">{{ tab.label }} <span>{{ tab.count }}</span></button>
+      </div>
+      <span v-if="activeMonitorNote" class="monitor-tabs-note">{{ activeMonitorNote }}</span>
     </div>
 
-    <DataCard v-if="activeDataTab === 'events'" :title="t('monitoring.cards.events')">
+    <DataCard v-if="activeDataTab === 'events'">
       <div class="table-wrap monitor-table event-stream-table">
         <table>
           <thead>
@@ -170,7 +173,7 @@
       </Teleport>
     </DataCard>
 
-    <DataCard v-if="activeDataTab === 'accounts'" :title="t('monitoring.cards.accounts')" :subtitle="t('monitoring.cards.accountsSubtitle')">
+    <DataCard v-if="activeDataTab === 'accounts'">
       <div v-if="accountApiKeyRows.length" class="table-wrap monitor-table account-api-key-table">
         <table>
           <thead>
@@ -223,7 +226,7 @@
       </DataCard>
     </div>
 
-    <DataCard v-if="activeDataTab === 'models'" :title="t('monitoring.cards.models')" :subtitle="t('monitoring.cards.modelsSubtitle')">
+    <DataCard v-if="activeDataTab === 'models'">
       <SimpleTable :rows="modelRows" :columns="modelColumns" @select="setModelFilter"/>
     </DataCard>
 
@@ -290,10 +293,11 @@ let failureHideTimer = null;
 let timer = null;
 
 const dataTabs = computed(() => [
-  {key: 'events', label: t('monitoring.tabs.events'), count: eventRows.value.length},
-  {key: 'accounts', label: t('monitoring.tabs.accounts'), count: accountApiKeyRows.value.length},
-  {key: 'models', label: t('monitoring.tabs.models'), count: modelRows.value.length},
+  {key: 'events', label: t('monitoring.tabs.events'), count: eventRows.value.length, note: ''},
+  {key: 'accounts', label: t('monitoring.tabs.accounts'), count: accountApiKeyRows.value.length, note: t('monitoring.cards.accountsSubtitle')},
+  {key: 'models', label: t('monitoring.tabs.models'), count: modelRows.value.length, note: t('monitoring.cards.modelsSubtitle')},
 ]);
+const activeMonitorNote = computed(() => dataTabs.value.find((tab) => tab.key === activeDataTab.value)?.note || '');
 
 const summary = computed(() => data.value?.summary || {});
 const eventRows = computed(() => (data.value?.events?.items || []).map((row, idx) => ({...row, __id: idx})));

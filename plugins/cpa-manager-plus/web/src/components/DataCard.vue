@@ -1,8 +1,8 @@
 <template>
   <div :class="['card', { glass }]">
-    <div class="section-title">
-      <h2>{{ title }}</h2>
-      <span>{{ subtitle }}</span>
+    <div v-if="title || subtitle" class="section-title">
+      <h2 v-if="title">{{ title }}</h2>
+      <span v-if="subtitle">{{ subtitle }}</span>
     </div>
     <slot />
   </div>
@@ -10,7 +10,7 @@
 
 <script setup>
 defineProps({
-  title: { type: String, required: true },
+  title: { type: String, default: '' },
   subtitle: { type: String, default: '' },
   glass: { type: Boolean, default: false },
 });

@@ -168,7 +168,10 @@
 
     <!-- Analytics tabs -->
     <div class="monitor-tabs card">
-      <button v-for="tab in analyticsTabs" :key="tab.key" :class="['tab', {active: analyticsTab === tab.key}]" @click="analyticsTab = tab.key">{{ tab.label }}</button>
+      <div class="monitor-tabs-list">
+        <button v-for="tab in analyticsTabs" :key="tab.key" :class="['tab', {active: analyticsTab === tab.key}]" @click="analyticsTab = tab.key">{{ tab.label }}</button>
+      </div>
+      <span v-if="activeAnalyticsNote" class="monitor-tabs-note">{{ activeAnalyticsNote }}</span>
     </div>
 
     <!-- Overview -->
@@ -202,7 +205,7 @@
 
     <!-- Trends -->
     <div v-if="analyticsTab === 'trends'" class="usage-tab-content">
-      <DataCard :title="t('dashboard.cards.trends')" :subtitle="trendMetricLabel">
+      <DataCard>
         <div class="trend-controls">
           <button v-for="m in trendMetrics" :key="m.key" :class="['tab', {active: trendMetric === m.key}]" @click="trendMetric = m.key">{{ m.label }}</button>
         </div>
@@ -222,7 +225,7 @@
 
     <!-- Models -->
     <div v-if="analyticsTab === 'models'" class="usage-tab-content">
-      <DataCard :title="t('dashboard.cards.models')" :subtitle="t('dashboard.cards.modelsSub')">
+      <DataCard>
         <SimpleTable :rows="modelRows" :columns="modelColumns" selectable :selected-id="selectedModelId" @select="row => selectedModelId = row.id || row.model" />
       </DataCard>
       <DataCard v-if="selectedModel" :title="t('dashboard.cards.modelDetail')" :subtitle="selectedModel.model || EMPTY_VALUE">
@@ -233,7 +236,7 @@
 
     <!-- API Keys -->
     <div v-if="analyticsTab === 'apiKeys'" class="usage-tab-content">
-      <DataCard :title="t('dashboard.cards.apiKeys')" :subtitle="t('dashboard.cards.apiKeysSub')">
+      <DataCard>
         <SimpleTable :rows="apiKeyRows" :columns="apiKeyColumns" selectable :selected-id="selectedApiKeyHash" @select="row => { selectedApiKeyHash = row.api_key_hash || row.id; loadSelectedApiKeyTimeline(); }" />
       </DataCard>
       <DataCard v-if="selectedApiKeyTimeline.length" :title="t('dashboard.cards.apiKeyTrend')" :subtitle="selectedApiKey?.api_key_hash || selectedApiKey?.id || EMPTY_VALUE">
@@ -253,7 +256,7 @@
 
     <!-- Credentials -->
     <div v-if="analyticsTab === 'credentials'" class="usage-tab-content">
-      <DataCard :title="t('dashboard.cards.credentials')" :subtitle="t('dashboard.cards.credentialsSub')">
+      <DataCard>
         <SimpleTable :rows="credentialRows" :columns="credentialColumns" selectable :selected-id="selectedCredentialId" @select="row => selectedCredentialId = row.id || row.auth_file || row.authFile" />
       </DataCard>
       <DataCard v-if="selectedCredentialTimelineRows.length" :title="t('dashboard.cards.credentialTrend')" :subtitle="selectedCredential?.auth_file || selectedCredential?.authFile || selectedCredential?.id || EMPTY_VALUE">
@@ -274,7 +277,7 @@
 
     <!-- Heatmap -->
     <div v-if="analyticsTab === 'heatmap'" class="usage-tab-content">
-      <DataCard :title="t('dashboard.cards.heatmap')" :subtitle="t('dashboard.cards.heatmapSub')">
+      <DataCard>
         <div class="heatmap-controls">
           <select v-model="heatmapMetric" class="control compact">
             <option value="requestCount">{{ t('dashboard.metrics.requestCount') }}</option>
@@ -450,6 +453,15 @@ const granularityLabel = computed(() => {
 });
 
 const trendMetricLabel = computed(() => trendMetrics.value.find(m => m.key === trendMetric.value)?.label || '');
+const activeAnalyticsNote = computed(() => {
+  if (analyticsTab.value === 'overview') return granularityLabel.value;
+  if (analyticsTab.value === 'trends') return trendMetricLabel.value;
+  if (analyticsTab.value === 'models') return t('dashboard.cards.modelsSub');
+  if (analyticsTab.value === 'apiKeys') return t('dashboard.cards.apiKeysSub');
+  if (analyticsTab.value === 'credentials') return t('dashboard.cards.credentialsSub');
+  if (analyticsTab.value === 'heatmap') return t('dashboard.cards.heatmapSub');
+  return '';
+});
 
 const analyticsKpi = computed(() => {
   const s = aSummary.value;

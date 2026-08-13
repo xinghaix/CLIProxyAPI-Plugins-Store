@@ -1230,10 +1230,11 @@ defineExpose({ refresh });
 }
 .price-source-picker {
   margin-top: 14px;
-  padding: 12px;
-  border: 1px solid var(--cpa-border);
-  border-radius: 10px;
-  background: var(--cpa-surface-muted);
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--cpa-border);
+  border-radius: 0;
+  background: transparent;
 }
 .price-source-picker .section-title {
   display: flex;
@@ -1257,10 +1258,11 @@ defineExpose({ refresh });
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 10px;
-  border: 1px solid var(--cpa-border);
-  border-radius: 8px;
-  background: var(--cpa-surface);
+  padding: 9px 0;
+  border: 0;
+  border-bottom: 1px solid var(--cpa-border);
+  border-radius: 0;
+  background: transparent;
   cursor: pointer;
 }
 .price-source-option.selected {
@@ -1293,11 +1295,11 @@ defineExpose({ refresh });
   flex-wrap: wrap;
   gap: 6px;
   align-items: baseline;
-  border-radius: 999px;
-  padding: 6px 10px;
+  border-radius: 0;
+  padding: 0;
   font-size: 12px;
-  border: 1px solid var(--cpa-border);
-  background: var(--cpa-surface-muted);
+  border: 0;
+  background: transparent;
   color: var(--cpa-text-secondary);
 }
 .model-prices-source-pill.ok {
@@ -1323,12 +1325,12 @@ defineExpose({ refresh });
 .source-badge {
   display: inline-flex;
   align-items: center;
-  border-radius: 999px;
-  padding: 2px 8px;
+  border-radius: 0;
+  padding: 0;
   font-size: 11px;
-  font-weight: 700;
-  border: 1px solid var(--cpa-border);
-  background: var(--cpa-surface-muted);
+  font-weight: 500;
+  border: 0;
+  background: transparent;
   color: var(--cpa-text-secondary);
   white-space: nowrap;
 }
@@ -1355,8 +1357,10 @@ defineExpose({ refresh });
 .clickable {
   cursor: pointer;
 }
-.clickable:hover {
-  background: color-mix(in srgb, var(--cpa-primary) 6%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .clickable:hover {
+    background: color-mix(in srgb, var(--cpa-text-primary) 4%, transparent);
+  }
 }
 @media (max-width: 720px) {
   .model-prices-toolbar {
