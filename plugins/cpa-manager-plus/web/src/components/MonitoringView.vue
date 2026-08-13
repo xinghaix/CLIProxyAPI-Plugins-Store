@@ -973,8 +973,7 @@ const SimpleTable = defineComponent({
                 }, ti18n('monitoring.labels.filter')));
               }
               return h('td', renderCell(row[col[0]], col[2], row));
-            }))
-        );
+            }));
       }));
       return h('div', {class: 'table-wrap monitor-table'}, h('table', [head, body]));
     };
