@@ -42,7 +42,11 @@ export function buildEventHints(row, t) {
       total: recent.total,
     }),
     health: t('monitoring.eventHints.health', { rate: row.successRateText, calls: row.totalCallsText }),
-    speed: t('monitoring.eventHints.speed', { ttft: row.ttftText, latency: row.latencyText, tps: row.tpsText }),
+    speed: t('monitoring.eventHints.speed', {
+      ttft: row.ttftText,
+      latency: row.latencyText,
+      tps: row.tps == null ? row.tpsText : `${row.tpsText} tok/s`,
+    }),
     usage: t('monitoring.eventHints.usage', { total: row.totalTokensText, breakdown: row.usageText }),
     cost: t('monitoring.eventHints.cost', { cost: row.costText, cache: row.cacheText }),
   };

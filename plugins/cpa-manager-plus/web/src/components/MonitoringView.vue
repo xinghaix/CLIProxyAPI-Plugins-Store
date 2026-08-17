@@ -85,9 +85,11 @@
             <th :title="t('monitoring.eventHints.modelHeader')">{{ t('monitoring.eventColumns.model') }}</th>
             <th :title="t('monitoring.eventHints.statusHeader')">{{ t('monitoring.eventColumns.requestStatus') }}</th>
             <th :title="t('monitoring.eventHints.healthHeader')">{{ t('monitoring.eventColumns.health') }}</th>
-            <th :title="t('monitoring.eventHints.speedHeader')">{{ t('monitoring.eventColumns.speed') }}</th>
+            <th :title="t('monitoring.eventHints.latencyHeader')">{{ t('monitoring.eventColumns.latency') }}</th>
+            <th :title="t('monitoring.eventHints.tpsHeader')">{{ t('monitoring.eventColumns.tps') }}</th>
             <th :title="t('monitoring.eventHints.timeHeader')">{{ t('monitoring.eventColumns.time') }}</th>
             <th :title="t('monitoring.eventHints.usageHeader')">{{ t('monitoring.eventColumns.usage') }}</th>
+            <th :title="t('monitoring.eventHints.costHeader')">{{ t('monitoring.eventColumns.cache') }}</th>
             <th :title="t('monitoring.eventHints.costHeader')">{{ t('monitoring.eventColumns.cost') }}</th>
           </tr>
           </thead>
@@ -111,29 +113,40 @@
               <strong>{{ row.model }}</strong>
               <div class="muted small-text">{{ row.modelMeta }}</div>
             </td>
-            <td :title="row.hints.status">
+            <td class="event-status-cell" :title="row.hints.status">
+              <div class="event-status-primary">
                 <span v-if="row.failed" class="status-badge bad failure-trigger" tabindex="0"
                       @click.stop="toggleFailureTooltip($event, row)" @mouseenter="showFailureTooltip($event, row)"
                       @mouseleave="hideFailureTooltip">
                   <i></i>{{ t('monitoring.labels.failed') }}
                 </span>
-              <span v-else class="status-badge good"><i></i>{{ t('monitoring.labels.success') }}</span>
-              <div class="muted small-text status-meta">
-                <span>{{ row.protocolLabel }}</span>
+                <span v-else class="status-badge good"><i></i>{{ t('monitoring.labels.success') }}</span>
+                <span class="status-http">{{ row.protocolLabel }}<span v-if="row.httpStatus" class="status-http-code">{{ row.httpStatus }}</span></span>
+              </div>
+              <div class="event-status-recent muted small-text">
                 <span>{{ t('monitoring.eventMeta.recent') }}</span>
                 <div class="recent-status" :aria-label="row.hints.status">
                   <span v-for="(success, idx) in row.recentPattern" :key="idx"
                         :class="['pattern-bar', success ? 'good' : 'bad']"></span>
+                  <span v-if="!row.recentPattern.length">{{ EMPTY_VALUE }}</span>
                 </div>
               </div>
             </td>
-            <td :title="row.hints.health">
+            <td class="event-stack-cell" :title="row.hints.health">
               <strong :class="successRateClass(row.successRate)">{{ fmtPct(row.successRate) }}</strong>
               <div class="muted small-text">{{ row.callsSub }}</div>
             </td>
-            <td :title="row.hints.speed">
-              <div :class="latencyClass(row.ttftMs)">{{ fmtSeconds(row.ttftMs) }} / {{ fmtSeconds(row.latencyMs) }}</div>
-              <div class="muted small-text">{{ row.tpsSub }}</div>
+            <td class="event-stack-cell" :title="row.hints.speed">
+              <div :class="latencyClass(row.ttftMs)">
+                <span class="event-metric-label">{{ t('monitoring.labels.firstToken') }}</span> {{ fmtSeconds(row.ttftMs) }}
+              </div>
+              <div :class="latencyClass(row.latencyMs)">
+                <span class="event-metric-label">{{ t('monitoring.labels.elapsed') }}</span> {{ fmtSeconds(row.latencyMs) }}
+              </div>
+            </td>
+            <td class="event-tps-cell" :title="row.hints.speed">
+              <strong v-if="row.tps != null">{{ fmtTps(row.tps) }}</strong>
+              <span v-else>{{ EMPTY_VALUE }}</span>
             </td>
             <td :title="t('monitoring.eventHints.timeHeader')">
               <div>{{ formatDate(row.timestampMs) }}</div>
@@ -143,10 +156,8 @@
               <strong>{{ fmtCompact(row.totalTokens) }}</strong>
               <div class="muted small-text usage-breakdown">{{ row.usageText }}</div>
             </td>
-            <td :title="row.hints.cost">
-              <strong>{{ fmtMoney(row.cost) }}</strong>
-              <div class="muted small-text">{{ row.cacheSub }}</div>
-            </td>
+            <td :title="row.hints.cost"><strong>{{ fmtCacheHitRate(row.cacheHitRate) }}</strong></td>
+            <td :title="row.hints.cost"><strong>{{ fmtMoney(row.cost) }}</strong></td>
           </tr>
           </tbody>
         </table>
@@ -722,6 +733,7 @@ function buildEventTableRow(row, groupMap) {
     recentPattern: (sliding?.recentPattern || []).slice(-5),
     failed: Boolean(row.failed),
     protocolLabel: requestProtocolLabel(row, t),
+    httpStatus: numberOrNull(row.http_status_code ?? row.status_code ?? row.response_status_code ?? row.fail_status_code),
     successRate: sliding?.successRate ?? (row.failed ? 0 : 1),
     totalCalls: sliding?.requestCount ?? 1,
     tps: latencyMs && latencyMs > 0 ? outputTokens / (latencyMs / 1000) : null,
@@ -897,7 +909,8 @@ function fmtDuration(v) {
 
 function fmtSeconds(v) {
   if (v == null || Number.isNaN(Number(v))) return EMPTY_VALUE;
-  return `${(Number(v) / 1000).toFixed(Number(v) >= 10000 ? 1 : 2)} s`;
+  const seconds = (Number(v) / 1000).toFixed(Number(v) >= 10000 ? 1 : 2);
+  return `${seconds.replace(/\.?0+$/, '')} s`;
 }
 
 function fmtTps(v) {

@@ -680,12 +680,38 @@ pre {
   min-width: 100%;
   table-layout: auto;
 }
+.event-stream-table table { min-width: 1120px; }
 .event-stream-table th, .event-stream-table td {
   border-right: 0;
   white-space: nowrap;
 }
 .event-stream-table th[title] { cursor: help; }
+.event-stream-table th:nth-child(1), .event-stream-table td:nth-child(1) { width: 16%; }
+.event-stream-table th:nth-child(2), .event-stream-table td:nth-child(2) { width: 18%; }
+.event-stream-table th:nth-child(3), .event-stream-table td:nth-child(3) { width: 14%; }
+.event-stream-table th:nth-child(4), .event-stream-table td:nth-child(4) { width: 9%; }
+.event-stream-table th:nth-child(5), .event-stream-table td:nth-child(5) { width: 12%; }
+.event-stream-table th:nth-child(6), .event-stream-table td:nth-child(6) { width: 8%; }
+.event-stream-table th:nth-child(7), .event-stream-table td:nth-child(7) { width: 10%; }
+.event-stream-table th:nth-child(8), .event-stream-table td:nth-child(8) { width: 10%; }
+.event-stream-table th:nth-child(9), .event-stream-table td:nth-child(9) { width: 7%; }
+.event-stream-table th:nth-child(10), .event-stream-table td:nth-child(10) { width: 7%; }
 .status-meta { display: flex; align-items: center; gap: 8px; }
+.event-status-cell { min-width: 150px; }
+.event-status-primary, .event-status-recent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 18px;
+}
+.event-status-recent { gap: 7px; margin-top: 4px; }
+.status-http { color: var(--cpa-text-secondary); font-family: var(--cpa-font-mono); font-size: 11px; }
+.status-http-code { display: inline-block; margin-left: 3px; }
+.event-stack-cell { font-variant-numeric: tabular-nums; }
+.event-stack-cell > div { margin-top: 4px; }
+.event-metric-label { color: var(--cpa-text-secondary); font-size: 11px; }
+.event-tps-cell { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.event-tps-cell .small-text { font-size: 11px; }
 .event-stream-table th:last-child, .event-stream-table td:last-child { border-right: 0; }
 .sensitive-value { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .sensitive-value-block { align-items: flex-start; max-width: 100%; width: 100%; }
