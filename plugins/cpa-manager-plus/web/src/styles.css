@@ -680,7 +680,10 @@ pre {
   min-width: 100%;
   table-layout: auto;
 }
-.event-stream-table table { min-width: 1120px; }
+.event-stream-table table {
+  width: 100%;
+  min-width: 1120px;
+}
 .event-stream-table th, .event-stream-table td {
   border-right: 0;
   white-space: nowrap;
@@ -704,6 +707,7 @@ pre {
   gap: 8px;
   min-height: 18px;
 }
+.event-status-primary .status-badge { flex-direction: row-reverse; }
 .event-status-recent { gap: 7px; margin-top: 4px; }
 .status-http { color: var(--cpa-text-secondary); font-family: var(--cpa-font-mono); font-size: 11px; }
 .status-http-code { display: inline-block; margin-left: 3px; }
