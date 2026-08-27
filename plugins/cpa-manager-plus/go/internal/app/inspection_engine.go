@@ -18,15 +18,16 @@ import (
 )
 
 const (
-	codexUsageURL        = "https://chatgpt.com/backend-api/wham/usage"
-	xaiBillingWeeklyURL  = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
-	xaiBillingMonthlyURL = "https://cli-chat-proxy.grok.com/v1/billing"
-	xaiInferenceURL      = "https://cli-chat-proxy.grok.com/v1/responses"
-	claudeModelsURL      = "https://api.anthropic.com/v1/models"
-	kimiModelsURL        = "https://api.kimi.com/coding/v1/models"
-	antigravityAssistURL = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
-	googleUserInfoURL    = "https://www.googleapis.com/oauth2/v3/userinfo"
-	maxInspectionBody    = 2048
+	codexUsageURL         = "https://chatgpt.com/backend-api/wham/usage"
+	xaiOfficialAPIBaseURL = "https://api.x.ai/v1"
+	xaiBillingWeeklyURL   = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
+	xaiBillingMonthlyURL  = "https://cli-chat-proxy.grok.com/v1/billing"
+	xaiInferenceURL       = "https://cli-chat-proxy.grok.com/v1/responses"
+	claudeModelsURL       = "https://api.anthropic.com/v1/models"
+	kimiModelsURL         = "https://api.kimi.com/coding/v1/models"
+	antigravityAssistURL  = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
+	googleUserInfoURL     = "https://www.googleapis.com/oauth2/v3/userinfo"
+	maxInspectionBody     = 2048
 )
 
 type inspectionAPIResponse struct {
@@ -341,57 +342,158 @@ func applyXAIBilling(result store.InspectionResult, weeklyBody, monthlyBody any)
 	if monthly == nil {
 		monthly = map[string]any{}
 	}
-	rate := mapValue(firstMap(weekly["rateLimit"], weekly["rate_limit"], monthly["rateLimit"], monthly["rate_limit"]))
-	credits := mapValue(firstMap(weekly["credits"], monthly["credits"]))
-	if rate == nil {
-		rate = map[string]any{}
+	weeklyConfig := xaiBillingConfig(weekly)
+	monthlyConfig := xaiBillingConfig(monthly)
+	weeklyPeriod := mapValue(firstMap(weeklyConfig["currentPeriod"], weeklyConfig["current_period"]))
+	weeklyReset := firstString(weeklyPeriod, "end")
+	if weeklyReset == "" {
+		weeklyReset = firstString(weeklyConfig, "periodEnd", "period_end")
 	}
-	if credits == nil {
-		credits = map[string]any{}
-	}
+
 	windows := []map[string]any{}
-	if total := numberFrom(rate, "totalRequests", "total_requests"); total > 0 {
-		remaining := numberFrom(rate, "remainingRequests", "remaining_requests")
-		used := (total - remaining) / total * 100
-		windows = append(windows, map[string]any{
-			"id":          "weekly",
-			"label":       "周限额",
-			"usedPercent": used,
-			"resetAt":     firstString(rate, "windowEnd", "window_end", "resetAt", "reset_at"),
-		})
-		result.UsedPercent = &used
+	percentValues := []float64{}
+	addWindow := func(id, label string, usedPercent *float64, resetAt string, remaining any) {
+		window := map[string]any{"id": id, "label": label}
+		if usedPercent != nil {
+			value := clampInspectionPercent(*usedPercent)
+			window["usedPercent"] = value
+			percentValues = append(percentValues, value)
+		}
+		if strings.TrimSpace(resetAt) != "" {
+			window["resetAt"] = strings.TrimSpace(resetAt)
+		}
+		if remaining != nil {
+			window["remaining"] = remaining
+		}
+		windows = append(windows, window)
 	}
-	if total := numberFrom(rate, "totalGrokBuilds", "total_grok_builds"); total > 0 {
-		remaining := numberFrom(rate, "remainingGrokBuilds", "remaining_grok_builds")
-		used := (total - remaining) / total * 100
-		windows = append(windows, map[string]any{
-			"id":          "grokbuild",
-			"label":       "GrokBuild 使用",
-			"usedPercent": used,
-		})
+
+	weeklyUsed, hasWeeklyUsed := numberFromOK(weeklyConfig, "creditUsagePercent", "credit_usage_percent")
+	if hasWeeklyUsed {
+		addWindow("xai-weekly", "周限额", &weeklyUsed, weeklyReset, nil)
 	}
-	if payg, ok := credits["payAsYouGoEnabled"].(bool); ok {
-		label := "按量付费"
+
+	productScope := weeklyConfig
+	products := arrayValue(firstValue(productScope["productUsage"], productScope["product_usage"]))
+	if len(products) == 0 {
+		productScope = monthlyConfig
+		products = arrayValue(firstValue(productScope["productUsage"], productScope["product_usage"]))
+	}
+	hasGrokBuild := false
+	for index, rawProduct := range products {
+		product := mapValue(rawProduct)
+		if product == nil {
+			continue
+		}
+		name := firstString(product, "product")
+		if name == "" {
+			name = fmt.Sprintf("Product %d", index+1)
+		}
+		normalizedName := strings.ToLower(strings.ReplaceAll(name, " ", ""))
+		label := name
+		if strings.Contains(normalizedName, "grokbuild") {
+			label = "GrokBuild 使用"
+			hasGrokBuild = true
+		}
+		used, ok := numberFromOK(product, "usagePercent", "usage_percent")
+		if !ok {
+			continue
+		}
+		addWindow(fmt.Sprintf("xai-product-%d", index), label, &used, weeklyReset, nil)
+	}
+
+	monthlyLimit, hasMonthlyLimit := numberFromOK(monthlyConfig, "monthlyLimit", "monthly_limit")
+	monthlyUsed, hasMonthlyUsed := numberFromOK(monthlyConfig, "used")
+	billingPeriodEnd := firstString(monthlyConfig, "billingPeriodEnd", "billing_period_end")
+	if hasMonthlyLimit || hasMonthlyUsed || billingPeriodEnd != "" {
+		var usedPercent *float64
+		if hasMonthlyLimit && monthlyLimit > 0 && hasMonthlyUsed {
+			value := monthlyUsed / monthlyLimit * 100
+			usedPercent = &value
+		}
+		var remaining any
+		if hasMonthlyLimit {
+			remainingValue := monthlyLimit - monthlyUsed
+			if !hasMonthlyUsed {
+				remainingValue = monthlyLimit
+			}
+			if remainingValue < 0 {
+				remainingValue = 0
+			}
+			remaining = remainingValue
+		}
+		addWindow("xai-monthly", "月度额度", usedPercent, billingPeriodEnd, remaining)
+		if result.PlanType == "" {
+			switch monthlyLimit {
+			case 15000:
+				result.PlanType = "SuperGrok"
+			case 150000:
+				result.PlanType = "SuperGrok Heavy"
+			}
+		}
+	}
+
+	onDemandCap, hasOnDemandCap := numberFromOK(monthlyConfig, "onDemandCap", "on_demand_cap")
+	onDemandUsed, hasOnDemandUsed := numberFromOK(monthlyConfig, "onDemandUsed", "on_demand_used")
+	if hasOnDemandCap && onDemandCap > 0 || hasOnDemandUsed && onDemandUsed > 0 {
+		var usedPercent *float64
+		if hasOnDemandCap && onDemandCap > 0 && hasOnDemandUsed {
+			value := onDemandUsed / onDemandCap * 100
+			usedPercent = &value
+		}
+		addWindow("xai-on-demand", "按量付费", usedPercent, billingPeriodEnd, nil)
+	}
+
+	legacyRate := mapValue(firstMap(weekly["rateLimit"], weekly["rate_limit"], monthly["rateLimit"], monthly["rate_limit"]))
+	legacyCredits := mapValue(firstMap(weekly["credits"], monthly["credits"]))
+	if legacyRate == nil {
+		legacyRate = map[string]any{}
+	}
+	if legacyCredits == nil {
+		legacyCredits = map[string]any{}
+	}
+	if !hasWeeklyUsed {
+		if total, ok := numberFromOK(legacyRate, "totalRequests", "total_requests"); ok && total > 0 {
+			remaining := numberFrom(legacyRate, "remainingRequests", "remaining_requests")
+			used := (total - remaining) / total * 100
+			addWindow("weekly", "周限额", &used, firstString(legacyRate, "windowEnd", "window_end", "resetAt", "reset_at"), nil)
+		}
+	}
+	if !hasGrokBuild {
+		if total, ok := numberFromOK(legacyRate, "totalGrokBuilds", "total_grok_builds"); ok && total > 0 {
+			remaining := numberFrom(legacyRate, "remainingGrokBuilds", "remaining_grok_builds")
+			used := (total - remaining) / total * 100
+			addWindow("grokbuild", "GrokBuild 使用", &used, "", nil)
+		}
+	}
+	if payg, ok := boolFrom(legacyCredits, "payAsYouGoEnabled", "pay_as_you_go_enabled"); ok {
 		detail := "未启用"
 		if payg {
 			detail = "已启用"
 		}
-		windows = append(windows, map[string]any{"id": "payg", "label": label, "remaining": detail})
+		addWindow("payg", "按量付费", nil, "", detail)
 	}
-	monthlyLimit := numberFrom(credits, "monthlyCredits", "monthly_credits")
-	monthlyRemain := numberFrom(credits, "remainingCredits", "remaining_credits")
-	if monthlyLimit > 0 || monthlyRemain > 0 || firstString(credits, "nextMonthlyRefresh", "next_monthly_refresh") != "" {
-		used := 0.0
-		if monthlyLimit > 0 {
-			used = (monthlyLimit - monthlyRemain) / monthlyLimit * 100
+	if !hasMonthlyLimit && !hasMonthlyUsed && billingPeriodEnd == "" {
+		legacyLimit, hasLegacyLimit := numberFromOK(legacyCredits, "monthlyCredits", "monthly_credits")
+		legacyRemaining, hasLegacyRemaining := numberFromOK(legacyCredits, "remainingCredits", "remaining_credits")
+		legacyReset := firstString(legacyCredits, "nextMonthlyRefresh", "next_monthly_refresh")
+		if hasLegacyLimit || hasLegacyRemaining || legacyReset != "" {
+			used := 0.0
+			if hasLegacyLimit && legacyLimit > 0 {
+				used = (legacyLimit - legacyRemaining) / legacyLimit * 100
+			}
+			addWindow("monthly", "月度额度", &used, legacyReset, legacyRemaining)
 		}
-		windows = append(windows, map[string]any{
-			"id":          "monthly",
-			"label":       "月度额度",
-			"usedPercent": used,
-			"remaining":   monthlyRemain,
-			"resetAt":     firstString(credits, "nextMonthlyRefresh", "next_monthly_refresh"),
-		})
+	}
+
+	if len(percentValues) > 0 {
+		maxPercent := percentValues[0]
+		for _, value := range percentValues[1:] {
+			if value > maxPercent {
+				maxPercent = value
+			}
+		}
+		result.UsedPercent = &maxPercent
 	}
 	if len(windows) > 0 {
 		result.QuotaWindows = windows
@@ -401,6 +503,35 @@ func applyXAIBilling(result store.InspectionResult, weeklyBody, monthlyBody any)
 		}
 	}
 	return result
+}
+
+func xaiBillingConfig(body map[string]any) map[string]any {
+	if body == nil {
+		return map[string]any{}
+	}
+	if config := mapValue(body["config"]); config != nil {
+		return config
+	}
+	return body
+}
+
+func clampInspectionPercent(value float64) float64 {
+	if value < 0 {
+		return 0
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
+}
+
+func firstValue(values ...any) any {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
 }
 
 func firstMap(values ...any) any {
@@ -425,20 +556,46 @@ func firstString(scope map[string]any, keys ...string) string {
 }
 
 func numberFrom(scope map[string]any, keys ...string) float64 {
+	number, _ := numberFromOK(scope, keys...)
+	return number
+}
+
+func numberFromOK(scope map[string]any, keys ...string) (float64, bool) {
 	if scope == nil {
-		return 0
+		return 0, false
 	}
 	for _, key := range keys {
 		if number, ok := numberValue(scope[key]); ok {
-			return number
-		}
-		if text := strings.TrimSpace(fmt.Sprint(scope[key])); text != "" && text != "<nil>" {
-			if parsed, err := strconv.ParseFloat(text, 64); err == nil {
-				return parsed
-			}
+			return number, true
 		}
 	}
-	return 0
+	return 0, false
+}
+
+func boolFrom(scope map[string]any, keys ...string) (bool, bool) {
+	if scope == nil {
+		return false, false
+	}
+	for _, key := range keys {
+		value, exists := scope[key]
+		if !exists || value == nil {
+			continue
+		}
+		switch typed := value.(type) {
+		case bool:
+			return typed, true
+		case string:
+			switch strings.ToLower(strings.TrimSpace(typed)) {
+			case "true", "1", "yes", "on":
+				return true, true
+			case "false", "0", "no", "off":
+				return false, true
+			}
+		case float64:
+			return typed != 0, true
+		}
+	}
+	return false, false
 }
 
 func applyLoadCodeAssistCredits(result store.InspectionResult, body any) store.InspectionResult {
@@ -602,6 +759,7 @@ func (r *Runtime) probeXAI(ctx context.Context, settings CodexInspectionSettings
 	result = resolveInspectionHTTPResult(result, response, settings.UsedPercentThreshold, "xai")
 	if result.ErrorKind == "healthy" || result.ErrorKind == "" {
 		result = applyXAIBilling(result, weekly.Body, monthly.Body)
+		result = applyInspectionQuotaThreshold(result, settings.UsedPercentThreshold)
 	}
 	if settings.XAIInferenceEnabled && result.Action == "keep" {
 		inferenceHeaders := map[string]string{"Authorization": "Bearer $TOKEN$", "x-xai-token-auth": "xai-grok-cli", "x-grok-client-version": "0.2.101", "User-Agent": settings.XAIInferenceUserAgent, "Content-Type": "application/json"}
@@ -665,7 +823,7 @@ func findInspectionAuthMetadata(value any, authIndex string) map[string]any {
 }
 
 func resolveXAIProbeMetadata(metadata map[string]any) (baseURL string, officialAPI bool, userID string) {
-	baseURL = "https://api.x.ai/v1"
+	baseURL = xaiOfficialAPIBaseURL
 	if metadata == nil {
 		return baseURL, false, ""
 	}
@@ -680,10 +838,21 @@ func resolveXAIProbeMetadata(metadata map[string]any) (baseURL string, officialA
 		return ""
 	}
 	candidate := strings.TrimSuffix(read("base_url", "baseUrl"), "/")
-	kind := strings.ToLower(read("auth_kind", "authKind", "type"))
-	usingAPI := strings.EqualFold(read("using_api", "usingApi"), "true") || kind == "api_key" || kind == "api"
+	kind := strings.ToLower(read("auth_kind", "authKind"))
+	credentialType := strings.ToLower(read("type"))
+	rawUsingAPI := read("using_api", "usingApi")
+	usingAPI := strings.EqualFold(rawUsingAPI, "true") || kind == "api_key" || kind == "apikey" || kind == "api" || credentialType == "api_key" || credentialType == "apikey" || credentialType == "api"
+	if rawUsingAPI == "" && kind != "" && kind != "oauth" && kind != "oauth2" {
+		usingAPI = true
+	}
 	if candidate != "" && !strings.Contains(strings.ToLower(candidate), "cli-chat-proxy.grok.com") {
-		baseURL, officialAPI = candidate, true
+		baseURL = candidate
+		// xAI OAuth files commonly persist api.x.ai as their default base URL,
+		// while OAuth chat and billing still use the CLI chat proxy unless
+		// using_api is explicitly enabled.
+		defaultOfficialBase := strings.EqualFold(candidate, xaiOfficialAPIBaseURL)
+		oauthLike := kind == "" || kind == "oauth" || kind == "oauth2"
+		officialAPI = usingAPI || !(defaultOfficialBase && oauthLike)
 	}
 	if usingAPI {
 		officialAPI = true
@@ -692,7 +861,39 @@ func resolveXAIProbeMetadata(metadata map[string]any) (baseURL string, officialA
 	return baseURL, officialAPI, userID
 }
 
-func mapValue(value any) map[string]any { result, _ := value.(map[string]any); return result }
+func mapValue(value any) map[string]any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed
+	case string:
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(strings.TrimSpace(typed)), &parsed); err == nil {
+			return parsed
+		}
+	}
+	return nil
+}
+
+func arrayValue(value any) []any {
+	switch typed := value.(type) {
+	case []any:
+		return typed
+	case string:
+		var parsed []any
+		if err := json.Unmarshal([]byte(strings.TrimSpace(typed)), &parsed); err == nil {
+			return parsed
+		}
+	}
+	return nil
+}
+
+func applyInspectionQuotaThreshold(result store.InspectionResult, threshold float64) store.InspectionResult {
+	if result.UsedPercent == nil || threshold >= 100 || *result.UsedPercent < threshold {
+		return result
+	}
+	result.Action, result.ActionReason, result.IsQuota, result.ErrorKind = "disable", "额度达到配置阈值", true, "quota_threshold"
+	return result
+}
 
 func resolveInspectionHTTPResult(result store.InspectionResult, response inspectionAPIResponse, threshold float64, provider string) store.InspectionResult {
 	result.StatusCode = intPtr(response.StatusCode)
@@ -705,13 +906,12 @@ func resolveInspectionHTTPResult(result store.InspectionResult, response inspect
 	body := strings.ToLower(response.BodyText)
 	switch {
 	case status >= 200 && status < 300:
-		if used != nil && *used >= threshold && threshold < 100 {
-			result.Action, result.ActionReason, result.IsQuota, result.ErrorKind = "disable", "额度达到配置阈值", true, "quota_threshold"
-		} else if result.Disabled {
+		if result.Disabled {
 			result.Action, result.ActionReason, result.ErrorKind = "keep", "凭证已禁用，等待自动恢复归属校验", "disabled"
 		} else {
 			result.Action, result.ActionReason, result.ErrorKind = "keep", "provider 探测正常", "healthy"
 		}
+		result = applyInspectionQuotaThreshold(result, threshold)
 	case status == http.StatusUnauthorized || strings.Contains(body, "invalid_grant") || strings.Contains(body, "invalid token"):
 		result.Action, result.ActionReason, result.ErrorKind = "reauth", "认证凭证已失效，需要重新登录", "auth_invalid"
 	case strings.Contains(body, "free-usage-exhausted") || strings.Contains(body, "spending-limit") || strings.Contains(body, "used all available credits"):
@@ -764,6 +964,10 @@ func (r *Runtime) callInspectionAPI(ctx context.Context, settings CodexInspectio
 	switch value := bodyValue.(type) {
 	case string:
 		bodyText = value
+		var parsed any
+		if err := json.Unmarshal([]byte(strings.TrimSpace(value)), &parsed); err == nil {
+			bodyValue = parsed
+		}
 	default:
 		raw, _ := json.Marshal(value)
 		bodyText = string(raw)
@@ -917,14 +1121,49 @@ func numberValue(value any) (float64, bool) {
 	switch value := value.(type) {
 	case float64:
 		return value, true
+	case float32:
+		return float64(value), true
 	case int:
+		return float64(value), true
+	case int8:
+		return float64(value), true
+	case int16:
+		return float64(value), true
+	case int32:
+		return float64(value), true
+	case int64:
+		return float64(value), true
+	case uint:
+		return float64(value), true
+	case uint8:
+		return float64(value), true
+	case uint16:
+		return float64(value), true
+	case uint32:
+		return float64(value), true
+	case uint64:
 		return float64(value), true
 	case json.Number:
 		v, err := value.Float64()
 		return v, err == nil
-	default:
-		return 0, false
+	case string:
+		text := strings.TrimSpace(value)
+		if strings.HasSuffix(text, "%") {
+			text = strings.TrimSpace(strings.TrimSuffix(text, "%"))
+		}
+		if text == "" {
+			return 0, false
+		}
+		parsed, err := strconv.ParseFloat(text, 64)
+		return parsed, err == nil
+	case map[string]any:
+		for _, key := range []string{"val", "value", "amount"} {
+			if nested, ok := numberValue(value[key]); ok {
+				return nested, true
+			}
+		}
 	}
+	return 0, false
 }
 func findHighestPercent(value any) *float64 {
 	var best *float64

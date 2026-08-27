@@ -695,18 +695,24 @@ pre {
   vertical-align: top;
 }
 .event-source-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
   min-width: 0;
 }
-.event-source-identity {
+.event-source-cell > .event-source-identity,
+.event-source-cell > .provider-cell {
   display: flex;
   align-items: center;
-  gap: 6px;
   min-width: 0;
   max-width: 100%;
+}
+.event-source-cell > .provider-cell { margin-top: 4px; }
+.event-source-identity {
+  gap: 6px;
+}
+.event-source-cell .sensitive-value,
+.account-api-key-table .sensitive-value {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  word-break: normal;
 }
 .event-stream-table th:nth-child(2), .event-stream-table td:nth-child(2) { width: 16%; }
 .event-stream-table td.event-model-cell { overflow: visible; white-space: normal; text-align: left; vertical-align: top; }

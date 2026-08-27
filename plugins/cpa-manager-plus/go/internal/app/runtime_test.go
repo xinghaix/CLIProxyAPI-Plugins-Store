@@ -36,7 +36,7 @@ func TestRuntimePersistsUsageAndStops(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	health := runtime.Health(context.Background())
-	if health["runtime"] != "local" || health["event_count"] != int64(1) {
+	if health["runtime"] != "local" || health["version"] != "0.5.16" || health["event_count"] != int64(1) {
 		t.Fatalf("health = %#v", health)
 	}
 	if err := runtime.Close(); err != nil {
@@ -147,7 +147,7 @@ func TestInspectionProbesXAIProvider(t *testing.T) {
 		if !strings.Contains(string(body), "cli-chat-proxy.grok.com") || !strings.Contains(string(body), "x-userid") {
 			t.Fatalf("xAI probe payload = %s", body)
 		}
-		return pricesync.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"status_code":200,"body":{"config":{"credit_usage_percent":25}}}`)}, nil
+		return pricesync.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"status_code":200,"body":"{\"config\":{\"credit_usage_percent\":25}}"}`)}, nil
 	})
 	detail, err := runtime.RunInspection(context.Background())
 	if err != nil {
@@ -156,6 +156,58 @@ func TestInspectionProbesXAIProvider(t *testing.T) {
 	results, ok := detail["results"].([]store.InspectionResult)
 	if !ok || len(results) != 1 || results[0].Provider != "xai" || results[0].Action != "keep" || results[0].UsedPercent == nil || *results[0].UsedPercent != 25 {
 		t.Fatalf("xAI inspection detail = %#v", detail)
+	}
+	windows := asWindowSlice(results[0].QuotaWindows)
+	if len(windows) != 1 || windows[0]["id"] != "xai-weekly" || windows[0]["usedPercent"] != float64(25) {
+		t.Fatalf("xAI quota windows = %#v", windows)
+	}
+}
+
+func TestInspectionUsesDerivedXAIMonthlyPercentForThreshold(t *testing.T) {
+	runtime, err := New([]byte("data_dir: " + t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	settings := DefaultCodexInspectionSettings()
+	settings.TargetTypes = []string{"xai"}
+	settings.TargetType = "xai"
+	settings.UsedPercentThreshold = 80
+	if err := runtime.UpdateCodexInspectionSettings(context.Background(), settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.UpdateConnection(context.Background(), "http://127.0.0.1:8317", "secret"); err != nil {
+		t.Fatal(err)
+	}
+	runtime.SetAuthList(func() ([]pluginapi.HostAuthFileEntry, error) {
+		return []pluginapi.HostAuthFileEntry{{Name: "xai.json", AuthIndex: "xai-threshold", Provider: "xai", Email: "xai@example.test", Status: "available"}}, nil
+	})
+	runtime.SetHTTPDo(func(_ context.Context, method, target string, _ http.Header, body []byte) (pricesync.HTTPResponse, error) {
+		if method == http.MethodGet && strings.Contains(target, "/v0/management/auth-files") {
+			return pricesync.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`[{"auth_index":"xai-threshold","auth_kind":"oauth","user_id":"user-1"}]`)}, nil
+		}
+		if method != http.MethodPost || !strings.Contains(target, "/v0/management/api-call") {
+			t.Fatalf("unexpected xAI threshold request: %s %s", method, target)
+		}
+		request := string(body)
+		switch {
+		case strings.Contains(request, xaiBillingWeeklyURL):
+			return pricesync.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"status_code":200,"body":"{\"config\":{\"credit_usage_percent\":25}}"}`)}, nil
+		case strings.Contains(request, xaiBillingMonthlyURL):
+			return pricesync.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"status_code":200,"body":"{\"config\":{\"monthly_limit\":10000,\"used\":9000,\"billing_period_end\":\"2026-10-01T00:00:00Z\"}}"}`)}, nil
+		default:
+			t.Fatalf("unexpected xAI threshold URL: %s", request)
+			return pricesync.HTTPResponse{}, nil
+		}
+	})
+
+	detail, err := runtime.RunInspection(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, ok := detail["results"].([]store.InspectionResult)
+	if !ok || len(results) != 1 || results[0].Action != "disable" || results[0].ErrorKind != "quota_threshold" || results[0].UsedPercent == nil || *results[0].UsedPercent != 90 {
+		t.Fatalf("xAI threshold inspection detail = %#v", detail)
 	}
 }
 
@@ -167,6 +219,10 @@ func TestResolveXAIProbeMetadata(t *testing.T) {
 	_, official, userID = resolveXAIProbeMetadata(map[string]any{"auth_kind": "oauth", "user_id": "user-2"})
 	if official || userID != "user-2" {
 		t.Fatalf("CLI xAI metadata = %t %q", official, userID)
+	}
+	base, official, _ = resolveXAIProbeMetadata(map[string]any{"auth_kind": "oauth", "base_url": "https://api.x.ai/v1"})
+	if official || base != "https://api.x.ai/v1" {
+		t.Fatalf("default OAuth xAI metadata = %q %t", base, official)
 	}
 }
 

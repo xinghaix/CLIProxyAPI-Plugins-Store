@@ -79,6 +79,46 @@ func TestApplyXAIBillingWindows(t *testing.T) {
 	}
 }
 
+func TestApplyXAIBillingConfigSchema(t *testing.T) {
+	result := applyXAIBilling(store.InspectionResult{},
+		`{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2026-09-01T16:20:00Z"},"creditUsagePercent":25,"productUsage":[{"product":"GrokBuild","usagePercent":84}]}}`,
+		`{"config":{"monthlyLimit":{"val":"10000"},"used":{"val":"2500"},"billingPeriodEnd":"2026-10-01T00:00:00Z"}}`,
+	)
+	windows := asWindowSlice(result.QuotaWindows)
+	byID := map[string]map[string]any{}
+	for _, window := range windows {
+		byID[window["id"].(string)] = window
+	}
+	if result.UsedPercent == nil {
+		t.Fatal("used percent is nil")
+	}
+	if *result.UsedPercent != 84 {
+		t.Fatalf("used percent = %v, windows = %#v, want 84", *result.UsedPercent, windows)
+	}
+	if weekly := byID["xai-weekly"]; weekly == nil || weekly["usedPercent"] != float64(25) || weekly["resetAt"] != "2026-09-01T16:20:00Z" {
+		t.Fatalf("weekly window = %#v", weekly)
+	}
+	if product := byID["xai-product-0"]; product == nil || product["label"] != "GrokBuild 使用" || product["usedPercent"] != float64(84) {
+		t.Fatalf("product window = %#v", product)
+	}
+	if monthly := byID["xai-monthly"]; monthly == nil || monthly["usedPercent"] != float64(25) || monthly["remaining"] != float64(7500) || monthly["resetAt"] != "2026-10-01T00:00:00Z" {
+		t.Fatalf("monthly window = %#v", monthly)
+	}
+}
+
+func TestApplyInspectionQuotaThresholdUsesDerivedBillingPercent(t *testing.T) {
+	used := 90.0
+	result := applyInspectionQuotaThreshold(store.InspectionResult{UsedPercent: &used, Action: "keep", ErrorKind: "healthy"}, 80)
+	if result.Action != "disable" || result.ErrorKind != "quota_threshold" || !result.IsQuota {
+		t.Fatalf("threshold result = %#v", result)
+	}
+
+	result = applyInspectionQuotaThreshold(store.InspectionResult{UsedPercent: &used, Action: "keep", ErrorKind: "healthy"}, 100)
+	if result.Action != "keep" || result.ErrorKind != "healthy" {
+		t.Fatalf("100%% threshold result = %#v", result)
+	}
+}
+
 func TestFindInspectionAccountBySource(t *testing.T) {
 	auths := []pluginapi.HostAuthFileEntry{
 		{Provider: "kimi", Email: "user@kimi.local", Name: "kimi-user.json", AuthIndex: "idx-1", ID: "id-1"},

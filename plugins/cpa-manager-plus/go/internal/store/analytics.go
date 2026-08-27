@@ -162,11 +162,7 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 	} else if !request.IncludeFailed {
 		query += ` and failed = 0`
 	}
-	if search := strings.TrimSpace(request.Search); search != "" {
-		query += ` and (model like ? or alias like ? or provider like ? or auth_index like ? or source like ? or fail_summary like ?)`
-		like := "%" + search + "%"
-		args = append(args, like, like, like, like, like, like)
-	}
+	search := strings.TrimSpace(request.Search)
 	query += ` order by timestamp_ms desc limit ?`
 	args = append(args, 10_000)
 	dbRows, err := s.db.QueryContext(ctx, query, args...)
@@ -174,21 +170,43 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 		return nil, err
 	}
 	defer dbRows.Close()
-	var results []eventRow
+	var candidates []eventRow
 	for dbRows.Next() {
 		var row eventRow
 		if err := dbRows.Scan(&row.ID, &row.TimestampMS, &row.Provider, &row.ExecutorType, &row.Model, &row.Alias, &row.APIKeyHash, &row.AuthID, &row.AuthIndex, &row.AuthType, &row.Source, &row.ReasoningEffort, &row.ServiceTier, &row.InputTokens, &row.OutputTokens, &row.ReasoningTokens, &row.CachedTokens, &row.CacheReadTokens, &row.CacheCreationTokens, &row.TotalTokens, &row.LatencyMS, &row.TTFTMS, &row.Failed, &row.FailStatus, &row.FailSummary); err != nil {
 			return nil, err
 		}
-		if matches(row, request) {
+		candidates = append(candidates, row)
+	}
+	if err := dbRows.Err(); err != nil {
+		return nil, err
+	}
+	providerLookup := providerSnapshots(candidates)
+	results := make([]eventRow, 0, len(candidates))
+	for _, row := range candidates {
+		row.Provider = resolvedProvider(row, providerLookup)
+		if matches(row, request) && matchesSearch(row, search) {
 			results = append(results, row)
 		}
 	}
-	return results, dbRows.Err()
+	return results, nil
 }
 
 func matches(row eventRow, request AnalyticsRequest) bool {
 	return includesModel(request.Models, row) && includes(request.Providers, row.Provider) && includes(request.Accounts, accountSnapshot(row)) && includes(request.APIKeyHashes, apiKeySnapshot(row))
+}
+
+func matchesSearch(row eventRow, search string) bool {
+	needle := strings.ToLower(strings.TrimSpace(search))
+	if needle == "" {
+		return true
+	}
+	for _, value := range []string{row.Model, row.Alias, row.Provider, row.AuthIndex, row.Source, row.FailSummary.String} {
+		if strings.Contains(strings.ToLower(value), needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func includesModel(values []string, row eventRow) bool {
@@ -221,6 +239,85 @@ func sourceSnapshot(row eventRow) string {
 	}
 	return "unknown"
 }
+
+type providerSnapshot struct {
+	Provider    string
+	TimestampMS int64
+	ID          int64
+}
+
+func providerSnapshots(rows []eventRow) map[string][]providerSnapshot {
+	lookup := map[string][]providerSnapshot{}
+	for _, row := range rows {
+		provider := normalizeProvider(row.Provider)
+		if provider == "" {
+			continue
+		}
+		snapshot := providerSnapshot{Provider: provider, TimestampMS: row.TimestampMS, ID: row.ID}
+		for _, key := range providerLookupKeys(row) {
+			lookup[key] = append(lookup[key], snapshot)
+		}
+	}
+	return lookup
+}
+
+func resolvedProvider(row eventRow, lookup map[string][]providerSnapshot) string {
+	if provider := normalizeProvider(row.Provider); provider != "" {
+		return provider
+	}
+	for _, key := range providerLookupKeys(row) {
+		if provider, ok := unambiguousProvider(lookup[key]); ok {
+			return provider
+		}
+	}
+	return ""
+}
+
+func unambiguousProvider(snapshots []providerSnapshot) (string, bool) {
+	if len(snapshots) == 0 {
+		return "", false
+	}
+	provider := snapshots[0].Provider
+	for _, snapshot := range snapshots[1:] {
+		if snapshot.Provider != provider {
+			return "", false
+		}
+	}
+	return provider, true
+}
+
+func providerLookupKeys(row eventRow) []string {
+	keys := make([]string, 0, 4)
+	add := func(prefix, value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		key := prefix + value
+		for _, existing := range keys {
+			if existing == key {
+				return
+			}
+		}
+		keys = append(keys, key)
+	}
+	// Auth identity is more specific than the display/source value. This keeps
+	// a shared API key from borrowing a different auth entry's provider.
+	add("auth-index:", row.AuthIndex)
+	add("auth-id:", row.AuthID)
+	add("source:", row.Source)
+	add("api-key:", row.APIKeyHash)
+	return keys
+}
+
+func normalizeProvider(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "—" || value == "-" {
+		return ""
+	}
+	return value
+}
+
 func includes(values []string, got string) bool {
 	if len(values) == 0 {
 		return true
@@ -331,8 +428,10 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 	if request.Granularity == "day" {
 		bucketSize = 86400000
 	}
+	providerLookup := providerSnapshots(rows)
 	events := make([]map[string]any, 0, min(len(rows), request.Limit))
 	for _, row := range rows {
+		row.Provider = resolvedProvider(row, providerLookup)
 		price := prices[row.Model]
 		total.add(row, price)
 		addStats(byModel, row.Model, row, price)

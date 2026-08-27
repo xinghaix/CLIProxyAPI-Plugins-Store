@@ -295,9 +295,10 @@
           <template v-if="accountQuota.windows.length">
             <div v-for="window in accountQuota.windows" :key="window.id" class="quota-row">
               <span>{{ window.label }}</span>
-              <div v-if="window.usedPercent > 0" :class="['quota-bar', window.usedPercent >= 80 ? 'warn' : '']"><span :style="{ width: `${Math.min(100, window.usedPercent)}%` }"></span></div>
+              <div v-if="window.hasUsedPercent" :class="['quota-bar', window.usedPercent >= 80 ? 'warn' : '']"><span :style="{ width: `${Math.min(100, window.usedPercent)}%` }"></span></div>
               <span v-else class="muted">{{ window.remainingText }}</span>
-              <span v-if="window.usedPercent > 0">{{ Math.round(window.usedPercent) }}%{{ window.resetText ? ` · ${window.resetText}` : '' }}</span>
+              <span v-if="window.hasUsedPercent">{{ Math.round(window.usedPercent) }}%{{ window.resetText ? ` · ${window.resetText}` : '' }}</span>
+              <span v-else class="muted">{{ window.resetText }}</span>
             </div>
           </template>
           <p v-else>{{ accountQuota.message || t('monitoring.authCard.noQuota') }}</p>
@@ -364,6 +365,7 @@ import { requestProtocol, requestProtocolLabel } from '../utils/requestProtocol.
 import { buildUsageIOC } from '../utils/usageBreakdown.js';
 import { canApplySelectedFilter, rowIdentity } from '../utils/rowFilter.js';
 import { buildEventHints, buildModelMeta, formatCacheSub, formatCallsSub, formatTpsSub, hasModelMapping, mappedModelName, requestedModelName } from '../utils/eventStreamDisplay.js';
+import { normalizeQuotaWindows } from '../utils/quotaDisplay.js';
 
 const props = defineProps({
   ready: {type: Boolean, default: false},
@@ -657,24 +659,17 @@ function matchInspectionResult(results, row) {
 }
 
 function remainingTextFromWindow(window, remaining) {
-  if (typeof window.remaining === 'string' && window.remaining.trim()) return window.remaining;
+  if (typeof window.remainingText === 'string' && window.remainingText.trim()) return window.remainingText;
   if (Number.isFinite(remaining)) return t('monitoring.authCard.remaining', { value: remaining });
   return '';
 }
 
 function quotaWindowsFromResult(result) {
-  const windows = Array.isArray(result?.quotaWindows) ? result.quotaWindows : [];
-  return windows.map((window, index) => {
-    const usedPercent = Number(window.usedPercent ?? result.usedPercent ?? 0);
-    const remaining = Number(window.remaining);
-    return {
-      id: window.id || `window-${index}`,
-      label: window.label || window.id || t('monitoring.authCard.quota'),
-      usedPercent: Number.isFinite(usedPercent) ? usedPercent : 0,
-      remainingText: remainingTextFromWindow(window, remaining),
-      resetText: window.resetAt ? String(window.resetAt) : '',
-    };
-  }).filter(window => window.usedPercent > 0 || window.remainingText);
+  return normalizeQuotaWindows(result).map(window => ({
+    ...window,
+    label: window.label || t('monitoring.authCard.quota'),
+    remainingText: remainingTextFromWindow(window, window.remaining),
+  }));
 }
 
 function applyQuotaResult(result) {

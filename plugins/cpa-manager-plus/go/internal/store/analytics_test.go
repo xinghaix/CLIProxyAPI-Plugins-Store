@@ -22,6 +22,66 @@ func TestClampEventLimitAllowsFiveThousandWindow(t *testing.T) {
 	}
 }
 
+func TestAggregateBackfillsProviderAcrossEventsForSameSource(t *testing.T) {
+	rows := []eventRow{
+		{ID: 1, TimestampMS: 100, Model: "model", Source: "sk-custom-key", AuthType: "apikey", AuthIndex: "account-a", APIKeyHash: "key-1", TotalTokens: 10},
+		{ID: 2, TimestampMS: 200, Model: "model", Source: "sk-custom-key", AuthType: "apikey", AuthIndex: "account-a", APIKeyHash: "key-1", Provider: "openai-compatible-wzw.pp.ua", TotalTokens: 20},
+	}
+
+	result := aggregate(rows, nil, AnalyticsRequest{Limit: 100, Granularity: "hour"})
+	events := result["events"].(map[string]any)["items"].([]map[string]any)
+	if len(events) != 2 || events[0]["provider"] != "openai-compatible-wzw.pp.ua" || events[0]["auth_provider_snapshot"] != "openai-compatible-wzw.pp.ua" {
+		t.Fatalf("backfilled events = %#v", events)
+	}
+	accounts := result["account_api_key_stats"].([]map[string]any)
+	if len(accounts) != 1 || accounts[0]["auth_provider_snapshot"] != "openai-compatible-wzw.pp.ua" {
+		t.Fatalf("backfilled account summary = %#v", accounts)
+	}
+}
+
+func TestAggregateProviderBackfillUsesAuthIdentityForSharedAPIKey(t *testing.T) {
+	rows := []eventRow{
+		{ID: 1, TimestampMS: 100, Model: "model", Source: "sk-shared", AuthType: "apikey", AuthIndex: "auth-a", APIKeyHash: "key-shared", Provider: "openai-compatible-a.example", TotalTokens: 10},
+		{ID: 2, TimestampMS: 200, Model: "model", Source: "sk-shared", AuthType: "apikey", AuthIndex: "auth-b", APIKeyHash: "key-shared", Provider: "openai-compatible-b.example", TotalTokens: 20},
+		{ID: 3, TimestampMS: 300, Model: "model", Source: "sk-shared", AuthType: "apikey", AuthIndex: "auth-a", APIKeyHash: "key-shared", TotalTokens: 30},
+		{ID: 4, TimestampMS: 400, Model: "model", Source: "sk-shared", AuthType: "apikey", AuthIndex: "auth-b", APIKeyHash: "key-shared", TotalTokens: 40},
+	}
+
+	result := aggregate(rows, nil, AnalyticsRequest{Limit: 100, Granularity: "hour"})
+	events := result["events"].(map[string]any)["items"].([]map[string]any)
+	if len(events) != 4 || events[2]["provider"] != "openai-compatible-a.example" || events[3]["provider"] != "openai-compatible-b.example" {
+		t.Fatalf("shared API-key providers were mixed = %#v", events)
+	}
+}
+
+func TestAggregateProviderBackfillLeavesProviderUnknownWhenIdentityIsAmbiguous(t *testing.T) {
+	rows := []eventRow{
+		{ID: 1, TimestampMS: 100, Model: "model", Source: "sk-changing", AuthType: "apikey", AuthIndex: "auth-a", APIKeyHash: "key-changing", Provider: "openai-compatible-a.example", TotalTokens: 10},
+		{ID: 2, TimestampMS: 200, Model: "model", Source: "sk-changing", AuthType: "apikey", AuthIndex: "auth-a", APIKeyHash: "key-changing", Provider: "openai-compatible-b.example", TotalTokens: 20},
+		{ID: 3, TimestampMS: 300, Model: "model", Source: "sk-changing", AuthType: "apikey", AuthIndex: "auth-a", APIKeyHash: "key-changing", TotalTokens: 30},
+	}
+
+	result := aggregate(rows, nil, AnalyticsRequest{Limit: 100, Granularity: "hour"})
+	events := result["events"].(map[string]any)["items"].([]map[string]any)
+	if len(events) != 3 || events[2]["provider"] != "" {
+		t.Fatalf("ambiguous provider was invented = %#v", events)
+	}
+}
+
+func TestAggregateProviderBackfillPrefersSourceSnapshot(t *testing.T) {
+	rows := []eventRow{
+		{ID: 1, TimestampMS: 100, Model: "model", Source: "sk-custom-key", AuthType: "apikey", AuthIndex: "account-a", APIKeyHash: "key-1", Provider: "openai-compatible-old.example", TotalTokens: 10},
+		{ID: 2, TimestampMS: 200, Model: "model", Source: "sk-other-key", AuthType: "apikey", AuthIndex: "account-a", APIKeyHash: "key-1", Provider: "openai-compatible-new.example", TotalTokens: 20},
+		{ID: 3, TimestampMS: 300, Model: "model", Source: "sk-custom-key", AuthType: "apikey", AuthIndex: "account-a", APIKeyHash: "key-1", TotalTokens: 30},
+	}
+
+	result := aggregate(rows, nil, AnalyticsRequest{Limit: 100, Granularity: "hour"})
+	events := result["events"].(map[string]any)["items"].([]map[string]any)
+	if len(events) != 3 || events[0]["provider"] != "openai-compatible-old.example" || events[2]["provider"] != "openai-compatible-old.example" {
+		t.Fatalf("provider snapshots crossed or regressed = %#v", events)
+	}
+}
+
 func TestAggregateAccountAPIKeyStatsBySource(t *testing.T) {
 	rows := []eventRow{
 		{ID: 1, TimestampMS: 100, Model: "model", Source: "oauth@example.com", AuthType: "oauth", AuthIndex: "account-a", APIKeyHash: "key-1", Provider: "openai", TotalTokens: 10},
@@ -229,6 +289,44 @@ func TestAnalyticsPersistsAndSearchesModelAlias(t *testing.T) {
 	filteredEvents := filtered["events"].(map[string]any)["items"].([]map[string]any)
 	if len(filteredEvents) != 1 || filteredEvents[0]["alias"] != "g5" {
 		t.Fatalf("filter by alias = %#v", filteredEvents)
+	}
+}
+
+func TestAnalyticsProviderFilterUsesSourceSnapshotForMissingEvents(t *testing.T) {
+	ctx := context.Background()
+	database, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if _, err := database.InsertEvents(ctx, []Event{
+		{Hash: "provider-missing", TimestampMS: 1_000, Model: "model", Source: "sk-custom-key", AuthType: "apikey", Provider: "", TotalTokens: 10},
+		{Hash: "provider-known", TimestampMS: 2_000, Model: "model", Source: "sk-custom-key", AuthType: "apikey", Provider: "openai-compatible-wzw.pp.ua", TotalTokens: 20},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := database.Analytics(ctx, AnalyticsRequest{
+		FromMS: 0, ToMS: 3_000, Limit: 10,
+		Providers: []string{"openai-compatible-wzw.pp.ua"}, IncludeFailed: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := result["events"].(map[string]any)["items"].([]map[string]any)
+	if len(events) != 2 || events[0]["provider"] != "openai-compatible-wzw.pp.ua" || events[1]["provider"] != "openai-compatible-wzw.pp.ua" {
+		t.Fatalf("provider-filtered events = %#v", events)
+	}
+
+	searched, err := database.Analytics(ctx, AnalyticsRequest{
+		FromMS: 0, ToMS: 3_000, Limit: 10, Search: "wzw.pp.ua", IncludeFailed: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	searchedEvents := searched["events"].(map[string]any)["items"].([]map[string]any)
+	if len(searchedEvents) != 2 || searchedEvents[0]["provider"] != "openai-compatible-wzw.pp.ua" || searchedEvents[1]["provider"] != "openai-compatible-wzw.pp.ua" {
+		t.Fatalf("provider-searched events = %#v", searchedEvents)
 	}
 }
 
