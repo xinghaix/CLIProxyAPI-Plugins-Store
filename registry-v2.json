@@ -69,7 +69,7 @@
       "name": "CPA Manager Plus",
       "description": "In-process local Runtime for Manager Plus dashboard, usage, monitoring, and real Codex/xAI credential health inspection in CPA (local SQLite; no external Manager Server).",
       "author": "xinghaix",
-      "version": "0.5.13",
+      "version": "0.5.14",
       "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
       "logo": "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/refs/heads/main/plugins/cpa-manager-plus/assets/logo.png",
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/cpa-manager-plus",
@@ -86,44 +86,44 @@
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.5.13/cpa-manager-plus_0.5.13_linux_amd64.zip",
-            "sha256": "621185e1956a1a974ecab49282cb6a8604c1f68a888dec7229470e2fd7bbc11f",
-            "size": 7396347
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.5.14/cpa-manager-plus_0.5.14_linux_amd64.zip",
+            "sha256": "d8101ec64801c9d48855d8fbffde3a2bc0bbf315d9626e680deeebd913fd4fee",
+            "size": 7403970
           },
           {
             "goos": "linux",
             "goarch": "arm64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.5.13/cpa-manager-plus_0.5.13_linux_arm64.zip",
-            "sha256": "e80a807e3cabc987eb9b39147fa2d18a042e24d887776ba420206329ad8f0121",
-            "size": 6797032
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.5.14/cpa-manager-plus_0.5.14_linux_arm64.zip",
+            "sha256": "36684297fc9335125f270a779a6d99ca2f5b38e9cb73289a5b0b0514d2d8e0da",
+            "size": 6806615
           },
           {
             "goos": "darwin",
             "goarch": "amd64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.5.13/cpa-manager-plus_0.5.13_darwin_amd64.zip",
-            "sha256": "d932d98ebade5b5195552cf1347ffcd75c6670506b6cf7efe84f53d74221444c",
-            "size": 4116212
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.5.14/cpa-manager-plus_0.5.14_darwin_amd64.zip",
+            "sha256": "9f9016c267e6c3bde015f68fefdd1af8e683d9903c6fa9f25f67fa2d8eb5bd42",
+            "size": 4123842
           },
           {
             "goos": "darwin",
             "goarch": "arm64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.5.13/cpa-manager-plus_0.5.13_darwin_arm64.zip",
-            "sha256": "4ffe426438407aa32c36792461eae0c5dc85731473ad7533d0d24ff6335301de",
-            "size": 3881238
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.5.14/cpa-manager-plus_0.5.14_darwin_arm64.zip",
+            "sha256": "f22cb37d7a85c3802ebcd924180d4b599a1b4459c4d8d283fa0cca283de5458a",
+            "size": 3888877
           },
           {
             "goos": "windows",
             "goarch": "amd64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.5.13/cpa-manager-plus_0.5.13_windows_amd64.zip",
-            "sha256": "f34784b0a0d17762970edb67197e187979c9f6f02249e4e801eac7783b626dde",
-            "size": 7278938
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.5.14/cpa-manager-plus_0.5.14_windows_amd64.zip",
+            "sha256": "88e7098f0acdbbea770d5d5ef764c51b00f9d560a9d44ac67d42f3102240a791",
+            "size": 7287535
           },
           {
             "goos": "windows",
             "goarch": "arm64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.5.13/cpa-manager-plus_0.5.13_windows_arm64.zip",
-            "sha256": "489f7941e013bcba25a3dd370854fe923836e4d63596defad0b444dfa7fee3d2",
-            "size": 6523707
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/v0.5.14/cpa-manager-plus_0.5.14_windows_arm64.zip",
+            "sha256": "8e5a612b106a7d80339d51d308b53d044ce455a75abeb723d67df3167eece453",
+            "size": 6529162
           }
         ]
       }
