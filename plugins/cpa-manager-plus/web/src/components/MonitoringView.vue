@@ -108,7 +108,10 @@
                 >{{ isEventKeyExpanded(row, 'source') ? t('monitoring.labels.collapse') : t('monitoring.labels.expand') }}</button>
               </strong>
               <strong v-else>{{ row.sourceName }}</strong>
-              <div class="muted small-text">{{ t('monitoring.labels.provider', { value: row.provider }) }}</div>
+              <div v-if="row.providerChip.tag" class="provider-cell">
+                <span :class="['provider-chip', chipClass(row.providerChip.kind)]">{{ row.providerChip.tag }}</span>
+                <span v-if="row.providerChip.showName" class="provider-chip-name">{{ row.providerChip.name }}</span>
+              </div>
             </td>
             <td class="event-model-cell" :title="row.hints.model">
               <div v-if="row.hasMapping" class="event-model-map" :aria-label="row.hints.model">
@@ -234,7 +237,13 @@
               </strong>
               <strong v-else>{{ accountSource(row) }}</strong>
             </td>
-            <td>{{ row.auth_provider_snapshot || EMPTY_VALUE }}</td>
+            <td>
+              <span v-if="accountProviderChip(row).tag" class="provider-cell">
+                <span :class="['provider-chip', chipClass(accountProviderChip(row).kind)]">{{ accountProviderChip(row).tag }}</span>
+                <span v-if="accountProviderChip(row).showName" class="provider-chip-name">{{ accountProviderChip(row).name }}</span>
+              </span>
+              <span v-else>{{ row.auth_provider_snapshot || EMPTY_VALUE }}</span>
+            </td>
             <td>{{ fmtInt(row.calls) }}</td>
             <td><strong :class="successRateClass(row.success_rate)">{{ fmtPct(row.success_rate) }}</strong></td>
             <td>{{ fmtCompact(row.total_tokens) }}</td>
@@ -250,7 +259,55 @@
     </DataCard>
 
     <div v-if="activeDataTab === 'accounts' && selectedAccount" style="margin-top:16px">
-      <DataCard :title="t('monitoring.cards.sourceDetail')" :subtitle="accountDetailSubtitle(selectedAccount)">
+      <article v-if="isOAuthAuthType(selectedAccount.auth_type)" class="auth-card">
+        <div class="auth-card-head">
+          <div class="auth-card-logo">{{ accountProviderChip(selectedAccount).tag.slice(0, 1) || '•' }}</div>
+          <div class="auth-card-title">
+            <span v-if="accountProviderChip(selectedAccount).tag" :class="['provider-chip', chipClass(accountProviderChip(selectedAccount).kind)]">{{ accountProviderChip(selectedAccount).tag }}</span>
+            <h3>{{ accountSource(selectedAccount) }}</h3>
+            <div class="auth-card-file">{{ accountQuota.fileName || EMPTY_VALUE }}</div>
+          </div>
+          <span :class="['status-chip', accountQuota.disabled ? 'off' : '']">
+            <i></i>{{ accountQuota.disabled ? t('monitoring.authCard.disabled') : t('monitoring.authCard.enabled') }}
+          </span>
+        </div>
+        <div class="auth-health">
+          <div class="auth-health-row">
+            <span>{{ t('monitoring.authCard.health') }}</span>
+            <span class="health-counts">
+              <span class="good-text">{{ t('monitoring.authCard.successCount', { count: fmtInt(selectedAccount.success_calls) }) }}</span>
+              &nbsp;
+              <span class="bad-text">{{ t('monitoring.authCard.failureCount', { count: fmtInt(selectedAccount.failure_calls) }) }}</span>
+            </span>
+          </div>
+          <div class="spark">
+            <i v-for="(ok, idx) in accountRecentPattern(selectedAccount)" :key="idx" :class="ok ? 'ok' : 'bad'"></i>
+            <span :class="['spark-rate', successRateClass(selectedAccount.success_rate)]">{{ fmtPct(selectedAccount.success_rate) }}</span>
+          </div>
+        </div>
+        <div class="auth-meta">
+          {{ fmtCompact(selectedAccount.total_tokens) }} tok · {{ fmtMoney(selectedAccount.cost) }} · {{ fmtDuration(selectedAccount.average_latency_ms) }} · {{ formatDateTime(selectedAccount.last_seen_ms) }}
+        </div>
+        <div class="auth-plan">
+          <div class="auth-plan-kicker">{{ t('monitoring.authCard.plan') }} <b>{{ accountQuota.planType || EMPTY_VALUE }}</b></div>
+          <template v-if="accountQuota.windows.length">
+            <div v-for="window in accountQuota.windows" :key="window.id" class="quota-row">
+              <span>{{ window.label }}</span>
+              <div :class="['quota-bar', window.usedPercent >= 80 ? 'warn' : '']"><span :style="{ width: `${Math.min(100, window.usedPercent)}%` }"></span></div>
+              <span>{{ Math.round(window.usedPercent) }}%</span>
+            </div>
+          </template>
+          <p v-else>{{ accountQuota.message || t('monitoring.authCard.noQuota') }}</p>
+        </div>
+        <div class="auth-actions">
+          <button class="btn primary" type="button" :disabled="quotaLoading" @click="queryAccountQuota(selectedAccount)">
+            {{ quotaLoading ? t('monitoring.authCard.querying') : t('monitoring.authCard.queryQuota') }}
+          </button>
+          <button class="btn" type="button" @click="filterAccountAPIKey(selectedAccount)">{{ t('monitoring.authCard.filterEvents') }}</button>
+          <button class="btn" type="button" @click="emit('open-inspection')">{{ t('monitoring.authCard.openInspection') }}</button>
+        </div>
+      </article>
+      <DataCard v-else :title="t('monitoring.cards.sourceDetail')" :subtitle="accountDetailSubtitle(selectedAccount)">
         <DetailGrid :items="buildAccountDetail(selectedAccount)"/>
       </DataCard>
     </div>
@@ -297,6 +354,7 @@ import {useI18n} from 'vue-i18n';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import { eventApiKeyDisplay, isSensitiveSource, maskSecretSummary, shortHash } from '../utils/apiKeyDisplay.js';
+import { chipClass, isOAuthAuthType, providerChip } from '../utils/providerTag.js';
 import { EMPTY_VALUE, formatDate, formatDateTime, formatInt, formatTime } from '../utils/localeFormat.js';
 import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
 import { requestProtocol, requestProtocolLabel } from '../utils/requestProtocol.js';
@@ -308,6 +366,7 @@ const props = defineProps({
   ready: {type: Boolean, default: false},
   proxyCall: {type: Function, required: true},
 });
+const emit = defineEmits(['open-inspection']);
 
 const {t} = useI18n();
 
@@ -325,6 +384,8 @@ const selectedEvent = ref(null);
 const eventPage = ref(1);
 const eventPageSize = ref(50);
 const selectedAccountId = ref('');
+const quotaLoading = ref(false);
+const accountQuota = ref({ planType: '', fileName: '', disabled: false, windows: [], message: '' });
 const selectedModelId = ref('');
 const expandedEventKeys = ref(new Set());
 const expandedAccountSources = ref(new Set());
@@ -563,6 +624,74 @@ function toggleAccountSource(row) {
 
 function selectAccountAPIKey(row) {
   selectedAccountId.value = row.id || '';
+  accountQuota.value = { planType: '', fileName: '', disabled: false, windows: [], message: '' };
+  if (row && isOAuthAuthType(row.auth_type)) {
+    queryAccountQuota(row);
+  }
+}
+
+function accountProviderChip(row) {
+  return providerChip(row?.auth_provider_snapshot || row?.provider, row?.auth_type);
+}
+
+function accountRecentPattern(row) {
+  const source = accountSource(row);
+  return eventRows.value
+    .filter(event => String(event.source || '').trim() === source)
+    .slice(0, 15)
+    .map(event => !event.failed)
+    .reverse();
+}
+
+function matchInspectionResult(results, row) {
+  const source = accountSource(row).toLowerCase();
+  const provider = String(row?.auth_provider_snapshot || '').trim().toLowerCase();
+  return (results || []).find(item => {
+    const display = String(item.displayAccount || '').trim().toLowerCase();
+    const fileName = String(item.fileName || '').trim().toLowerCase();
+    const itemProvider = String(item.provider || '').trim().toLowerCase();
+    return display === source || fileName.includes(source) || (provider && itemProvider === provider && display.includes(source.split('@')[0] || source));
+  }) || (results || []).find(item => String(item.provider || '').trim().toLowerCase() === provider) || null;
+}
+
+function quotaWindowsFromResult(result) {
+  const windows = Array.isArray(result?.quotaWindows) ? result.quotaWindows : [];
+  return windows.map((window, index) => ({
+    id: window.id || `window-${index}`,
+    label: window.id || window.label || t('monitoring.authCard.quota'),
+    usedPercent: Number(window.usedPercent ?? result.usedPercent ?? 0),
+  })).filter(window => Number.isFinite(window.usedPercent));
+}
+
+async function queryAccountQuota(row) {
+  if (!row || !props.proxyCall) return;
+  quotaLoading.value = true;
+  try {
+    const runsResp = await props.proxyCall({ method: 'GET', path: '/v0/management/codex-inspection/runs', query: 'limit=8' });
+    const runs = runsResp?.items || runsResp || [];
+    const completed = (Array.isArray(runs) ? runs : []).find(run => run.status === 'completed');
+    if (!completed?.id) {
+      accountQuota.value = { planType: '', fileName: '', disabled: false, windows: [], message: t('monitoring.authCard.noQuota') };
+      return;
+    }
+    const detail = await props.proxyCall({ method: 'GET', path: `/v0/management/codex-inspection/runs/${completed.id}` });
+    const result = matchInspectionResult(detail?.results || [], row);
+    if (!result) {
+      accountQuota.value = { planType: '', fileName: '', disabled: false, windows: [], message: t('monitoring.authCard.noQuota') };
+      return;
+    }
+    accountQuota.value = {
+      planType: result.planType || '',
+      fileName: result.fileName || '',
+      disabled: Boolean(result.disabled),
+      windows: quotaWindowsFromResult(result),
+      message: result.actionReason || '',
+    };
+  } catch (error) {
+    accountQuota.value = { planType: '', fileName: '', disabled: false, windows: [], message: error.message || String(error) };
+  } finally {
+    quotaLoading.value = false;
+  }
 }
 
 function filterAccountAPIKey(row) {
@@ -749,6 +878,7 @@ function buildEventTableRow(row, groupMap) {
     sourceName,
     sourceIsApiKey: isSensitiveSource(sourceName, row.auth_type),
     provider: row.auth_provider_snapshot || row.provider || EMPTY_VALUE,
+    providerChip: providerChip(row.auth_provider_snapshot || row.provider, row.auth_type),
     apiKeyHash: row.api_key_hash || EMPTY_VALUE,
     model: requestedModelName(row) || EMPTY_VALUE,
     alias: String(row.alias || '').trim(),

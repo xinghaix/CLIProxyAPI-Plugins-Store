@@ -18,7 +18,7 @@
     </section>
 
     <section class="panel" v-if="activeTab === 'monitoring'">
-      <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
+      <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" @open-inspection="selectTab('inspection')"/>
     </section>
 
     <section class="panel" v-if="activeTab === 'inspection'">
