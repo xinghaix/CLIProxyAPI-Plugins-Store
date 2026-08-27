@@ -494,6 +494,7 @@ export default {
     },
     eventMeta: {
       intensity: '强度 {value}',
+      mapped: '映射后 {value}',
       calls: '{value} 次',
       tps: 'TPS {value}',
       cache: '缓存 {value}',
@@ -502,7 +503,7 @@ export default {
     },
     eventHints: {
       sourceHeader: '来源 / API Key · Provider',
-      modelHeader: '模型 · 强度',
+      modelHeader: '请求模型 · 映射后 · 强度',
       statusHeader: '请求状态 · 协议 · 最近状态',
       healthHeader: '成功率 · 总调用',
       speedHeader: '首字/耗时 · TPS',
@@ -512,6 +513,7 @@ export default {
       usageHeader: '本次用量 · 输入/输出/缓存',
       costHeader: '本次花费 · 缓存命中率',
       model: '模型 {model} · 强度 {intensity} · 等级 {tier}',
+      modelMapped: '请求 {model} · 映射后 {mapped} · 强度 {intensity} · 等级 {tier}',
       status: '{status} · {protocol} · 最近 {ok}/{total} 成功',
       health: '成功率 {rate} · 总调用 {calls}',
       speed: '首字 {ttft} · 耗时 {latency} · TPS {tps}',

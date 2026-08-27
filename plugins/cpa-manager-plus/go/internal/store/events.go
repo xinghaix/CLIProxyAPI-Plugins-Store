@@ -13,6 +13,7 @@ type Event struct {
 	Provider            string
 	ExecutorType        string
 	Model               string
+	Alias               string
 	APIKeyHash          string
 	AuthID              string
 	AuthIndex           string
@@ -53,11 +54,11 @@ func (s *Store) InsertEventsCommitted(ctx context.Context, events []Event) (int,
 	}
 	defer tx.Rollback()
 	stmt, err := tx.PrepareContext(ctx, `insert or ignore into usage_events (
-		event_hash, timestamp_ms, provider, executor_type, model, api_key_hash, auth_id, auth_index, auth_type, source,
+		event_hash, timestamp_ms, provider, executor_type, model, alias, api_key_hash, auth_id, auth_index, auth_type, source,
 		reasoning_effort, service_tier, input_tokens, output_tokens, reasoning_tokens, cached_tokens, cache_read_tokens,
 		cache_creation_tokens, total_tokens, latency_ms, ttft_ms, failed, fail_status_code, fail_summary,
 		response_headers_json, created_at_ms
-	) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -67,7 +68,7 @@ func (s *Store) InsertEventsCommitted(ctx context.Context, events []Event) (int,
 	now := time.Now().UnixMilli()
 	for _, event := range events {
 		result, err := stmt.ExecContext(ctx,
-			event.Hash, event.TimestampMS, event.Provider, event.ExecutorType, event.Model, event.APIKeyHash, event.AuthID,
+			event.Hash, event.TimestampMS, event.Provider, event.ExecutorType, event.Model, nullableString(event.Alias), event.APIKeyHash, event.AuthID,
 			event.AuthIndex, event.AuthType, event.Source, event.ReasoningEffort, event.ServiceTier, event.InputTokens,
 			event.OutputTokens, event.ReasoningTokens, event.CachedTokens, event.CacheReadTokens, event.CacheCreationTokens,
 			event.TotalTokens, event.LatencyMS, event.TTFTMS, boolInt(event.Failed), nullableInt(event.FailStatusCode),

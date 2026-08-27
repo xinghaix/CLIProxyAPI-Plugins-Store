@@ -53,6 +53,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			provider text,
 			executor_type text,
 			model text not null,
+			alias text,
 			api_key_hash text,
 			auth_id text,
 			auth_index text,
@@ -165,6 +166,9 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.ensureModelPriceColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureUsageEventColumns(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureInspectionColumns(ctx); err != nil {
 		return err
 	}
@@ -228,6 +232,40 @@ func (s *Store) ensureInspectionColumns(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (s *Store) ensureUsageEventColumns(ctx context.Context) error {
+	existing, err := s.tableColumns(ctx, "usage_events")
+	if err != nil {
+		return err
+	}
+	if existing["alias"] {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `alter table usage_events add column alias text`); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) tableColumns(ctx context.Context, table string) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, `pragma table_info(`+table+`)`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	existing := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &primaryKey); err != nil {
+			return nil, err
+		}
+		existing[name] = true
+	}
+	return existing, rows.Err()
 }
 
 func (s *Store) ensureModelPriceColumns(ctx context.Context) error {

@@ -5,12 +5,16 @@ import {
   formatCacheSub,
   formatCallsSub,
   formatTpsSub,
+  hasModelMapping,
+  mappedModelName,
   recentPatternSummary,
+  requestedModelName,
 } from './eventStreamDisplay.js';
 
 function t(key, params = {}) {
   const dict = {
     'monitoring.eventMeta.intensity': '强度 {value}',
+    'monitoring.eventMeta.mapped': '映射后 {value}',
     'monitoring.eventMeta.calls': '{value} 次',
     'monitoring.eventMeta.tps': 'TPS {value}',
     'monitoring.eventMeta.cache': '缓存 {value}',
@@ -19,6 +23,7 @@ function t(key, params = {}) {
     'monitoring.labels.failed': '失败',
     'monitoring.labels.success': '成功',
     'monitoring.eventHints.model': '模型 {model} · 强度 {intensity} · 等级 {tier}',
+    'monitoring.eventHints.modelMapped': '请求 {model} · 映射后 {mapped} · 强度 {intensity} · 等级 {tier}',
     'monitoring.eventHints.status': '{status} · {protocol} · 最近 {ok}/{total} 成功',
     'monitoring.eventHints.health': '成功率 {rate} · 总调用 {calls}',
     'monitoring.eventHints.speed': '首字 {ttft} · 耗时 {latency} · TPS {tps}',
@@ -29,7 +34,16 @@ function t(key, params = {}) {
 }
 
 describe('event stream merged labels', () => {
-  it('keeps intensity and tier visible on the model second line', () => {
+  it('uses the requested alias when it differs from the mapped model', () => {
+    expect(requestedModelName({ model: 'gpt-5', alias: 'g5' })).toBe('g5');
+    expect(mappedModelName({ model: 'gpt-5', alias: 'g5' })).toBe('gpt-5');
+    expect(requestedModelName({ model: 'gpt-5' })).toBe('gpt-5');
+    expect(hasModelMapping({ model: 'gpt-5', alias: 'g5' })).toBe(true);
+    expect(hasModelMapping({ model: 'gpt-5', alias: 'gpt-5' })).toBe(false);
+    expect(hasModelMapping({ model: 'gpt-5' })).toBe(false);
+  });
+
+  it('keeps intensity and tier visible under the model mapping', () => {
     expect(buildModelMeta({ intensity: 'xhigh', tier: 'priority', model: 'gpt-5.4' }, t)).toBe('强度 xhigh · 等级: priority');
   });
 
@@ -67,5 +81,28 @@ describe('event stream merged labels', () => {
     expect(hints.speed).toContain('TPS');
     expect(hints.usage).toContain('I 16.2K');
     expect(hints.cost).toContain('缓存命中率');
+  });
+
+  it('names both requested and mapped models in the tooltip', () => {
+    const hints = buildEventHints({
+      model: 'g5',
+      mappedModel: 'gpt-5',
+      intensity: 'xhigh',
+      tier: 'priority',
+      failed: false,
+      protocolLabel: 'HTTP',
+      recentPattern: [],
+      successRateText: '100%',
+      totalCallsText: '1',
+      ttftText: '0.1 s',
+      latencyText: '1 s',
+      tpsText: '1',
+      totalTokensText: '10',
+      usageText: 'I 8 · O 2 · C 0',
+      costText: '$0.01',
+      cacheText: '0%',
+    }, t);
+    expect(hints.model).toContain('请求 g5');
+    expect(hints.model).toContain('映射后 gpt-5');
   });
 });

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -79,6 +80,36 @@ func TestEventJSONIncludesSourceAndAuthType(t *testing.T) {
 	}
 }
 
+func TestEventJSONIncludesModelAlias(t *testing.T) {
+	mapped := eventJSON(eventRow{Model: "gpt-5", Alias: "g5"}, Price{})
+	if mapped["model"] != "gpt-5" || mapped["alias"] != "g5" || mapped["requested_model"] != "g5" || mapped["resolved_model"] != "gpt-5" {
+		t.Fatalf("mapped event JSON = %#v", mapped)
+	}
+
+	same := eventJSON(eventRow{Model: "gpt-5", Alias: "gpt-5"}, Price{})
+	if same["alias"] != "gpt-5" || same["requested_model"] != "gpt-5" || same["resolved_model"] != "gpt-5" {
+		t.Fatalf("unmapped event JSON = %#v", same)
+	}
+
+	legacy := eventJSON(eventRow{Model: "gpt-5"}, Price{})
+	if legacy["alias"] != "" || legacy["requested_model"] != "gpt-5" || legacy["resolved_model"] != "gpt-5" {
+		t.Fatalf("legacy event JSON = %#v", legacy)
+	}
+}
+
+func TestIncludesModelMatchesAliasOrMappedName(t *testing.T) {
+	row := eventRow{Model: "gpt-5", Alias: "g5"}
+	if !includesModel([]string{"g5"}, row) || !includesModel([]string{"gpt-5"}, row) {
+		t.Fatal("filter must match requested alias or mapped model")
+	}
+	if includesModel([]string{"other"}, row) {
+		t.Fatal("unrelated model filter must not match")
+	}
+	if !includesModel(nil, row) {
+		t.Fatal("empty model filter must match")
+	}
+}
+
 func TestEventJSONIncludesRequestProtocol(t *testing.T) {
 	websocket := eventJSON(eventRow{ExecutorType: "CodexWebsocketsExecutor"}, Price{})
 	if websocket["executor_type"] != "CodexWebsocketsExecutor" || websocket["protocol"] != "websocket" {
@@ -150,6 +181,39 @@ func TestAggregateHeatmapBucketsByUTCWeekdayAndHour(t *testing.T) {
 	monday := byKey["1-9"]
 	if monday == nil || monday["calls"] != int64(1) {
 		t.Fatalf("monday morning = %#v", monday)
+	}
+}
+
+func TestAnalyticsPersistsAndSearchesModelAlias(t *testing.T) {
+	ctx := context.Background()
+	database, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if _, err := database.InsertEvents(ctx, []Event{
+		{Hash: "alias-1", TimestampMS: 1_000, Model: "gpt-5", Alias: "g5", TotalTokens: 10},
+		{Hash: "plain-1", TimestampMS: 2_000, Model: "claude-sonnet", TotalTokens: 4},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := database.Analytics(ctx, AnalyticsRequest{FromMS: 0, ToMS: 3_000, Limit: 10, Search: "g5", IncludeFailed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := result["events"].(map[string]any)["items"].([]map[string]any)
+	if len(events) != 1 || events[0]["model"] != "gpt-5" || events[0]["alias"] != "g5" {
+		t.Fatalf("search by alias = %#v", events)
+	}
+
+	filtered, err := database.Analytics(ctx, AnalyticsRequest{FromMS: 0, ToMS: 3_000, Limit: 10, Models: []string{"g5"}, IncludeFailed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	filteredEvents := filtered["events"].(map[string]any)["items"].([]map[string]any)
+	if len(filteredEvents) != 1 || filteredEvents[0]["alias"] != "g5" {
+		t.Fatalf("filter by alias = %#v", filteredEvents)
 	}
 }
 

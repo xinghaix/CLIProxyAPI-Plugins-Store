@@ -92,6 +92,7 @@ func ToEvent(record pluginapi.UsageRecord) store.Event {
 		Provider:            strings.TrimSpace(record.Provider),
 		ExecutorType:        strings.TrimSpace(record.ExecutorType),
 		Model:               model,
+		Alias:               strings.TrimSpace(record.Alias),
 		APIKeyHash:          digest(record.APIKey),
 		AuthID:              strings.TrimSpace(record.AuthID),
 		AuthIndex:           strings.TrimSpace(record.AuthIndex),

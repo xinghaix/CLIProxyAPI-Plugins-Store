@@ -109,9 +109,17 @@
               <strong v-else>{{ row.sourceName }}</strong>
               <div class="muted small-text">{{ t('monitoring.labels.provider', { value: row.provider }) }}</div>
             </td>
-            <td :title="row.hints.model">
-              <strong>{{ row.model }}</strong>
-              <div class="muted small-text">{{ row.modelMeta }}</div>
+            <td class="event-model-cell" :title="row.hints.model">
+              <div v-if="row.hasMapping" class="event-model-map" :aria-label="row.hints.model">
+                <span class="event-model-pill">{{ row.model }}</span>
+                <svg class="event-model-arrow" viewBox="0 0 32 18" aria-hidden="true">
+                  <path d="M24 2 v4 a6 6 0 0 1 -6 6 H8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  <path d="M11 9.5 L7 12 l4 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="event-model-pill is-target">{{ row.mappedModel }}</span>
+              </div>
+              <strong v-else>{{ row.model }}</strong>
+              <div v-if="row.modelMeta" class="muted small-text">{{ row.modelMeta }}</div>
             </td>
             <td class="event-status-cell" :title="row.hints.status">
               <div class="event-status-primary">
@@ -121,7 +129,10 @@
                   <i></i>{{ t('monitoring.labels.failed') }}
                 </span>
                 <span v-else class="status-badge good"><i></i>{{ t('monitoring.labels.success') }}</span>
-                <span class="status-http">{{ row.protocolLabel }}<span v-if="row.httpStatus" class="status-http-code">{{ row.httpStatus }}</span></span>
+                <span :class="['event-protocol-tag', `is-${row.protocol}`]">
+                  {{ row.protocolLabel }}
+                  <span v-if="row.httpStatus" class="event-protocol-code">{{ row.httpStatus }}</span>
+                </span>
               </div>
               <div class="event-status-recent muted small-text">
                 <span>{{ t('monitoring.eventMeta.recent') }}</span>
@@ -275,10 +286,10 @@ import MetricGrid from './MetricGrid.vue';
 import { eventApiKeyDisplay, isSensitiveSource, maskSecretSummary, shortHash } from '../utils/apiKeyDisplay.js';
 import { EMPTY_VALUE, formatDate, formatDateTime, formatInt, formatTime } from '../utils/localeFormat.js';
 import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
-import { requestProtocolLabel } from '../utils/requestProtocol.js';
+import { requestProtocol, requestProtocolLabel } from '../utils/requestProtocol.js';
 import { buildUsageIOC } from '../utils/usageBreakdown.js';
 import { canApplySelectedFilter, rowIdentity } from '../utils/rowFilter.js';
-import { buildEventHints, buildModelMeta, formatCacheSub, formatCallsSub, formatTpsSub } from '../utils/eventStreamDisplay.js';
+import { buildEventHints, buildModelMeta, formatCacheSub, formatCallsSub, formatTpsSub, hasModelMapping, mappedModelName, requestedModelName } from '../utils/eventStreamDisplay.js';
 
 const props = defineProps({
   ready: {type: Boolean, default: false},
@@ -386,7 +397,7 @@ const eventDetailCards = computed(() => selectedEvent.value ? [
   {label: t('monitoring.labels.latency'), value: fmtMs(selectedEvent.value.latency_ms)},
   {label: t('monitoring.labels.cost'), value: fmtMoney(calculateEventCost(selectedEvent.value, modelPrices.value))},
 ] : []);
-const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'resolved_model', 'endpoint', 'method', 'path', 'protocol', 'executor_type', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'cache_input_mode', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
+const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'alias', 'requested_model', 'resolved_model', 'endpoint', 'method', 'path', 'protocol', 'executor_type', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'cache_input_mode', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
 const eventHeaderDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['header_quota_recover_at_ms', 'header_quota_used_percent', 'header_quota_plan_type', 'header_error_kind', 'header_error_code', 'header_trace_id'])) : {});
 
 watch([timeRange, searchQuery, filters], () => {
@@ -655,7 +666,7 @@ function decodeDetailObject(obj) {
 }
 
 function exportEventsCsv() {
-  const cols = ['timestamp_ms', 'failed', 'protocol', 'executor_type', 'model', 'auth_index', 'account_snapshot', 'api_key_hash', 'method', 'path', 'total_tokens', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'latency_ms', 'fail_status_code', 'fail_summary', 'header_trace_id'];
+  const cols = ['timestamp_ms', 'failed', 'protocol', 'executor_type', 'model', 'alias', 'requested_model', 'resolved_model', 'auth_index', 'account_snapshot', 'api_key_hash', 'method', 'path', 'total_tokens', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'latency_ms', 'fail_status_code', 'fail_summary', 'header_trace_id'];
   const csv = [cols.join(','), ...eventRows.value.map(row => cols.map(c => csvCell(row[c])).join(','))].join('\n');
   const blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
@@ -726,12 +737,16 @@ function buildEventTableRow(row, groupMap) {
     sourceIsApiKey: isSensitiveSource(sourceName, row.auth_type),
     provider: row.auth_provider_snapshot || row.provider || EMPTY_VALUE,
     apiKeyHash: row.api_key_hash || EMPTY_VALUE,
-    model: row.model || EMPTY_VALUE,
-    resolvedModel: row.resolved_model || '',
+    model: requestedModelName(row) || EMPTY_VALUE,
+    alias: String(row.alias || '').trim(),
+    mappedModel: mappedModelName(row),
+    resolvedModel: mappedModelName(row),
+    hasMapping: hasModelMapping(row),
     intensity: row.reasoning_effort || row.service_tier || '-',
     tier: row.service_tier || (row.reasoning_effort && row.reasoning_effort !== '-' ? 'priority' : 'default'),
     recentPattern: (sliding?.recentPattern || []).slice(-5),
     failed: Boolean(row.failed),
+    protocol: requestProtocol(row),
     protocolLabel: requestProtocolLabel(row, t),
     httpStatus: numberOrNull(row.http_status_code ?? row.status_code ?? row.response_status_code ?? row.fail_status_code),
     successRate: sliding?.successRate ?? (row.failed ? 0 : 1),

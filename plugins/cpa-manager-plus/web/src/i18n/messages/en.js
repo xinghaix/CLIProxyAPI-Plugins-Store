@@ -617,6 +617,7 @@ export default {
     },
     eventMeta: {
       intensity: 'Intensity {value}',
+      mapped: 'Mapped {value}',
       calls: '{value} calls',
       tps: 'TPS {value}',
       cache: 'Cache {value}',
@@ -625,7 +626,7 @@ export default {
     },
     eventHints: {
       sourceHeader: 'Source / API key · Provider',
-      modelHeader: 'Model · intensity',
+      modelHeader: 'Requested model · mapped · intensity',
       statusHeader: 'Request status · protocol · recent status',
       healthHeader: 'Success rate · total calls',
       speedHeader: 'TTFT / latency · TPS',
@@ -635,6 +636,7 @@ export default {
       usageHeader: 'This usage · input / output / cache',
       costHeader: 'This cost · cache hit rate',
       model: 'Model {model} · intensity {intensity} · tier {tier}',
+      modelMapped: 'Requested {model} · mapped {mapped} · intensity {intensity} · tier {tier}',
       status: '{status} · {protocol} · recent {ok}/{total} succeeded',
       health: 'Success rate {rate} · total calls {calls}',
       speed: 'TTFT {ttft} · latency {latency} · TPS {tps}',

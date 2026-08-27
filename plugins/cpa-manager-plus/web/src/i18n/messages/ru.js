@@ -494,6 +494,7 @@ export default {
     },
     eventMeta: {
       intensity: 'Интенсивность {value}',
+      mapped: 'Сопоставлено {value}',
       calls: '{value} вызовов',
       tps: 'TPS {value}',
       cache: 'Кэш {value}',
@@ -502,7 +503,7 @@ export default {
     },
     eventHints: {
       sourceHeader: 'Источник / API key · Provider',
-      modelHeader: 'Модель · интенсивность',
+      modelHeader: 'Запрошенная модель · сопоставление · интенсивность',
       statusHeader: 'Статус запроса · протокол · недавний статус',
       healthHeader: 'Успешность · всего вызовов',
       speedHeader: 'TTFT / задержка · TPS',
@@ -512,6 +513,7 @@ export default {
       usageHeader: 'Использование · ввод / вывод / кэш',
       costHeader: 'Стоимость · попадание в кэш',
       model: 'Модель {model} · интенсивность {intensity} · уровень {tier}',
+      modelMapped: 'Запрос {model} · сопоставлено {mapped} · интенсивность {intensity} · уровень {tier}',
       status: '{status} · {protocol} · недавно {ok}/{total} успешно',
       health: 'Успешность {rate} · всего вызовов {calls}',
       speed: 'TTFT {ttft} · задержка {latency} · TPS {tps}',

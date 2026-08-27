@@ -39,7 +39,7 @@ type AnalyticsRequest struct {
 type eventRow struct {
 	ID                                                                                                           int64
 	TimestampMS                                                                                                  int64
-	Provider, ExecutorType, Model, APIKeyHash, AuthID, AuthIndex, AuthType, Source, ReasoningEffort, ServiceTier string
+	Provider, ExecutorType, Model, Alias, APIKeyHash, AuthID, AuthIndex, AuthType, Source, ReasoningEffort, ServiceTier string
 	InputTokens, OutputTokens, ReasoningTokens, CachedTokens, CacheReadTokens, CacheCreationTokens, TotalTokens  int64
 	LatencyMS, TTFTMS                                                                                            sql.NullInt64
 	Failed                                                                                                       int
@@ -148,7 +148,7 @@ func (s *Store) Analytics(ctx context.Context, request AnalyticsRequest) (map[st
 }
 
 func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRow, error) {
-	query := `select id,timestamp_ms,coalesce(provider,''),coalesce(executor_type,''),model,coalesce(api_key_hash,''),coalesce(auth_id,''),coalesce(auth_index,''),coalesce(auth_type,''),coalesce(source,''),coalesce(reasoning_effort,''),coalesce(service_tier,''),input_tokens,output_tokens,reasoning_tokens,cached_tokens,cache_read_tokens,cache_creation_tokens,total_tokens,latency_ms,ttft_ms,failed,fail_status_code,fail_summary from usage_events where timestamp_ms >= ? and timestamp_ms <= ?`
+	query := `select id,timestamp_ms,coalesce(provider,''),coalesce(executor_type,''),model,coalesce(alias,''),coalesce(api_key_hash,''),coalesce(auth_id,''),coalesce(auth_index,''),coalesce(auth_type,''),coalesce(source,''),coalesce(reasoning_effort,''),coalesce(service_tier,''),input_tokens,output_tokens,reasoning_tokens,cached_tokens,cache_read_tokens,cache_creation_tokens,total_tokens,latency_ms,ttft_ms,failed,fail_status_code,fail_summary from usage_events where timestamp_ms >= ? and timestamp_ms <= ?`
 	args := []any{request.FromMS, request.ToMS}
 	if request.FailedOnly {
 		query += ` and failed = 1`
@@ -156,9 +156,9 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 		query += ` and failed = 0`
 	}
 	if search := strings.TrimSpace(request.Search); search != "" {
-		query += ` and (model like ? or provider like ? or auth_index like ? or source like ? or fail_summary like ?)`
+		query += ` and (model like ? or alias like ? or provider like ? or auth_index like ? or source like ? or fail_summary like ?)`
 		like := "%" + search + "%"
-		args = append(args, like, like, like, like, like)
+		args = append(args, like, like, like, like, like, like)
 	}
 	query += ` order by timestamp_ms desc limit ?`
 	args = append(args, 10_000)
@@ -170,7 +170,7 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 	var results []eventRow
 	for dbRows.Next() {
 		var row eventRow
-		if err := dbRows.Scan(&row.ID, &row.TimestampMS, &row.Provider, &row.ExecutorType, &row.Model, &row.APIKeyHash, &row.AuthID, &row.AuthIndex, &row.AuthType, &row.Source, &row.ReasoningEffort, &row.ServiceTier, &row.InputTokens, &row.OutputTokens, &row.ReasoningTokens, &row.CachedTokens, &row.CacheReadTokens, &row.CacheCreationTokens, &row.TotalTokens, &row.LatencyMS, &row.TTFTMS, &row.Failed, &row.FailStatus, &row.FailSummary); err != nil {
+		if err := dbRows.Scan(&row.ID, &row.TimestampMS, &row.Provider, &row.ExecutorType, &row.Model, &row.Alias, &row.APIKeyHash, &row.AuthID, &row.AuthIndex, &row.AuthType, &row.Source, &row.ReasoningEffort, &row.ServiceTier, &row.InputTokens, &row.OutputTokens, &row.ReasoningTokens, &row.CachedTokens, &row.CacheReadTokens, &row.CacheCreationTokens, &row.TotalTokens, &row.LatencyMS, &row.TTFTMS, &row.Failed, &row.FailStatus, &row.FailSummary); err != nil {
 			return nil, err
 		}
 		if matches(row, request) {
@@ -181,7 +181,14 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 }
 
 func matches(row eventRow, request AnalyticsRequest) bool {
-	return includes(request.Models, row.Model) && includes(request.Providers, row.Provider) && includes(request.Accounts, accountSnapshot(row)) && includes(request.APIKeyHashes, apiKeySnapshot(row))
+	return includesModel(request.Models, row) && includes(request.Providers, row.Provider) && includes(request.Accounts, accountSnapshot(row)) && includes(request.APIKeyHashes, apiKeySnapshot(row))
+}
+
+func includesModel(values []string, row eventRow) bool {
+	if len(values) == 0 {
+		return true
+	}
+	return includes(values, row.Model) || includes(values, strings.TrimSpace(row.Alias))
 }
 
 func accountSnapshot(row eventRow) string {
@@ -333,6 +340,9 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 		addStats(byHeat, fmt.Sprintf("%d-%02d", int(heatAt.Weekday()), heatAt.Hour()), row, price)
 		providers[row.Provider] = true
 		models[row.Model] = true
+		if alias := strings.TrimSpace(row.Alias); alias != "" {
+			models[alias] = true
+		}
 		accounts[account] = true
 		keys[row.APIKeyHash] = true
 		if len(events) < request.Limit {
@@ -450,6 +460,13 @@ func namedKeys(values map[string]bool, key string) []map[string]string {
 	}
 	return out
 }
+func requestedModel(row eventRow) string {
+	if alias := strings.TrimSpace(row.Alias); alias != "" {
+		return alias
+	}
+	return row.Model
+}
+
 func requestProtocol(executorType string) string {
 	name := strings.ToLower(strings.TrimSpace(executorType))
 	if strings.Contains(name, "websocket") {
@@ -470,6 +487,9 @@ func eventJSON(row eventRow, price Price) map[string]any {
 		"executor_type":          row.ExecutorType,
 		"protocol":               requestProtocol(row.ExecutorType),
 		"model":                  row.Model,
+		"alias":                  strings.TrimSpace(row.Alias),
+		"requested_model":        requestedModel(row),
+		"resolved_model":         row.Model,
 		"api_key_hash":           row.APIKeyHash,
 		"account_snapshot":       accountSnapshot(row),
 		"auth_index":             row.AuthIndex,

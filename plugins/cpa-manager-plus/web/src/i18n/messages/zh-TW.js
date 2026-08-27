@@ -494,6 +494,7 @@ export default {
     },
     eventMeta: {
       intensity: '強度 {value}',
+      mapped: '對應後 {value}',
       calls: '{value} 次',
       tps: 'TPS {value}',
       cache: '快取 {value}',
@@ -502,7 +503,7 @@ export default {
     },
     eventHints: {
       sourceHeader: '來源 / API Key · Provider',
-      modelHeader: '模型 · 強度',
+      modelHeader: '請求模型 · 對應後 · 強度',
       statusHeader: '請求狀態 · 協議 · 最近狀態',
       healthHeader: '成功率 · 總呼叫',
       speedHeader: '首字/耗時 · TPS',
@@ -512,6 +513,7 @@ export default {
       usageHeader: '本次用量 · 輸入/輸出/快取',
       costHeader: '本次花費 · 快取命中率',
       model: '模型 {model} · 強度 {intensity} · 等級 {tier}',
+      modelMapped: '請求 {model} · 對應後 {mapped} · 強度 {intensity} · 等級 {tier}',
       status: '{status} · {protocol} · 最近 {ok}/{total} 成功',
       health: '成功率 {rate} · 總呼叫 {calls}',
       speed: '首字 {ttft} · 耗時 {latency} · TPS {tps}',

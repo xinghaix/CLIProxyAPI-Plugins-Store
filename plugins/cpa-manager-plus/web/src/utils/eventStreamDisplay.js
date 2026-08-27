@@ -3,7 +3,25 @@ export function recentPatternSummary(pattern = []) {
   return { ok: list.filter(Boolean).length, total: list.length };
 }
 
-export function buildModelMeta({ intensity, tier, resolvedModel, model } = {}, t) {
+export function requestedModelName(row = {}) {
+  const alias = String(row.alias || row.requested_model || row.requestedModel || '').trim();
+  const model = String(row.model || '').trim();
+  return alias || model;
+}
+
+export function mappedModelName(row = {}) {
+  const mapped = String(row.mappedModel || row.resolved_model || row.resolvedModel || '').trim();
+  if (mapped) return mapped;
+  return String(row.model || '').trim();
+}
+
+export function hasModelMapping(row = {}) {
+  const requested = requestedModelName(row);
+  const mapped = mappedModelName(row);
+  return Boolean(requested && mapped && requested !== mapped);
+}
+
+export function buildModelMeta({ intensity, tier } = {}, t) {
   const parts = [];
   if (intensity && intensity !== '-') {
     parts.push(t('monitoring.eventMeta.intensity', { value: intensity }));
@@ -11,7 +29,6 @@ export function buildModelMeta({ intensity, tier, resolvedModel, model } = {}, t
   if (tier && tier !== 'default') {
     parts.push(t('monitoring.labels.level', { value: tier }));
   }
-  if (resolvedModel && resolvedModel !== model) parts.push(resolvedModel);
   return parts.join(' · ');
 }
 
@@ -29,12 +46,15 @@ export function formatCacheSub(rate, t) {
 
 export function buildEventHints(row, t) {
   const recent = recentPatternSummary(row.recentPattern);
+  const requested = requestedModelName(row);
+  const mapped = mappedModelName(row);
+  const intensity = row.intensity && row.intensity !== '-' ? row.intensity : t('monitoring.eventMeta.none');
+  const tier = row.tier || '';
+  const modelHint = mapped && mapped !== requested
+    ? t('monitoring.eventHints.modelMapped', { model: requested, mapped, intensity, tier })
+    : t('monitoring.eventHints.model', { model: requested, intensity, tier });
   return {
-    model: t('monitoring.eventHints.model', {
-      model: row.model,
-      intensity: row.intensity && row.intensity !== '-' ? row.intensity : t('monitoring.eventMeta.none'),
-      tier: row.tier || '',
-    }),
+    model: modelHint,
     status: t('monitoring.eventHints.status', {
       status: row.failed ? t('monitoring.labels.failed') : t('monitoring.labels.success'),
       protocol: row.protocolLabel,
