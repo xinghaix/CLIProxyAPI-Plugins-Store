@@ -220,6 +220,20 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 			return jsonResponse(http.StatusConflict, map[string]any{"error": err.Error()})
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"ok": true})
+	case method == http.MethodPost && path == "/v0/management/account-quota-probe":
+		var payload struct {
+			AuthIndex string `json:"authIndex"`
+			Provider  string `json:"provider"`
+			Source    string `json:"source"`
+		}
+		if err := json.Unmarshal(rawBody(request.Body), &payload); err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid quota probe"})
+		}
+		result, err := runtime.ProbeAccountQuota(ctx, payload.AuthIndex, payload.Provider, payload.Source)
+		if err != nil {
+			return jsonResponse(http.StatusConflict, map[string]any{"error": err.Error()})
+		}
+		return jsonResponse(http.StatusOK, result)
 	case method == http.MethodPost && path == "/v0/management/codex-inspection/run":
 		detail, err := runtime.StartInspection(ctx, "manual", "")
 		if err != nil {

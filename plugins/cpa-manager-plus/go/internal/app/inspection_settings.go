@@ -53,7 +53,7 @@ func DefaultCodexInspectionSettings() CodexInspectionSettings {
 			TimePoints:      []string{},
 			TimeZone:        "",
 		},
-		TargetTypes:           []string{"codex"},
+		TargetTypes:           append([]string{}, inspectionProviders...),
 		TargetType:            "codex",
 		Workers:               4,
 		DeleteWorkers:         4,
@@ -117,7 +117,7 @@ func normalizeCodexInspectionSettings(in CodexInspectionSettings) (CodexInspecti
 
 	out.TargetTypes = normalizeInspectionTargetTypes(in.TargetTypes, in.TargetType)
 	if len(out.TargetTypes) == 0 {
-		return CodexInspectionSettings{}, fmt.Errorf("codexInspection.targetTypes must include codex or xai")
+		return CodexInspectionSettings{}, fmt.Errorf("codexInspection.targetTypes must include a supported credential provider")
 	}
 	out.TargetType = out.TargetTypes[0]
 	if in.Workers < 1 {
@@ -178,14 +178,25 @@ func normalizeInspectionTargetTypes(values []string, legacy string) []string {
 		values = []string{legacy}
 	}
 	seen := map[string]struct{}{}
+	all := false
 	for _, value := range values {
 		value = strings.ToLower(strings.TrimSpace(value))
-		if value == "codex" || value == "xai" {
+		if value == "" {
+			continue
+		}
+		if value == "all" || value == "*" {
+			all = true
+			break
+		}
+		if supportedInspectionProvider(value) {
 			seen[value] = struct{}{}
 		}
 	}
+	if all {
+		return append([]string{}, inspectionProviders...)
+	}
 	result := make([]string, 0, len(seen))
-	for _, provider := range []string{"codex", "xai"} {
+	for _, provider := range inspectionProviders {
 		if _, ok := seen[provider]; ok {
 			result = append(result, provider)
 		}

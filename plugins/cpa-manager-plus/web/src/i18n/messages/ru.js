@@ -584,6 +584,7 @@ export default {
       failureCount: 'Сбой {count}',
       plan: 'План',
       quota: 'Квота',
+      remaining: 'Осталось {value}',
       noQuota: 'В последней проверке нет данных квоты для этого аккаунта. Откройте вкладку проверки.',
       enabled: 'Вкл.',
       disabled: 'Выкл.',

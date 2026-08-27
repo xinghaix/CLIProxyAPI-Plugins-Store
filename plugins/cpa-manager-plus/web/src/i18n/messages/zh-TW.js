@@ -584,6 +584,7 @@ export default {
       failureCount: '失敗 {count}',
       plan: '套餐',
       quota: '額度',
+      remaining: '剩餘 {value}',
       noQuota: '最近一次巡檢沒有此帳號的額度資料。可開啟巡檢頁探測。',
       enabled: '啟用',
       disabled: '停用',

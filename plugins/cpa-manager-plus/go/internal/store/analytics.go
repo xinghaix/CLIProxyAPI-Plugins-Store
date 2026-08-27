@@ -37,14 +37,14 @@ type AnalyticsRequest struct {
 }
 
 type eventRow struct {
-	ID                                                                                                           int64
-	TimestampMS                                                                                                  int64
+	ID                                                                                                                  int64
+	TimestampMS                                                                                                         int64
 	Provider, ExecutorType, Model, Alias, APIKeyHash, AuthID, AuthIndex, AuthType, Source, ReasoningEffort, ServiceTier string
-	InputTokens, OutputTokens, ReasoningTokens, CachedTokens, CacheReadTokens, CacheCreationTokens, TotalTokens  int64
-	LatencyMS, TTFTMS                                                                                            sql.NullInt64
-	Failed                                                                                                       int
-	FailStatus                                                                                                   sql.NullInt64
-	FailSummary                                                                                                  sql.NullString
+	InputTokens, OutputTokens, ReasoningTokens, CachedTokens, CacheReadTokens, CacheCreationTokens, TotalTokens         int64
+	LatencyMS, TTFTMS                                                                                                   sql.NullInt64
+	Failed                                                                                                              int
+	FailStatus                                                                                                          sql.NullInt64
+	FailSummary                                                                                                         sql.NullString
 }
 
 func (s *Store) Prices(ctx context.Context) (map[string]Price, error) {
@@ -244,7 +244,7 @@ type stats struct {
 
 type accountAPIKeyStats struct {
 	stats
-	Source, APIKey, Provider, AuthType string
+	Source, APIKey, Provider, AuthType, AuthIndex string
 }
 
 func (s *stats) add(row eventRow, price Price) {
@@ -379,6 +379,7 @@ func addAccountAPIKeyStats(group map[string]*accountAPIKeyStats, source string, 
 		value.Provider = row.Provider
 		value.APIKey = apiKeySnapshot(row)
 		value.AuthType = row.AuthType
+		value.AuthIndex = row.AuthIndex
 	}
 	value.add(row, price)
 }
@@ -393,6 +394,7 @@ func accountAPIKeyStatsRows(group map[string]*accountAPIKeyStats) []map[string]a
 		row["api_key_hash"] = value.APIKey
 		row["auth_provider_snapshot"] = value.Provider
 		row["auth_type"] = value.AuthType
+		row["auth_index"] = value.AuthIndex
 		out = append(out, row)
 	}
 	sort.Slice(out, func(i, j int) bool {

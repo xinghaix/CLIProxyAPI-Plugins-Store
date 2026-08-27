@@ -11,7 +11,7 @@ export const HANDLING_FILTERS = ['all', 'pending', 'no_action'];
 export const DEFAULT_SERVER_CONFIG = {
   enabled: false,
   schedule: { mode: 'interval', intervalMinutes: 60, timePoints: [], timeZone: '' },
-  targetTypes: ['codex'],
+  targetTypes: ['codex', 'xai', 'claude', 'kimi', 'antigravity', 'gemini-cli', 'vertex'],
   targetType: 'codex',
   workers: 4,
   deleteWorkers: 4,
@@ -117,10 +117,15 @@ export function formatSchedule(config) {
   return translate('inspection.schedule.interval', { minutes: sch.intervalMinutes || 60 });
 }
 
+export const INSPECTION_PROVIDERS = ['codex', 'xai', 'claude', 'kimi', 'antigravity', 'gemini-cli', 'vertex'];
+
 export function normalizeInspectionTargetTypes(value, legacyTargetType = '') {
   const values = Array.isArray(value) ? value : String(value || legacyTargetType).split(/[,+\s]+/);
-  const selected = new Set(values.map((item) => String(item).trim().toLowerCase()));
-  return ['codex', 'xai'].filter((provider) => selected.has(provider));
+  const selected = new Set(values.map((item) => String(item).trim().toLowerCase()).filter(Boolean));
+  if (selected.has('all') || selected.has('*')) {
+    return [...INSPECTION_PROVIDERS];
+  }
+  return INSPECTION_PROVIDERS.filter((provider) => selected.has(provider));
 }
 
 export function resolveServerCodexConfig(raw) {
@@ -179,7 +184,9 @@ export function toDraft(config) {
     intervalMinutes: String(r.schedule.intervalMinutes),
     timePoints: (r.schedule.timePoints || []).join(', '),
     timeZone: r.schedule.timeZone || '',
-    targetTypes: r.targetTypes.join('+'),
+    targetTypes: r.targetTypes.length === INSPECTION_PROVIDERS.length && INSPECTION_PROVIDERS.every((provider) => r.targetTypes.includes(provider))
+      ? 'all'
+      : r.targetTypes.join('+'),
     targetType: r.targetType,
     workers: String(r.workers),
     deleteWorkers: String(r.deleteWorkers),

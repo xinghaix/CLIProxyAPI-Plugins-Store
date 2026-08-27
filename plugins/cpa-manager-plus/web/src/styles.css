@@ -689,7 +689,25 @@ pre {
   white-space: nowrap;
 }
 .event-stream-table th[title] { cursor: help; }
-.event-stream-table th:nth-child(1), .event-stream-table td:nth-child(1) { width: 14%; }
+.event-stream-table th:nth-child(1), .event-stream-table td:nth-child(1) { width: 16%; }
+.event-stream-table td.event-source-cell {
+  white-space: normal;
+  vertical-align: top;
+}
+.event-source-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.event-source-identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
 .event-stream-table th:nth-child(2), .event-stream-table td:nth-child(2) { width: 16%; }
 .event-stream-table td.event-model-cell { overflow: visible; white-space: normal; text-align: left; vertical-align: top; }
 .event-model-map {
@@ -877,17 +895,42 @@ pre {
   border-color: #7aa4d4;
   letter-spacing: 0.02em;
 }
+.provider-chip.is-kimi {
+  color: #f4f4f5;
+  background: #18181b;
+  border-color: #27272a;
+}
+.provider-chip.is-gemini,
+.provider-chip.is-interactions {
+  color: #3b0764;
+  background: #ead7ff;
+  border-color: #c4b5fd;
+}
+.provider-chip.is-claude {
+  color: #7c2d12;
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+.provider-chip.is-antigravity {
+  color: #9a3412;
+  background: #ffedd5;
+  border-color: #fb923c;
+}
+.provider-chip.is-vertex {
+  color: #1e3a8a;
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
 .provider-chip.is-oauth {
   color: var(--cpa-text-primary);
   background: var(--cpa-surface-muted);
 }
 .provider-cell {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
-  max-width: 280px;
+  max-width: 100%;
   min-width: 0;
-  margin-top: 4px;
 }
 .account-api-key-table .provider-cell { margin-top: 0; }
 .provider-chip-name {

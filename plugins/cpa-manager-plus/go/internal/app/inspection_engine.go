@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +22,10 @@ const (
 	xaiBillingWeeklyURL  = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
 	xaiBillingMonthlyURL = "https://cli-chat-proxy.grok.com/v1/billing"
 	xaiInferenceURL      = "https://cli-chat-proxy.grok.com/v1/responses"
+	claudeModelsURL      = "https://api.anthropic.com/v1/models"
+	kimiModelsURL        = "https://api.kimi.com/coding/v1/models"
+	antigravityAssistURL = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
+	googleUserInfoURL    = "https://www.googleapis.com/oauth2/v3/userinfo"
 	maxInspectionBody    = 2048
 )
 
@@ -152,7 +157,7 @@ func filterInspectionAccounts(auths []pluginapi.HostAuthFileEntry, settings Code
 	}
 	accounts := make([]store.InspectionAccount, 0, len(auths))
 	for _, auth := range auths {
-		provider := strings.ToLower(strings.TrimSpace(auth.Provider))
+		provider := strings.ToLower(strings.TrimSpace(firstNonEmpty(auth.Provider, auth.Type)))
 		if !allowed[provider] {
 			continue
 		}
@@ -235,6 +240,16 @@ func (r *Runtime) probeInspectionAccount(ctx context.Context, settings CodexInsp
 		result = r.probeCodex(ctx, settings, base)
 	case "xai":
 		result = r.probeXAI(ctx, settings, base)
+	case "claude":
+		result = r.probeClaude(ctx, settings, base)
+	case "kimi":
+		result = r.probeKimi(ctx, settings, base)
+	case "antigravity":
+		result = r.probeLoadCodeAssist(ctx, settings, base, "ANTIGRAVITY")
+	case "gemini-cli":
+		result = r.probeLoadCodeAssist(ctx, settings, base, "IDE_UNSPECIFIED")
+	case "vertex":
+		result = r.probeVertex(ctx, settings, base)
 	default:
 		base.Action, base.ActionReason, base.ErrorKind = "review", "不支持的巡检提供商", "unsupported_provider"
 		return base
@@ -247,6 +262,303 @@ func (r *Runtime) probeInspectionAccount(ctx context.Context, settings CodexInsp
 		}
 	}
 	return result
+}
+
+func (r *Runtime) probeClaude(ctx context.Context, settings CodexInspectionSettings, result store.InspectionResult) store.InspectionResult {
+	response, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodGet, claudeModelsURL, map[string]string{
+		"Authorization":     "Bearer $TOKEN$",
+		"anthropic-version": "2023-06-01",
+		"Content-Type":      "application/json",
+	}, nil)
+	if err != nil {
+		return inspectionFailure(result, 0, "upstream_error", err.Error())
+	}
+	result = resolveInspectionHTTPResult(result, response, settings.UsedPercentThreshold, "claude")
+	if result.ErrorKind == "healthy" {
+		result.ActionReason = "Claude 身份探测正常；Anthropic 不提供可量化的额度总量"
+	}
+	return result
+}
+
+func (r *Runtime) probeKimi(ctx context.Context, settings CodexInspectionSettings, result store.InspectionResult) store.InspectionResult {
+	response, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodGet, kimiModelsURL, map[string]string{
+		"Authorization": "Bearer $TOKEN$",
+		"Accept":        "application/json",
+	}, nil)
+	if err != nil {
+		return inspectionFailure(result, 0, "upstream_error", err.Error())
+	}
+	result = resolveInspectionHTTPResult(result, response, settings.UsedPercentThreshold, "kimi")
+	if result.ErrorKind == "healthy" {
+		result.ActionReason = "Kimi 身份探测正常"
+	}
+	return result
+}
+
+func (r *Runtime) probeLoadCodeAssist(ctx context.Context, settings CodexInspectionSettings, result store.InspectionResult, ideType string) store.InspectionResult {
+	if strings.TrimSpace(ideType) == "" {
+		ideType = "ANTIGRAVITY"
+	}
+	response, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodPost, antigravityAssistURL, map[string]string{
+		"Authorization": "Bearer $TOKEN$",
+		"Content-Type":  "application/json",
+		"User-Agent":    "antigravity/hub/1.23.2",
+	}, map[string]any{"metadata": map[string]any{"ideType": ideType}})
+	if err != nil {
+		return inspectionFailure(result, 0, "upstream_error", err.Error())
+	}
+	result = resolveInspectionHTTPResult(result, response, settings.UsedPercentThreshold, result.Provider)
+	if result.ErrorKind == "healthy" {
+		result = applyLoadCodeAssistCredits(result, response.Body)
+		if result.PlanType == "" && len(asWindowSlice(result.QuotaWindows)) == 0 {
+			result.ActionReason = result.Provider + " 身份探测正常"
+		}
+	}
+	return result
+}
+
+func (r *Runtime) probeVertex(ctx context.Context, settings CodexInspectionSettings, result store.InspectionResult) store.InspectionResult {
+	response, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodGet, googleUserInfoURL, map[string]string{
+		"Authorization": "Bearer $TOKEN$",
+		"Accept":        "application/json",
+	}, nil)
+	if err != nil {
+		return inspectionFailure(result, 0, "upstream_error", err.Error())
+	}
+	result = resolveInspectionHTTPResult(result, response, settings.UsedPercentThreshold, "vertex")
+	if result.ErrorKind == "healthy" {
+		result.ActionReason = "Vertex 凭证有效；GCP 额度需在 Cloud Console 查看"
+	}
+	return result
+}
+
+func applyXAIBilling(result store.InspectionResult, weeklyBody, monthlyBody any) store.InspectionResult {
+	weekly := mapValue(weeklyBody)
+	monthly := mapValue(monthlyBody)
+	if weekly == nil {
+		weekly = map[string]any{}
+	}
+	if monthly == nil {
+		monthly = map[string]any{}
+	}
+	rate := mapValue(firstMap(weekly["rateLimit"], weekly["rate_limit"], monthly["rateLimit"], monthly["rate_limit"]))
+	credits := mapValue(firstMap(weekly["credits"], monthly["credits"]))
+	if rate == nil {
+		rate = map[string]any{}
+	}
+	if credits == nil {
+		credits = map[string]any{}
+	}
+	windows := []map[string]any{}
+	if total := numberFrom(rate, "totalRequests", "total_requests"); total > 0 {
+		remaining := numberFrom(rate, "remainingRequests", "remaining_requests")
+		used := (total - remaining) / total * 100
+		windows = append(windows, map[string]any{
+			"id":          "weekly",
+			"label":       "周限额",
+			"usedPercent": used,
+			"resetAt":     firstString(rate, "windowEnd", "window_end", "resetAt", "reset_at"),
+		})
+		result.UsedPercent = &used
+	}
+	if total := numberFrom(rate, "totalGrokBuilds", "total_grok_builds"); total > 0 {
+		remaining := numberFrom(rate, "remainingGrokBuilds", "remaining_grok_builds")
+		used := (total - remaining) / total * 100
+		windows = append(windows, map[string]any{
+			"id":          "grokbuild",
+			"label":       "GrokBuild 使用",
+			"usedPercent": used,
+		})
+	}
+	if payg, ok := credits["payAsYouGoEnabled"].(bool); ok {
+		label := "按量付费"
+		detail := "未启用"
+		if payg {
+			detail = "已启用"
+		}
+		windows = append(windows, map[string]any{"id": "payg", "label": label, "remaining": detail})
+	}
+	monthlyLimit := numberFrom(credits, "monthlyCredits", "monthly_credits")
+	monthlyRemain := numberFrom(credits, "remainingCredits", "remaining_credits")
+	if monthlyLimit > 0 || monthlyRemain > 0 || firstString(credits, "nextMonthlyRefresh", "next_monthly_refresh") != "" {
+		used := 0.0
+		if monthlyLimit > 0 {
+			used = (monthlyLimit - monthlyRemain) / monthlyLimit * 100
+		}
+		windows = append(windows, map[string]any{
+			"id":          "monthly",
+			"label":       "月度额度",
+			"usedPercent": used,
+			"remaining":   monthlyRemain,
+			"resetAt":     firstString(credits, "nextMonthlyRefresh", "next_monthly_refresh"),
+		})
+	}
+	if len(windows) > 0 {
+		result.QuotaWindows = windows
+		result.ActionReason = "已读取 xAI 配额窗口"
+		if result.ErrorKind == "" {
+			result.ErrorKind = "healthy"
+		}
+	}
+	return result
+}
+
+func firstMap(values ...any) any {
+	for _, value := range values {
+		if mapValue(value) != nil {
+			return value
+		}
+	}
+	return nil
+}
+
+func firstString(scope map[string]any, keys ...string) string {
+	if scope == nil {
+		return ""
+	}
+	for _, key := range keys {
+		if text := strings.TrimSpace(fmt.Sprint(scope[key])); text != "" && text != "<nil>" {
+			return text
+		}
+	}
+	return ""
+}
+
+func numberFrom(scope map[string]any, keys ...string) float64 {
+	if scope == nil {
+		return 0
+	}
+	for _, key := range keys {
+		if number, ok := numberValue(scope[key]); ok {
+			return number
+		}
+		if text := strings.TrimSpace(fmt.Sprint(scope[key])); text != "" && text != "<nil>" {
+			if parsed, err := strconv.ParseFloat(text, 64); err == nil {
+				return parsed
+			}
+		}
+	}
+	return 0
+}
+
+func applyLoadCodeAssistCredits(result store.InspectionResult, body any) store.InspectionResult {
+	root := mapValue(body)
+	if root == nil {
+		return result
+	}
+	paid := mapValue(root["paidTier"])
+	if paid == nil {
+		paid = mapValue(root["currentTier"])
+	}
+	if paid == nil {
+		paid = map[string]any{}
+	}
+	if id := strings.TrimSpace(fmt.Sprint(paid["id"])); id != "" && id != "<nil>" {
+		result.PlanType = id
+	}
+	windows := []map[string]any{}
+	if credits, ok := paid["availableCredits"].([]any); ok {
+		for _, item := range credits {
+			credit := mapValue(item)
+			label := strings.TrimSpace(fmt.Sprint(credit["creditType"]))
+			amount, okAmount := numberValue(credit["creditAmount"])
+			if !okAmount {
+				if text := strings.TrimSpace(fmt.Sprint(credit["creditAmount"])); text != "" && text != "<nil>" {
+					if parsed, err := strconv.ParseFloat(text, 64); err == nil {
+						amount, okAmount = parsed, true
+					}
+				}
+			}
+			if label == "" || label == "<nil>" {
+				label = "credits"
+			}
+			window := map[string]any{"id": label, "label": label}
+			if okAmount {
+				window["remaining"] = amount
+			}
+			windows = append(windows, window)
+		}
+	}
+	if len(windows) > 0 {
+		result.QuotaWindows = windows
+		result.ActionReason = "已读取 Code Assist 额度"
+	}
+	return result
+}
+
+func asWindowSlice(value any) []map[string]any {
+	switch typed := value.(type) {
+	case []map[string]any:
+		return typed
+	case []any:
+		out := make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			if converted := mapValue(item); converted != nil {
+				out = append(out, converted)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func (r *Runtime) ProbeAccountQuota(ctx context.Context, authIndex, provider, source string) (store.InspectionResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	r.mu.Lock()
+	list := r.authList
+	r.mu.Unlock()
+	if list == nil {
+		return store.InspectionResult{}, fmt.Errorf("host auth callback is unavailable")
+	}
+	auths, err := list()
+	if err != nil {
+		return store.InspectionResult{}, err
+	}
+	account, ok := findInspectionAccount(auths, authIndex, provider, source)
+	if !ok {
+		return store.InspectionResult{}, fmt.Errorf("未找到对应认证文件")
+	}
+	if !supportedInspectionProvider(account.Provider) {
+		return store.InspectionResult{}, fmt.Errorf("不支持的巡检提供商: %s", account.Provider)
+	}
+	settings := r.CodexInspectionSettings()
+	settings.XAIInferenceEnabled = false
+	return r.probeInspectionAccount(ctx, settings, account), nil
+}
+
+func findInspectionAccount(auths []pluginapi.HostAuthFileEntry, authIndex, provider, source string) (store.InspectionAccount, bool) {
+	authIndex = strings.TrimSpace(authIndex)
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	source = strings.ToLower(strings.TrimSpace(source))
+	accounts := filterInspectionAccounts(auths, CodexInspectionSettings{TargetTypes: append([]string{}, inspectionProviders...)})
+	matchProvider := func(account store.InspectionAccount) bool {
+		return provider == "" || account.Provider == provider
+	}
+	if authIndex != "" {
+		for _, account := range accounts {
+			if strings.TrimSpace(account.AuthIndex) == authIndex && matchProvider(account) {
+				return account, true
+			}
+		}
+	}
+	if source != "" {
+		for _, account := range accounts {
+			display := strings.ToLower(strings.TrimSpace(account.DisplayName))
+			if display == source && matchProvider(account) {
+				return account, true
+			}
+		}
+		for _, account := range accounts {
+			fileName := strings.ToLower(account.FileName)
+			if matchProvider(account) && (strings.Contains(fileName, source) || strings.Contains(strings.ToLower(account.DisplayName), source)) {
+				return account, true
+			}
+		}
+	}
+	return store.InspectionAccount{}, false
 }
 
 func (r *Runtime) probeCodex(ctx context.Context, settings CodexInspectionSettings, result store.InspectionResult) store.InspectionResult {
@@ -288,6 +600,9 @@ func (r *Runtime) probeXAI(ctx context.Context, settings CodexInspectionSettings
 		return inspectionFailure(result, 0, "upstream_error", weeklyErr.Error())
 	}
 	result = resolveInspectionHTTPResult(result, response, settings.UsedPercentThreshold, "xai")
+	if result.ErrorKind == "healthy" || result.ErrorKind == "" {
+		result = applyXAIBilling(result, weekly.Body, monthly.Body)
+	}
 	if settings.XAIInferenceEnabled && result.Action == "keep" {
 		inferenceHeaders := map[string]string{"Authorization": "Bearer $TOKEN$", "x-xai-token-auth": "xai-grok-cli", "x-grok-client-version": "0.2.101", "User-Agent": settings.XAIInferenceUserAgent, "Content-Type": "application/json"}
 		if userID != "" {
@@ -618,7 +933,8 @@ func findHighestPercent(value any) *float64 {
 		switch value := value.(type) {
 		case map[string]any:
 			for key, child := range value {
-				if strings.Contains(strings.ToLower(key), "used_percent") || strings.Contains(strings.ToLower(key), "usage_percent") {
+				norm := strings.ToLower(strings.ReplaceAll(key, "_", ""))
+				if strings.Contains(norm, "usedpercent") || strings.Contains(norm, "usagepercent") {
 					if number, ok := numberValue(child); ok {
 						if number >= 0 && number <= 100 && (best == nil || number > *best) {
 							copy := number

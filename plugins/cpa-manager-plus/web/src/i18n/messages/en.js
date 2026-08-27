@@ -707,6 +707,7 @@ export default {
       failureCount: 'Fail {count}',
       plan: 'Plan',
       quota: 'Quota',
+      remaining: 'Remaining {value}',
       noQuota: 'The latest inspection has no quota data for this account. Open the inspection tab to probe.',
       enabled: 'Enabled',
       disabled: 'Disabled',

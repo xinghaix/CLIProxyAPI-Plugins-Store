@@ -1,79 +1,73 @@
-const OAUTH_LABELS = {
-  xai: 'XAI',
-  grok: 'XAI',
-  openai: 'OPENAI',
-  chatgpt: 'CODEX',
-  codex: 'CODEX',
-  gemini: 'GEMINI',
-  google: 'GEMINI',
-  claude: 'CLAUDE',
-  anthropic: 'CLAUDE',
-  antigravity: 'ANTIGRAVITY',
-  vertex: 'VERTEX',
-};
-
-const API_TYPES = [
-  'openai-compatible',
-  'openai',
-  'anthropic',
-  'claude',
-  'gemini',
-  'google',
-  'xai',
-  'grok',
-  'azure',
-  'vertex',
-  'codex',
+const PROVIDERS = [
+  { keys: ['gemini-interactions'], kind: 'gemini-interactions', tag: 'INTERACTIONS', chip: 'is-interactions' },
+  { keys: ['openai-compatible', 'openai-compatibility'], kind: 'openai-compatible', tag: 'OPENAI-COMPATIBLE', chip: 'is-api', splitName: true },
+  { keys: ['gemini-cli', 'gemini', 'google'], kind: 'gemini', tag: 'GEMINI', chip: 'is-gemini' },
+  { keys: ['antigravity'], kind: 'antigravity', tag: 'ANTIGRAVITY', chip: 'is-antigravity' },
+  { keys: ['anthropic', 'claude'], kind: 'claude', tag: 'CLAUDE', chip: 'is-claude' },
+  { keys: ['chatgpt', 'codex'], kind: 'codex', tag: 'CODEX', chip: 'is-codex' },
+  { keys: ['vertex'], kind: 'vertex', tag: 'VERTEX', chip: 'is-vertex' },
+  { keys: ['kimi'], kind: 'kimi', tag: 'KIMI', chip: 'is-kimi' },
+  { keys: ['xai', 'grok'], kind: 'xai', tag: 'XAI', chip: 'is-xai' },
+  { keys: ['openai'], kind: 'openai', tag: 'OPENAI', chip: 'is-codex' },
+  { keys: ['azure'], kind: 'azure', tag: 'AZURE', chip: 'is-api' },
 ];
+
+const BY_KEY = new Map();
+for (const provider of PROVIDERS) {
+  for (const key of provider.keys) {
+    BY_KEY.set(key, provider);
+  }
+}
 
 export function isOAuthAuthType(authType) {
   const type = String(authType || '').trim().toLowerCase();
   return type === 'oauth' || type === 'oauth2';
 }
 
-function oauthKind(provider) {
-  const raw = String(provider || '').trim().toLowerCase();
-  if (!raw) return '';
-  return raw.split(/[./:\s]/)[0];
-}
-
-function parseApiProvider(provider) {
-  const raw = String(provider || '').trim();
-  const lower = raw.toLowerCase();
-  const types = [...API_TYPES].sort((a, b) => b.length - a.length);
-  for (const type of types) {
-    if (lower === type) {
-      return { tag: type.toUpperCase(), name: '' };
-    }
-    if (lower.startsWith(`${type}-`) || lower.startsWith(`${type}.`)) {
-      return { tag: type.toUpperCase(), name: raw.slice(type.length + 1) };
+function matchProvider(raw) {
+  const lower = String(raw || '').trim().toLowerCase();
+  if (!lower) return null;
+  const exact = BY_KEY.get(lower);
+  if (exact) return { spec: exact, name: '' };
+  const keys = [...BY_KEY.keys()].sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (lower.startsWith(`${key}-`) || lower.startsWith(`${key}.`)) {
+      const spec = BY_KEY.get(key);
+      return { spec, name: String(raw).trim().slice(key.length + 1) };
     }
   }
-  return { tag: 'API', name: raw };
+  return null;
 }
 
 export function providerChip(provider, authType) {
-  const name = String(provider || '').trim();
-  if (!name || name === '—') {
-    return { kind: '', tag: '', name: '', showName: false };
+  const raw = String(provider || '').trim();
+  if (!raw || raw === '—') {
+    return { kind: '', tag: '', name: '', showName: false, chip: '' };
   }
+  const matched = matchProvider(raw);
   if (isOAuthAuthType(authType)) {
-    const kind = oauthKind(name);
-    const tag = OAUTH_LABELS[kind] || name.toUpperCase();
-    return { kind: OAUTH_LABELS[kind] ? kind : 'oauth', tag, name: '', showName: false };
+    if (matched) {
+      return { kind: matched.spec.kind, tag: matched.spec.tag, name: '', showName: false, chip: matched.spec.chip };
+    }
+    return { kind: 'oauth', tag: raw.toUpperCase(), name: '', showName: false, chip: 'is-oauth' };
   }
-  const parsed = parseApiProvider(name);
-  return {
-    kind: 'api',
-    tag: parsed.tag,
-    name: parsed.name,
-    showName: Boolean(parsed.name),
-  };
+  if (matched) {
+    const name = matched.spec.splitName ? matched.name : (matched.name || '');
+    const showName = Boolean(matched.spec.splitName && name);
+    return {
+      kind: matched.spec.kind,
+      tag: matched.spec.tag,
+      name: showName ? name : '',
+      showName,
+      chip: matched.spec.chip,
+    };
+  }
+  return { kind: 'api', tag: 'API', name: raw, showName: true, chip: 'is-api' };
 }
 
-export function chipClass(kind) {
-  if (kind === 'xai' || kind === 'grok') return 'is-xai';
-  if (kind === 'codex' || kind === 'openai' || kind === 'chatgpt') return 'is-codex';
-  if (kind === 'api') return 'is-api';
-  return 'is-oauth';
+export function chipClass(kindOrChip) {
+  const value = String(kindOrChip || '').trim();
+  if (value.startsWith('is-')) return value;
+  const matched = BY_KEY.get(value) || PROVIDERS.find(provider => provider.kind === value);
+  return matched?.chip || (value === 'api' ? 'is-api' : 'is-oauth');
 }

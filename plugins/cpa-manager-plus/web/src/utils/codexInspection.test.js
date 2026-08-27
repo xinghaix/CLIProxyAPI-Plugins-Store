@@ -25,6 +25,8 @@ describe('multi-provider inspection settings', () => {
   it('upgrades legacy targetType to an ordered provider list', () => {
     expect(resolveServerCodexConfig({ targetType: 'xai' }).targetTypes).toEqual(['xai']);
     expect(normalizeInspectionTargetTypes('xai+codex')).toEqual(['codex', 'xai']);
+    expect(normalizeInspectionTargetTypes('all')).toEqual(['codex', 'xai', 'claude', 'kimi', 'antigravity', 'gemini-cli', 'vertex']);
+    expect(normalizeInspectionTargetTypes('kimi+claude')).toEqual(['claude', 'kimi']);
   });
 
   it('round-trips Codex + xAI settings including optional inference', () => {

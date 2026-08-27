@@ -335,8 +335,14 @@
             <label class="config-field">
               <span class="config-field-label">{{ t('inspection.drawer.targetTypes') }}</span>
               <select v-model="draft.targetTypes" class="control">
+                <option value="all">全部认证文件</option>
                 <option value="codex">Codex</option>
                 <option value="xai">xAI</option>
+                <option value="claude">Claude</option>
+                <option value="kimi">Kimi</option>
+                <option value="antigravity">Antigravity</option>
+                <option value="gemini-cli">Gemini CLI</option>
+                <option value="vertex">Vertex</option>
                 <option value="codex+xai">Codex + xAI</option>
               </select>
               <small v-if="configFieldErrors.targetTypes" class="bad-text">{{ configFieldErrors.targetTypes }}</small>
@@ -361,7 +367,7 @@
               <span class="config-field-label">{{ t('inspection.drawer.userAgent') }}</span>
               <input v-model="draft.userAgent" class="control" />
             </label>
-            <template v-if="draft.targetTypes.includes('xai')">
+            <template v-if="String(draft.targetTypes || '').includes('xai') || draft.targetTypes === 'all'">
               <label class="config-field config-field-toggle config-field-wide">
                 <span class="config-field-label">{{ t('inspection.drawer.xaiInference') }}</span>
                 <button type="button" :class="['toggle-switch', { on: draft.xaiInferenceEnabled }]" @click="draft.xaiInferenceEnabled = !draft.xaiInferenceEnabled">

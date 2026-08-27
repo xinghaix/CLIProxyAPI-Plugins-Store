@@ -96,20 +96,22 @@
           </thead>
           <tbody>
           <tr v-for="row in pagedEvents" :key="row.id" @click="selectedEvent = row.raw" class="clickable">
-            <td :title="t('monitoring.eventHints.sourceHeader')">
-              <strong v-if="row.sourceIsApiKey" class="sensitive-value">
-                {{ eventApiKeyDisplay(row.sourceName, isEventKeyExpanded(row, 'source')) }}
-                <button
-                  type="button"
-                  class="sensitive-value-toggle"
-                  :aria-expanded="isEventKeyExpanded(row, 'source')"
-                  :aria-label="isEventKeyExpanded(row, 'source') ? t('monitoring.labels.collapseApiKey') : t('monitoring.labels.expandApiKey')"
-                  @click.stop="toggleEventKey(row, 'source')"
-                >{{ isEventKeyExpanded(row, 'source') ? t('monitoring.labels.collapse') : t('monitoring.labels.expand') }}</button>
-              </strong>
-              <strong v-else>{{ row.sourceName }}</strong>
+            <td class="event-source-cell" :title="t('monitoring.eventHints.sourceHeader')">
+              <div class="event-source-identity">
+                <strong v-if="row.sourceIsApiKey" class="sensitive-value">
+                  {{ eventApiKeyDisplay(row.sourceName, isEventKeyExpanded(row, 'source')) }}
+                  <button
+                    type="button"
+                    class="sensitive-value-toggle"
+                    :aria-expanded="isEventKeyExpanded(row, 'source')"
+                    :aria-label="isEventKeyExpanded(row, 'source') ? t('monitoring.labels.collapseApiKey') : t('monitoring.labels.expandApiKey')"
+                    @click.stop="toggleEventKey(row, 'source')"
+                  >{{ isEventKeyExpanded(row, 'source') ? t('monitoring.labels.collapse') : t('monitoring.labels.expand') }}</button>
+                </strong>
+                <strong v-else>{{ row.sourceName }}</strong>
+              </div>
               <div v-if="row.providerChip.tag" class="provider-cell">
-                <span :class="['provider-chip', chipClass(row.providerChip.kind)]">{{ row.providerChip.tag }}</span>
+                <span :class="['provider-chip', row.providerChip.chip]">{{ row.providerChip.tag }}</span>
                 <span v-if="row.providerChip.showName" class="provider-chip-name">{{ row.providerChip.name }}</span>
               </div>
             </td>
@@ -239,7 +241,7 @@
             </td>
             <td>
               <span v-if="accountProviderChip(row).tag" class="provider-cell">
-                <span :class="['provider-chip', chipClass(accountProviderChip(row).kind)]">{{ accountProviderChip(row).tag }}</span>
+                <span :class="['provider-chip', accountProviderChip(row).chip]">{{ accountProviderChip(row).tag }}</span>
                 <span v-if="accountProviderChip(row).showName" class="provider-chip-name">{{ accountProviderChip(row).name }}</span>
               </span>
               <span v-else>{{ row.auth_provider_snapshot || EMPTY_VALUE }}</span>
@@ -263,7 +265,7 @@
         <div class="auth-card-head">
           <div class="auth-card-logo">{{ accountProviderChip(selectedAccount).tag.slice(0, 1) || '•' }}</div>
           <div class="auth-card-title">
-            <span v-if="accountProviderChip(selectedAccount).tag" :class="['provider-chip', chipClass(accountProviderChip(selectedAccount).kind)]">{{ accountProviderChip(selectedAccount).tag }}</span>
+            <span v-if="accountProviderChip(selectedAccount).tag" :class="['provider-chip', accountProviderChip(selectedAccount).chip]">{{ accountProviderChip(selectedAccount).tag }}</span>
             <h3>{{ accountSource(selectedAccount) }}</h3>
             <div class="auth-card-file">{{ accountQuota.fileName || EMPTY_VALUE }}</div>
           </div>
@@ -293,8 +295,9 @@
           <template v-if="accountQuota.windows.length">
             <div v-for="window in accountQuota.windows" :key="window.id" class="quota-row">
               <span>{{ window.label }}</span>
-              <div :class="['quota-bar', window.usedPercent >= 80 ? 'warn' : '']"><span :style="{ width: `${Math.min(100, window.usedPercent)}%` }"></span></div>
-              <span>{{ Math.round(window.usedPercent) }}%</span>
+              <div v-if="window.usedPercent > 0" :class="['quota-bar', window.usedPercent >= 80 ? 'warn' : '']"><span :style="{ width: `${Math.min(100, window.usedPercent)}%` }"></span></div>
+              <span v-else class="muted">{{ window.remainingText }}</span>
+              <span v-if="window.usedPercent > 0">{{ Math.round(window.usedPercent) }}%{{ window.resetText ? ` · ${window.resetText}` : '' }}</span>
             </div>
           </template>
           <p v-else>{{ accountQuota.message || t('monitoring.authCard.noQuota') }}</p>
@@ -354,7 +357,7 @@ import {useI18n} from 'vue-i18n';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import { eventApiKeyDisplay, isSensitiveSource, maskSecretSummary, shortHash } from '../utils/apiKeyDisplay.js';
-import { chipClass, isOAuthAuthType, providerChip } from '../utils/providerTag.js';
+import { isOAuthAuthType, providerChip } from '../utils/providerTag.js';
 import { EMPTY_VALUE, formatDate, formatDateTime, formatInt, formatTime } from '../utils/localeFormat.js';
 import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
 import { requestProtocol, requestProtocolLabel } from '../utils/requestProtocol.js';
@@ -646,49 +649,76 @@ function accountRecentPattern(row) {
 function matchInspectionResult(results, row) {
   const source = accountSource(row).toLowerCase();
   const provider = String(row?.auth_provider_snapshot || '').trim().toLowerCase();
-  return (results || []).find(item => {
-    const display = String(item.displayAccount || '').trim().toLowerCase();
-    const fileName = String(item.fileName || '').trim().toLowerCase();
-    const itemProvider = String(item.provider || '').trim().toLowerCase();
-    return display === source || fileName.includes(source) || (provider && itemProvider === provider && display.includes(source.split('@')[0] || source));
-  }) || (results || []).find(item => String(item.provider || '').trim().toLowerCase() === provider) || null;
+  const sameProvider = (item) => !provider || String(item.provider || '').trim().toLowerCase() === provider;
+  const items = (results || []).filter(sameProvider);
+  return items.find(item => String(item.displayAccount || '').trim().toLowerCase() === source)
+    || items.find(item => String(item.fileName || '').trim().toLowerCase().includes(source))
+    || null;
+}
+
+function remainingTextFromWindow(window, remaining) {
+  if (typeof window.remaining === 'string' && window.remaining.trim()) return window.remaining;
+  if (Number.isFinite(remaining)) return t('monitoring.authCard.remaining', { value: remaining });
+  return '';
 }
 
 function quotaWindowsFromResult(result) {
   const windows = Array.isArray(result?.quotaWindows) ? result.quotaWindows : [];
-  return windows.map((window, index) => ({
-    id: window.id || `window-${index}`,
-    label: window.id || window.label || t('monitoring.authCard.quota'),
-    usedPercent: Number(window.usedPercent ?? result.usedPercent ?? 0),
-  })).filter(window => Number.isFinite(window.usedPercent));
+  return windows.map((window, index) => {
+    const usedPercent = Number(window.usedPercent ?? result.usedPercent ?? 0);
+    const remaining = Number(window.remaining);
+    return {
+      id: window.id || `window-${index}`,
+      label: window.label || window.id || t('monitoring.authCard.quota'),
+      usedPercent: Number.isFinite(usedPercent) ? usedPercent : 0,
+      remainingText: remainingTextFromWindow(window, remaining),
+      resetText: window.resetAt ? String(window.resetAt) : '',
+    };
+  }).filter(window => window.usedPercent > 0 || window.remainingText);
+}
+
+function applyQuotaResult(result) {
+  accountQuota.value = {
+    planType: result?.planType || '',
+    fileName: result?.fileName || '',
+    disabled: Boolean(result?.disabled),
+    windows: quotaWindowsFromResult(result || {}),
+    message: result?.actionReason || result?.error || '',
+  };
 }
 
 async function queryAccountQuota(row) {
   if (!row || !props.proxyCall) return;
   quotaLoading.value = true;
   try {
+    const probed = await props.proxyCall({
+      method: 'POST',
+      path: '/v0/management/account-quota-probe',
+      body: {
+        authIndex: row.auth_index || '',
+        provider: row.auth_provider_snapshot || '',
+        source: accountSource(row),
+      },
+    });
+    if (probed && !probed.error) {
+      applyQuotaResult(probed);
+      if (!accountQuota.value.planType && !accountQuota.value.windows.length && !accountQuota.value.message) {
+        accountQuota.value.message = t('monitoring.authCard.noQuota');
+      }
+      return;
+    }
     const runsResp = await props.proxyCall({ method: 'GET', path: '/v0/management/codex-inspection/runs', query: 'limit=8' });
-    const runs = runsResp?.items || runsResp || [];
+    const runs = runsResp?.items || [];
     const completed = (Array.isArray(runs) ? runs : []).find(run => run.status === 'completed');
     if (!completed?.id) {
-      accountQuota.value = { planType: '', fileName: '', disabled: false, windows: [], message: t('monitoring.authCard.noQuota') };
+      applyQuotaResult({ actionReason: probed?.error || t('monitoring.authCard.noQuota') });
       return;
     }
     const detail = await props.proxyCall({ method: 'GET', path: `/v0/management/codex-inspection/runs/${completed.id}` });
     const result = matchInspectionResult(detail?.results || [], row);
-    if (!result) {
-      accountQuota.value = { planType: '', fileName: '', disabled: false, windows: [], message: t('monitoring.authCard.noQuota') };
-      return;
-    }
-    accountQuota.value = {
-      planType: result.planType || '',
-      fileName: result.fileName || '',
-      disabled: Boolean(result.disabled),
-      windows: quotaWindowsFromResult(result),
-      message: result.actionReason || '',
-    };
+    applyQuotaResult(result || { actionReason: t('monitoring.authCard.noQuota') });
   } catch (error) {
-    accountQuota.value = { planType: '', fileName: '', disabled: false, windows: [], message: error.message || String(error) };
+    applyQuotaResult({ actionReason: error.message || String(error) });
   } finally {
     quotaLoading.value = false;
   }
