@@ -594,6 +594,7 @@ export default {
     eventColumns: {
       sourceApiKey: 'Source / API key',
       model: 'Model',
+      effort: 'Intensity / tier',
       intensity: 'Intensity',
       recentStatus: 'Recent status',
       requestStatus: 'Request status',
@@ -617,6 +618,8 @@ export default {
     },
     eventMeta: {
       intensity: 'Intensity {value}',
+      intensityLabel: 'Intensity',
+      tierLabel: 'Tier',
       mapped: 'Mapped {value}',
       calls: '{value} calls',
       tps: 'TPS {value}',
@@ -626,7 +629,8 @@ export default {
     },
     eventHints: {
       sourceHeader: 'Source / API key · Provider',
-      modelHeader: 'Requested model · mapped · intensity',
+      modelHeader: 'Requested model · mapped',
+      effortHeader: 'Intensity · tier',
       statusHeader: 'Request status · protocol · recent status',
       healthHeader: 'Success rate · total calls',
       speedHeader: 'TTFT / latency · TPS',

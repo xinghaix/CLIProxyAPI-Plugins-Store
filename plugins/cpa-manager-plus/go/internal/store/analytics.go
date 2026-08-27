@@ -126,6 +126,15 @@ func finiteNonNegative(values ...float64) bool {
 	return true
 }
 
+const maxEventWindow = 5_000
+
+func clampEventLimit(limit int) int {
+	if limit < 1 || limit > maxEventWindow {
+		return maxEventWindow
+	}
+	return limit
+}
+
 func (s *Store) Analytics(ctx context.Context, request AnalyticsRequest) (map[string]any, error) {
 	if request.ToMS <= 0 {
 		request.ToMS = time.Now().UnixMilli()
@@ -133,9 +142,7 @@ func (s *Store) Analytics(ctx context.Context, request AnalyticsRequest) (map[st
 	if request.FromMS < 0 || request.FromMS >= request.ToMS {
 		return nil, fmt.Errorf("invalid time range")
 	}
-	if request.Limit < 1 || request.Limit > 1_000 {
-		request.Limit = 300
-	}
+	request.Limit = clampEventLimit(request.Limit)
 	rows, err := s.events(ctx, request)
 	if err != nil {
 		return nil, err

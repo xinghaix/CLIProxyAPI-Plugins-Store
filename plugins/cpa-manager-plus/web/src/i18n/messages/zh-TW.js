@@ -471,6 +471,7 @@ export default {
     eventColumns: {
       sourceApiKey: '來源 / API KEY',
       model: '模型',
+      effort: '強度 / 等級',
       intensity: '強度',
       recentStatus: '最近狀態',
       requestStatus: '請求狀態',
@@ -494,6 +495,8 @@ export default {
     },
     eventMeta: {
       intensity: '強度 {value}',
+      intensityLabel: '強度',
+      tierLabel: '等級',
       mapped: '對應後 {value}',
       calls: '{value} 次',
       tps: 'TPS {value}',
@@ -503,7 +506,8 @@ export default {
     },
     eventHints: {
       sourceHeader: '來源 / API Key · Provider',
-      modelHeader: '請求模型 · 對應後 · 強度',
+      modelHeader: '請求模型 · 對應後',
+      effortHeader: '強度 · 等級',
       statusHeader: '請求狀態 · 協議 · 最近狀態',
       healthHeader: '成功率 · 總呼叫',
       speedHeader: '首字/耗時 · TPS',

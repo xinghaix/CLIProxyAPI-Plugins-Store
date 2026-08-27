@@ -7,6 +7,21 @@ import (
 	"time"
 )
 
+func TestClampEventLimitAllowsFiveThousandWindow(t *testing.T) {
+	if got := clampEventLimit(5_000); got != 5_000 {
+		t.Fatalf("max window = %d, want 5000", got)
+	}
+	if got := clampEventLimit(1); got != 1 {
+		t.Fatalf("min window = %d, want 1", got)
+	}
+	if got := clampEventLimit(0); got != 5_000 {
+		t.Fatalf("empty limit = %d, want 5000", got)
+	}
+	if got := clampEventLimit(5_001); got != 5_000 {
+		t.Fatalf("over max = %d, want 5000", got)
+	}
+}
+
 func TestAggregateAccountAPIKeyStatsBySource(t *testing.T) {
 	rows := []eventRow{
 		{ID: 1, TimestampMS: 100, Model: "model", Source: "oauth@example.com", AuthType: "oauth", AuthIndex: "account-a", APIKeyHash: "key-1", Provider: "openai", TotalTokens: 10},

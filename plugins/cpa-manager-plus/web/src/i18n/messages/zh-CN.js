@@ -471,6 +471,7 @@ export default {
     eventColumns: {
       sourceApiKey: '来源 / API KEY',
       model: '模型',
+      effort: '强度 / 等级',
       intensity: '强度',
       recentStatus: '最近状态',
       requestStatus: '请求状态',
@@ -494,6 +495,8 @@ export default {
     },
     eventMeta: {
       intensity: '强度 {value}',
+      intensityLabel: '强度',
+      tierLabel: '等级',
       mapped: '映射后 {value}',
       calls: '{value} 次',
       tps: 'TPS {value}',
@@ -503,7 +506,8 @@ export default {
     },
     eventHints: {
       sourceHeader: '来源 / API Key · Provider',
-      modelHeader: '请求模型 · 映射后 · 强度',
+      modelHeader: '请求模型 · 映射后',
+      effortHeader: '强度 · 等级',
       statusHeader: '请求状态 · 协议 · 最近状态',
       healthHeader: '成功率 · 总调用',
       speedHeader: '首字/耗时 · TPS',

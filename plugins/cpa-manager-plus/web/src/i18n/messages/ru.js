@@ -471,6 +471,7 @@ export default {
     eventColumns: {
       sourceApiKey: 'Источник / API KEY',
       model: 'Модель',
+      effort: 'Интенсивность / уровень',
       intensity: 'Интенсивность',
       recentStatus: 'Недавний статус',
       requestStatus: 'Статус запроса',
@@ -494,6 +495,8 @@ export default {
     },
     eventMeta: {
       intensity: 'Интенсивность {value}',
+      intensityLabel: 'Интенсивность',
+      tierLabel: 'Уровень',
       mapped: 'Сопоставлено {value}',
       calls: '{value} вызовов',
       tps: 'TPS {value}',
@@ -503,7 +506,8 @@ export default {
     },
     eventHints: {
       sourceHeader: 'Источник / API key · Provider',
-      modelHeader: 'Запрошенная модель · сопоставление · интенсивность',
+      modelHeader: 'Запрошенная модель · сопоставление',
+      effortHeader: 'Интенсивность · уровень',
       statusHeader: 'Статус запроса · протокол · недавний статус',
       healthHeader: 'Успешность · всего вызовов',
       speedHeader: 'TTFT / задержка · TPS',

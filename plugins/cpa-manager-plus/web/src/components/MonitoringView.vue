@@ -83,6 +83,7 @@
           <tr>
             <th :title="t('monitoring.eventHints.sourceHeader')">{{ t('monitoring.eventColumns.sourceApiKey') }}</th>
             <th :title="t('monitoring.eventHints.modelHeader')">{{ t('monitoring.eventColumns.model') }}</th>
+            <th :title="t('monitoring.eventHints.effortHeader')">{{ t('monitoring.eventColumns.effort') }}</th>
             <th :title="t('monitoring.eventHints.statusHeader')">{{ t('monitoring.eventColumns.requestStatus') }}</th>
             <th :title="t('monitoring.eventHints.healthHeader')">{{ t('monitoring.eventColumns.health') }}</th>
             <th :title="t('monitoring.eventHints.latencyHeader')">{{ t('monitoring.eventColumns.latency') }}</th>
@@ -111,35 +112,47 @@
             </td>
             <td class="event-model-cell" :title="row.hints.model">
               <div v-if="row.hasMapping" class="event-model-map" :aria-label="row.hints.model">
-                <span class="event-model-pill">{{ row.model }}</span>
-                <svg class="event-model-arrow" viewBox="0 0 32 18" aria-hidden="true">
-                  <path d="M24 2 v4 a6 6 0 0 1 -6 6 H8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  <path d="M11 9.5 L7 12 l4 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span class="event-model-pill is-target">{{ row.mappedModel }}</span>
+                <div class="event-model-row">
+                  <span class="event-model-pill">{{ row.model }}</span>
+                  <span class="event-model-stub"></span>
+                </div>
+                <div class="event-model-row">
+                  <span class="event-model-pill is-target">{{ row.mappedModel }}</span>
+                  <span class="event-model-stub is-arrow"></span>
+                </div>
+                <span class="event-model-cap" aria-hidden="true"></span>
               </div>
               <strong v-else>{{ row.model }}</strong>
-              <div v-if="row.modelMeta" class="muted small-text">{{ row.modelMeta }}</div>
+            </td>
+            <td class="event-effort-cell" :title="row.hints.model">
+              <div><span class="event-metric-label">{{ t('monitoring.eventMeta.intensityLabel') }}</span> {{ row.intensityDisplay }}</div>
+              <div><span class="event-metric-label">{{ t('monitoring.eventMeta.tierLabel') }}</span> {{ row.tierDisplay }}</div>
             </td>
             <td class="event-status-cell" :title="row.hints.status">
-              <div class="event-status-primary">
-                <span v-if="row.failed" class="status-badge bad failure-trigger" tabindex="0"
-                      @click.stop="toggleFailureTooltip($event, row)" @mouseenter="showFailureTooltip($event, row)"
-                      @mouseleave="hideFailureTooltip">
-                  <i></i>{{ t('monitoring.labels.failed') }}
-                </span>
-                <span v-else class="status-badge good"><i></i>{{ t('monitoring.labels.success') }}</span>
-                <span :class="['event-protocol-tag', `is-${row.protocol}`]">
-                  {{ row.protocolLabel }}
-                  <span v-if="row.httpStatus" class="event-protocol-code">{{ row.httpStatus }}</span>
-                </span>
-              </div>
-              <div class="event-status-recent muted small-text">
-                <span>{{ t('monitoring.eventMeta.recent') }}</span>
-                <div class="recent-status" :aria-label="row.hints.status">
-                  <span v-for="(success, idx) in row.recentPattern" :key="idx"
-                        :class="['pattern-bar', success ? 'good' : 'bad']"></span>
-                  <span v-if="!row.recentPattern.length">{{ EMPTY_VALUE }}</span>
+              <div class="event-status-grid">
+                <span
+                  v-if="row.failed"
+                  class="event-status-kicker bad-text failure-trigger"
+                  tabindex="0"
+                  @click.stop="toggleFailureTooltip($event, row)"
+                  @mouseenter="showFailureTooltip($event, row)"
+                  @mouseleave="hideFailureTooltip"
+                >{{ t('monitoring.labels.failed') }}</span>
+                <span v-else class="event-status-kicker good-text">{{ t('monitoring.labels.success') }}</span>
+                <div class="event-status-marks">
+                  <span :class="['pattern-bar', row.failed ? 'bad' : 'good']"></span>
+                  <span :class="['event-protocol-tag', `is-${row.protocol}`]">
+                    {{ row.protocolLabel }}
+                    <span v-if="row.httpStatus" class="event-protocol-code">{{ row.httpStatus }}</span>
+                  </span>
+                </div>
+                <span class="event-status-kicker muted">{{ t('monitoring.eventMeta.recent') }}</span>
+                <div class="event-status-marks">
+                  <div class="recent-status" :aria-label="row.hints.status">
+                    <span v-for="(success, idx) in row.recentPattern" :key="idx"
+                          :class="['pattern-bar', success ? 'good' : 'bad']"></span>
+                    <span v-if="!row.recentPattern.length">{{ EMPTY_VALUE }}</span>
+                  </div>
                 </div>
               </div>
             </td>
@@ -475,7 +488,7 @@ function buildAnalyticsRequest() {
       anomaly_points: true,
       task_buckets: true,
       recent_failures: 30,
-      events_page: {limit: 300},
+      events_page: {limit: 5000},
       granularity: shouldUseHour(fromMs, toMs) ? 'hour' : 'day',
     },
   };
@@ -743,7 +756,9 @@ function buildEventTableRow(row, groupMap) {
     resolvedModel: mappedModelName(row),
     hasMapping: hasModelMapping(row),
     intensity: row.reasoning_effort || row.service_tier || '-',
+    intensityDisplay: String(row.reasoning_effort || '').trim() || EMPTY_VALUE,
     tier: row.service_tier || (row.reasoning_effort && row.reasoning_effort !== '-' ? 'priority' : 'default'),
+    tierDisplay: String(row.service_tier || '').trim() || EMPTY_VALUE,
     recentPattern: (sliding?.recentPattern || []).slice(-5),
     failed: Boolean(row.failed),
     protocol: requestProtocol(row),
