@@ -351,7 +351,7 @@ func fetchOpenRouter(ctx context.Context, fetch Fetcher) ([]remotePrice, SourceR
 }
 
 func publicHeaders() http.Header {
-	return http.Header{"Accept": []string{"application/json"}, "User-Agent": []string{"cpa-manager-plus/0.5.18"}}
+	return http.Header{"Accept": []string{"application/json"}, "User-Agent": []string{"cpa-manager-plus/0.5.19"}}
 }
 
 func litePrice(fields map[string]json.RawMessage) (store.Price, priceFields, bool) {
