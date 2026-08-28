@@ -263,7 +263,7 @@
     <div v-if="activeDataTab === 'accounts' && selectedAccount" style="margin-top:16px">
       <article v-if="isOAuthAuthType(selectedAccount.auth_type)" class="auth-card">
         <div class="auth-card-head">
-          <div class="auth-card-logo">{{ accountProviderChip(selectedAccount).tag.slice(0, 1) || '•' }}</div>
+          <div :class="['auth-card-logo', accountProviderChip(selectedAccount).chip || 'is-oauth']">{{ accountProviderChip(selectedAccount).tag.slice(0, 1) || '•' }}</div>
           <div class="auth-card-title">
             <div class="auth-card-badges">
               <span v-if="accountProviderChip(selectedAccount).tag" :class="['provider-chip', accountProviderChip(selectedAccount).chip]">{{ accountProviderChip(selectedAccount).tag }}</span>
@@ -287,8 +287,8 @@
               <span class="bad-text">{{ t('monitoring.authCard.failureCount', { count: fmtInt(selectedAccount.failure_calls) }) }}</span>
             </span>
           </div>
-          <div class="spark">
-            <i v-for="(ok, idx) in accountRecentPattern(selectedAccount)" :key="idx" :class="ok ? 'ok' : 'bad'"></i>
+          <div class="spark" :aria-label="t('monitoring.authCard.health')">
+            <i v-for="(ok, idx) in accountHealthBlocks(selectedAccount)" :key="idx" :class="ok == null ? 'idle' : ok ? 'ok' : 'bad'"></i>
             <span :class="['spark-rate', successRateClass(selectedAccount.success_rate)]">{{ fmtPct(selectedAccount.success_rate) }}</span>
           </div>
         </div>
@@ -296,12 +296,12 @@
           {{ fmtCompact(selectedAccount.total_tokens) }} tok · {{ fmtMoney(selectedAccount.cost) }} · {{ fmtDuration(selectedAccount.average_latency_ms) }} · {{ formatDateTime(selectedAccount.last_seen_ms) }}
         </div>
         <div class="auth-file-meta">
-          <span v-if="accountQuota.authMetadata?.authIndex"><b>{{ t('monitoring.authCard.authIndex') }}</b> {{ accountQuota.authMetadata.authIndex }}</span>
-          <span v-if="accountQuota.authMetadata?.projectId"><b>{{ t('monitoring.authCard.projectId') }}</b> {{ accountQuota.authMetadata.projectId }}</span>
-          <span v-if="accountQuota.authMetadata?.size"><b>{{ t('monitoring.authCard.fileSize') }}</b> {{ formatBytes(accountQuota.authMetadata.size) }}</span>
-          <span v-if="accountQuota.authMetadata?.modTime"><b>{{ t('monitoring.authCard.modified') }}</b> {{ formatMetadataDate(accountQuota.authMetadata.modTime) }}</span>
-          <span v-if="accountQuota.authMetadata?.priority != null"><b>{{ t('monitoring.authCard.priority') }}</b> {{ accountQuota.authMetadata.priority }}</span>
-          <span v-if="accountQuota.authMetadata?.weight != null"><b>{{ t('monitoring.authCard.weight') }}</b> {{ accountQuota.authMetadata.weight }}</span>
+          <span v-if="accountQuota.authMetadata?.authIndex" class="auth-file-meta-item"><b>{{ t('monitoring.authCard.authIndex') }}</b> {{ accountQuota.authMetadata.authIndex }}</span>
+          <span v-if="accountQuota.authMetadata?.projectId" class="auth-file-meta-item"><b>{{ t('monitoring.authCard.projectId') }}</b> {{ accountQuota.authMetadata.projectId }}</span>
+          <span v-if="accountQuota.authMetadata?.size" class="auth-file-meta-item"><b>{{ t('monitoring.authCard.fileSize') }}</b> {{ formatBytes(accountQuota.authMetadata.size) }}</span>
+          <span v-if="accountQuota.authMetadata?.modTime" class="auth-file-meta-item"><b>{{ t('monitoring.authCard.modified') }}</b> {{ formatMetadataDate(accountQuota.authMetadata.modTime) }}</span>
+          <span v-if="accountQuota.authMetadata?.priority != null" class="auth-file-meta-item is-priority"><b>{{ t('monitoring.authCard.priority') }}</b> {{ accountQuota.authMetadata.priority }}</span>
+          <span v-if="accountQuota.authMetadata?.weight != null" class="auth-file-meta-item is-weight"><b>{{ t('monitoring.authCard.weight') }}</b> {{ accountQuota.authMetadata.weight }}</span>
         </div>
         <div v-if="accountQuota.authMetadata?.note" class="auth-note">
           <span>{{ t('monitoring.authCard.note') }}</span>{{ accountQuota.authMetadata.note }}
@@ -733,9 +733,15 @@ function accountProviderChip(row) {
 function accountRecentPattern(row) {
   return eventRows.value
     .filter(event => sameAccountIdentity(event, row))
-    .slice(0, 15)
+    .slice(0, 20)
     .map(event => !event.failed)
     .reverse();
+}
+
+function accountHealthBlocks(row) {
+  const pattern = accountRecentPattern(row);
+  const idleCount = Math.max(0, 20 - pattern.length);
+  return Array.from({length: 20}, (_, index) => index < idleCount ? null : pattern[index - idleCount]);
 }
 
 function sameAccountIdentity(event, row) {
