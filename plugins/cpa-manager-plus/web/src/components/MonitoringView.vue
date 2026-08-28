@@ -372,6 +372,7 @@ const props = defineProps({
   proxyCall: {type: Function, required: true},
 });
 const emit = defineEmits(['open-inspection']);
+const API_KEY_AUTO_COLLAPSE_MS = 5000;
 
 const {t} = useI18n();
 
@@ -394,6 +395,8 @@ const accountQuota = ref({ planType: '', fileName: '', disabled: false, windows:
 const selectedModelId = ref('');
 const expandedEventKeys = ref(new Set());
 const expandedAccountSources = ref(new Set());
+const eventKeyCollapseTimers = new Map();
+const accountSourceCollapseTimers = new Map();
 const filters = ref(defaultFilters());
 const failureTooltip = ref({visible: false, row: null, style: {}});
 let failureHideTimer = null;
@@ -489,7 +492,10 @@ watch(() => props.ready, (ready) => {
 onMounted(() => {
   if (props.ready) refresh(true);
 });
-onBeforeUnmount(() => clearTimer());
+onBeforeUnmount(() => {
+  clearTimer();
+  clearKeyCollapseTimers();
+});
 
 async function refresh(force = false) {
   if (!props.ready) return;
@@ -592,8 +598,10 @@ function toggleEventKey(row, field) {
   const next = new Set(expandedEventKeys.value);
   if (next.has(key)) {
     next.delete(key);
+    clearKeyCollapseTimer(eventKeyCollapseTimers, key);
   } else {
     next.add(key);
+    scheduleKeyCollapse(expandedEventKeys, eventKeyCollapseTimers, key);
   }
   expandedEventKeys.value = next;
 }
@@ -622,9 +630,35 @@ function isAccountSourceExpanded(row) {
 function toggleAccountSource(row) {
   const key = accountSourceKey(row);
   const next = new Set(expandedAccountSources.value);
-  if (next.has(key)) next.delete(key);
-  else next.add(key);
+  if (next.has(key)) {
+    next.delete(key);
+    clearKeyCollapseTimer(accountSourceCollapseTimers, key);
+  } else {
+    next.add(key);
+    scheduleKeyCollapse(expandedAccountSources, accountSourceCollapseTimers, key);
+  }
   expandedAccountSources.value = next;
+}
+
+function clearKeyCollapseTimer(timers, key) {
+  const timer = timers.get(key);
+  if (timer) window.clearTimeout(timer);
+  timers.delete(key);
+}
+
+function scheduleKeyCollapse(expandedKeys, timers, key) {
+  clearKeyCollapseTimer(timers, key);
+  timers.set(key, window.setTimeout(() => {
+    const next = new Set(expandedKeys.value);
+    next.delete(key);
+    expandedKeys.value = next;
+    timers.delete(key);
+  }, API_KEY_AUTO_COLLAPSE_MS));
+}
+
+function clearKeyCollapseTimers() {
+  for (const [key] of eventKeyCollapseTimers) clearKeyCollapseTimer(eventKeyCollapseTimers, key);
+  for (const [key] of accountSourceCollapseTimers) clearKeyCollapseTimer(accountSourceCollapseTimers, key);
 }
 
 function selectAccountAPIKey(row) {
@@ -1177,26 +1211,35 @@ const SimpleTable = defineComponent({
     };
   }
 });
+function renderProviderValue(chip) {
+  if (!chip?.tag) return h('strong', {class: 'config-meta-value'}, EMPTY_VALUE);
+  const children = [h('span', {class: ['provider-chip', chip.chip]}, chip.tag)];
+  if (chip.showName) children.push(h('span', {class: 'provider-chip-name'}, chip.name));
+  return h('span', {class: 'provider-cell detail-provider-cell'}, children);
+}
+
 const DetailGrid = defineComponent({
   props: {items: {type: Array, default: () => []}},
   setup(props) {
     const {t: ti18n} = useI18n();
     return () => h('div', {class: 'config-meta-grid'}, props.items.map((item, idx) => {
-      const value = item.sensitive
-        ? h('strong', {class: 'sensitive-value sensitive-value-block'}, [
-            h('code', {class: 'sensitive-value-content'}, item.value),
-            h('button', {
-              type: 'button',
-              class: 'sensitive-value-toggle',
-              'aria-expanded': item.expanded,
-              'aria-label': item.expanded ? ti18n('monitoring.labels.collapseApiKey') : ti18n('monitoring.labels.expandApiKey'),
-              onClick: event => {
-                event.stopPropagation();
-                item.onToggle?.();
-              },
-            }, item.expanded ? ti18n('monitoring.labels.collapse') : ti18n('monitoring.labels.expand')),
-          ])
-        : h('strong', {class: 'config-meta-value'}, item.value);
+      const value = item.providerChip
+        ? renderProviderValue(item.providerChip)
+        : item.sensitive
+          ? h('strong', {class: 'sensitive-value sensitive-value-block'}, [
+              h('code', {class: 'sensitive-value-content'}, item.value),
+              h('button', {
+                type: 'button',
+                class: 'sensitive-value-toggle',
+                'aria-expanded': item.expanded,
+                'aria-label': item.expanded ? ti18n('monitoring.labels.collapseApiKey') : ti18n('monitoring.labels.expandApiKey'),
+                onClick: event => {
+                  event.stopPropagation();
+                  item.onToggle?.();
+                },
+              }, item.expanded ? ti18n('monitoring.labels.collapse') : ti18n('monitoring.labels.expand')),
+            ])
+          : h('strong', {class: 'config-meta-value'}, item.value);
       return h('div', {key: idx, class: item.wide ? 'config-field-wide' : ''}, [h('span', item.label), value]);
     }));
   }
@@ -1217,7 +1260,7 @@ function buildAccountDetail(row) {
       expanded,
       onToggle: sensitive ? () => toggleAccountSource(row) : null,
     },
-    {label: t('monitoring.accountColumns.provider'), value: row.auth_provider_snapshot || EMPTY_VALUE, wide: true},
+    {label: t('monitoring.accountColumns.provider'), value: row.auth_provider_snapshot || EMPTY_VALUE, providerChip: accountProviderChip(row), wide: true},
     {label: t('monitoring.labels.requests'), value: fmtInt(row.calls)},
     {label: t('monitoring.labels.successRate'), value: fmtPct(row.success_rate)},
     {label: t('monitoring.labels.token'), value: fmtCompact(row.total_tokens)},

@@ -871,61 +871,64 @@ pre {
   font-weight: 500;
 }
 .provider-chip {
+  --provider-border: var(--cpa-rule);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 20px;
-  padding: 0 8px;
+  gap: 4px;
+  padding: 1px 8px;
   border-radius: 999px;
-  border: 1px solid var(--cpa-rule);
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--provider-border);
+  font-family: var(--cpa-font-mono);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  white-space: nowrap;
   box-sizing: border-box;
   flex: 0 0 auto;
 }
 .provider-chip.is-xai {
+  --provider-border: #d18b86;
   color: #4a1715;
   background: #f5c8c4;
-  border-color: #d18b86;
 }
 .provider-chip.is-codex {
+  --provider-border: #7eae86;
   color: #163222;
   background: #cde8d1;
-  border-color: #7eae86;
 }
 .provider-chip.is-api {
+  --provider-border: #7aa4d4;
   color: #1e3a5f;
   background: #c5daf0;
-  border-color: #7aa4d4;
-  letter-spacing: 0.02em;
 }
 .provider-chip.is-kimi {
+  --provider-border: #27272a;
   color: #f4f4f5;
   background: #18181b;
-  border-color: #27272a;
 }
 .provider-chip.is-gemini,
 .provider-chip.is-interactions {
+  --provider-border: #c4b5fd;
   color: #3b0764;
   background: #ead7ff;
-  border-color: #c4b5fd;
 }
 .provider-chip.is-claude {
+  --provider-border: #fdba74;
   color: #7c2d12;
   background: #ffedd5;
-  border-color: #fdba74;
 }
 .provider-chip.is-antigravity {
+  --provider-border: #fb923c;
   color: #9a3412;
   background: #ffedd5;
-  border-color: #fb923c;
 }
 .provider-chip.is-vertex {
+  --provider-border: #93c5fd;
   color: #1e3a8a;
   background: #dbeafe;
-  border-color: #93c5fd;
 }
 .provider-chip.is-oauth {
   color: var(--cpa-text-primary);
@@ -939,6 +942,26 @@ pre {
   min-width: 0;
 }
 .account-api-key-table .provider-cell { margin-top: 0; }
+.config-meta-grid .detail-provider-cell {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.config-meta-grid .detail-provider-cell .provider-chip {
+  font-family: var(--cpa-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  text-transform: none;
+}
+.config-meta-grid .detail-provider-cell .provider-chip-name {
+  font-family: var(--cpa-font-ui);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: normal;
+  text-transform: none;
+}
 .provider-chip-name {
   font-size: 12px;
   color: var(--cpa-text-secondary);
