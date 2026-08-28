@@ -361,8 +361,8 @@
           <p>{{ accountQuota.message || t('monitoring.authCard.noQuota') }}</p>
         </div>
         <div class="auth-actions">
-          <button class="btn primary" type="button" :disabled="quotaLoading" @click="queryAccountQuota(selectedAccount)">
-            {{ quotaLoading ? t('monitoring.authCard.querying') : t('monitoring.authCard.queryQuota') }}
+          <button class="btn primary" type="button" :disabled="quotaQueryDisabled" @click="queryAccountQuota(selectedAccount, {force: true})">
+            {{ quotaQueryLabel }}
           </button>
           <button class="btn" type="button" @click="filterAccountAPIKey(selectedAccount)">{{ t('monitoring.authCard.filterEvents') }}</button>
           <button class="btn" type="button" @click="emit('open-inspection')">{{ t('monitoring.authCard.openInspection') }}</button>
@@ -427,6 +427,14 @@ import {
   formatQuotaStatusMessage,
   normalizeQuotaWindows,
 } from '../utils/quotaDisplay.js';
+import {
+  QUOTA_ERROR_COOLDOWN_MS,
+  QUOTA_PROBE_COOLDOWN_MS,
+  getOrCreateQuotaRequest,
+  getQuotaCacheEntry,
+  quotaCacheKey,
+  setQuotaCacheEntry,
+} from '../utils/quotaCache.js';
 
 const props = defineProps({
   ready: {type: Boolean, default: false},
@@ -451,8 +459,10 @@ const selectedEvent = ref(null);
 const eventPage = ref(1);
 const eventPageSize = ref(50);
 const selectedAccountId = ref('');
+const selectedQuotaKey = ref('');
 const quotaLoading = ref(false);
 const accountQuota = ref(emptyAccountQuota());
+const quotaNextRequestAt = ref(0);
 const selectedModelId = ref('');
 const expandedEventKeys = ref(new Set());
 const expandedAccountSources = ref(new Set());
@@ -471,6 +481,15 @@ const dataTabs = computed(() => [
   {key: 'models', label: t('monitoring.tabs.models'), count: modelRows.value.length, note: t('monitoring.cards.modelsSubtitle')},
 ]);
 const activeMonitorNote = computed(() => dataTabs.value.find((tab) => tab.key === activeDataTab.value)?.note || '');
+const quotaCooldownRemainingMs = computed(() => Math.max(0, quotaNextRequestAt.value - quotaNowMs.value));
+const quotaQueryDisabled = computed(() => quotaLoading.value || quotaCooldownRemainingMs.value > 0);
+const quotaQueryLabel = computed(() => {
+  if (quotaLoading.value) return t('monitoring.authCard.querying');
+  if (quotaCooldownRemainingMs.value > 0) {
+    return `${t('monitoring.authCard.queryQuota')} (${formatQuotaCooldown(quotaCooldownRemainingMs.value)})`;
+  }
+  return t('monitoring.authCard.queryQuota');
+});
 
 const summary = computed(() => data.value?.summary || {});
 const eventRows = computed(() => (data.value?.events?.items || []).map((row, idx) => ({...row, __id: idx})));
@@ -730,11 +749,20 @@ function clearKeyCollapseTimers() {
 }
 
 function selectAccountAPIKey(row) {
-  selectedAccountId.value = row.id || '';
+  selectedAccountId.value = row?.id || '';
+  selectedQuotaKey.value = row ? quotaCacheKey(row) : '';
+  quotaLoading.value = false;
+  quotaNextRequestAt.value = 0;
   accountQuota.value = emptyAccountQuota();
-  if (row && isOAuthAuthType(row.auth_type)) {
-    queryAccountQuota(row);
+  if (!row || !isOAuthAuthType(row.auth_type)) return;
+
+  const key = selectedQuotaKey.value;
+  const cached = getQuotaCacheEntry(key);
+  if (cached) {
+    applyCachedQuotaResult(key, cached);
+    return;
   }
+  queryAccountQuota(row);
 }
 
 function accountProviderChip(row) {
@@ -931,6 +959,10 @@ function formatQuotaResetRelative(value) {
   return formatQuotaResetRelativeValue(value, quotaNowMs.value, locale.value);
 }
 
+function formatQuotaCooldown(value) {
+  return formatQuotaResetRelativeValue(quotaNowMs.value + value, quotaNowMs.value, locale.value);
+}
+
 function formatPlanType(value) {
   const plan = String(value || '').trim();
   const labels = {
@@ -958,6 +990,23 @@ function quotaTone(remainingPercent) {
 
 function quotaWindowLabel(window) {
   return window?.label || window?.kind || t('monitoring.authCard.quota');
+}
+
+function isSelectedQuotaKey(key) {
+  return Boolean(key && selectedQuotaKey.value === key);
+}
+
+function applyQuotaResultForDisplay(result) {
+  applyQuotaResult(result || {});
+  if (!hasQuotaSummary.value && !accountQuota.value.message) {
+    accountQuota.value.message = t('monitoring.authCard.noQuota');
+  }
+}
+
+function applyCachedQuotaResult(key, entry) {
+  if (!isSelectedQuotaKey(key)) return;
+  quotaNextRequestAt.value = Number(entry?.nextRequestAt) || 0;
+  applyQuotaResultForDisplay(entry?.result || {});
 }
 
 function applyQuotaResult(result) {
@@ -1003,9 +1052,7 @@ async function loadLatestInspectionResult(row) {
   return matchInspectionResult(detail?.results || [], row);
 }
 
-async function queryAccountQuota(row) {
-  if (!row || !props.proxyCall) return;
-  quotaLoading.value = true;
+async function fetchQuotaResult(row) {
   let probed = null;
   try {
     probed = await props.proxyCall({
@@ -1022,29 +1069,64 @@ async function queryAccountQuota(row) {
     });
 
     if (probed && !probed.error && quotaResultHasData(probed)) {
-      applyQuotaResult(probed);
-      return;
+      return {result: probed, cooldownMs: QUOTA_PROBE_COOLDOWN_MS};
     }
 
     const stored = await loadLatestInspectionResult(row);
     if (stored && quotaResultHasData(stored)) {
-      applyQuotaResult(stored);
-      return;
+      return {result: stored, cooldownMs: QUOTA_PROBE_COOLDOWN_MS};
     }
 
     if (probed && !probed.error) {
-      applyQuotaResult(probed);
-      if (!hasQuotaSummary.value && !accountQuota.value.message) {
-        accountQuota.value.message = t('monitoring.authCard.noQuota');
-      }
-      return;
+      return {result: probed, cooldownMs: QUOTA_PROBE_COOLDOWN_MS};
     }
 
-    applyQuotaResult(stored || { actionReason: probed?.error || t('monitoring.authCard.noQuota') });
+    return {
+      result: stored || {actionReason: probed?.error || t('monitoring.authCard.noQuota')},
+      cooldownMs: QUOTA_PROBE_COOLDOWN_MS,
+    };
   } catch (error) {
-    applyQuotaResult({ actionReason: error.message || String(error) });
+    return {
+      result: {actionReason: error.message || String(error)},
+      cooldownMs: QUOTA_ERROR_COOLDOWN_MS,
+    };
+  }
+}
+
+async function queryAccountQuota(row, {force = false} = {}) {
+  if (!row || !props.proxyCall) return;
+  const key = quotaCacheKey(row);
+  const cached = getQuotaCacheEntry(key);
+  if (!force && cached) {
+    applyCachedQuotaResult(key, cached);
+    return cached.result;
+  }
+
+  const now = Date.now();
+  if (cached && Number(cached.nextRequestAt) > now) {
+    applyCachedQuotaResult(key, cached);
+    return cached.result;
+  }
+
+  if (isSelectedQuotaKey(key)) quotaLoading.value = true;
+  try {
+    const response = await getOrCreateQuotaRequest(key, () => fetchQuotaResult(row));
+    const entry = setQuotaCacheEntry(key, response.result, response.cooldownMs);
+    if (isSelectedQuotaKey(key)) {
+      quotaNextRequestAt.value = entry.nextRequestAt;
+      applyQuotaResultForDisplay(response.result);
+    }
+    return response.result;
+  } catch (error) {
+    const result = {actionReason: error.message || String(error)};
+    const entry = setQuotaCacheEntry(key, result, QUOTA_ERROR_COOLDOWN_MS);
+    if (isSelectedQuotaKey(key)) {
+      quotaNextRequestAt.value = entry.nextRequestAt;
+      applyQuotaResultForDisplay(result);
+    }
+    return result;
   } finally {
-    quotaLoading.value = false;
+    if (isSelectedQuotaKey(key)) quotaLoading.value = false;
   }
 }
 
