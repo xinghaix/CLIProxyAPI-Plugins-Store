@@ -24,7 +24,7 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/store"
 )
 
-const runtimeVersion = "0.5.16"
+const runtimeVersion = "0.5.17"
 
 type connection struct {
 	BaseURL       string `json:"cpaBaseUrl"`
