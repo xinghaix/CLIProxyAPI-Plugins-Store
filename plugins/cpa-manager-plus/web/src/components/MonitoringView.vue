@@ -333,7 +333,7 @@
               <div v-for="bucket in group.buckets" :key="bucket.id" class="quota-row quota-row-group">
                 <div class="quota-row-header">
                   <span>{{ bucket.label }}</span>
-                  <div class="quota-meta"><b>{{ Math.round(bucket.remainingPercent) }}%</b><span v-if="bucket.resetAt">{{ formatQuotaReset(bucket.resetAt) }}</span></div>
+                  <div class="quota-meta"><b>{{ Math.round(bucket.remainingPercent) }}%</b><span v-if="bucket.resetAt" class="quota-reset">{{ formatQuotaReset(bucket.resetAt) }}<span v-if="formatQuotaResetRelative(bucket.resetAt)" class="quota-reset-relative"> · {{ formatQuotaResetRelative(bucket.resetAt) }}</span></span></div>
                 </div>
                 <div class="quota-bar" :class="quotaTone(bucket.remainingPercent)"><span :style="{ width: `${bucket.remainingPercent}%` }"></span></div>
               </div>
@@ -347,7 +347,7 @@
                   <b v-if="window.hasRemainingPercent">{{ Math.round(window.remainingPercent) }}%</b>
                   <span v-if="window.usedLabel" class="muted">{{ window.usedLabel }}</span>
                   <span v-if="window.amountLabel" class="quota-amount">{{ window.amountLabel }}</span>
-                  <span v-if="window.resetText">{{ formatQuotaReset(window.resetText) }}</span>
+                  <span v-if="window.resetText" class="quota-reset">{{ formatQuotaReset(window.resetText) }}<span v-if="formatQuotaResetRelative(window.resetText)" class="quota-reset-relative"> · {{ formatQuotaResetRelative(window.resetText) }}</span></span>
                 </div>
               </div>
               <div v-if="window.hasRemainingPercent" class="quota-bar" :class="quotaTone(window.remainingPercent)"><span :style="{ width: `${window.remainingPercent}%` }"></span></div>
@@ -422,7 +422,11 @@ import { requestProtocol, requestProtocolLabel } from '../utils/requestProtocol.
 import { buildUsageIOC } from '../utils/usageBreakdown.js';
 import { canApplySelectedFilter, rowIdentity } from '../utils/rowFilter.js';
 import { buildEventHints, buildModelMeta, formatCacheSub, formatCallsSub, formatTpsSub, hasModelMapping, mappedModelName, requestedModelName } from '../utils/eventStreamDisplay.js';
-import { normalizeQuotaWindows } from '../utils/quotaDisplay.js';
+import {
+  formatQuotaResetRelative as formatQuotaResetRelativeValue,
+  formatQuotaStatusMessage,
+  normalizeQuotaWindows,
+} from '../utils/quotaDisplay.js';
 
 const props = defineProps({
   ready: {type: Boolean, default: false},
@@ -431,7 +435,7 @@ const props = defineProps({
 const emit = defineEmits(['open-inspection']);
 const API_KEY_AUTO_COLLAPSE_MS = 5000;
 
-const {t} = useI18n();
+const {t, locale} = useI18n();
 
 const data = ref(null);
 const modelPrices = ref({});
@@ -456,8 +460,10 @@ const eventKeyCollapseTimers = new Map();
 const accountSourceCollapseTimers = new Map();
 const filters = ref(defaultFilters());
 const failureTooltip = ref({visible: false, row: null, style: {}});
+const quotaNowMs = ref(Date.now());
 let failureHideTimer = null;
 let timer = null;
+let quotaClockTimer = null;
 
 const dataTabs = computed(() => [
   {key: 'events', label: t('monitoring.tabs.events'), count: eventRows.value.length, note: ''},
@@ -547,11 +553,16 @@ watch(() => props.ready, (ready) => {
   if (ready && !data.value) refresh(true);
 });
 onMounted(() => {
+  quotaClockTimer = window.setInterval(() => {
+    quotaNowMs.value = Date.now();
+  }, 30000);
   if (props.ready) refresh(true);
 });
 onBeforeUnmount(() => {
   clearTimer();
   clearKeyCollapseTimers();
+  if (quotaClockTimer) window.clearInterval(quotaClockTimer);
+  quotaClockTimer = null;
 });
 
 async function refresh(force = false) {
@@ -916,6 +927,10 @@ function formatQuotaReset(value) {
   return formatted === EMPTY_VALUE ? String(value) : formatted;
 }
 
+function formatQuotaResetRelative(value) {
+  return formatQuotaResetRelativeValue(value, quotaNowMs.value, locale.value);
+}
+
 function formatPlanType(value) {
   const plan = String(value || '').trim();
   const labels = {
@@ -947,7 +962,7 @@ function quotaWindowLabel(window) {
 
 function applyQuotaResult(result) {
   const quota = result?.quotaMetadata || {};
-  const authMetadata = result?.authMetadata || {
+  const rawAuthMetadata = result?.authMetadata || {
     id: result?.authId || selectedAccount.value?.auth_id || '',
     authIndex: result?.authIndex || selectedAccount.value?.auth_index || '',
     name: result?.fileName || '',
@@ -955,6 +970,10 @@ function applyQuotaResult(result) {
     provider: result?.provider || selectedAccount.value?.auth_provider_snapshot || '',
     authType: result?.authType || selectedAccount.value?.auth_type || '',
     disabled: Boolean(result?.disabled),
+  };
+  const authMetadata = {
+    ...rawAuthMetadata,
+    statusMessage: formatQuotaStatusMessage(rawAuthMetadata?.statusMessage),
   };
   accountQuota.value = {
     ...emptyAccountQuota(),
@@ -971,7 +990,7 @@ function applyQuotaResult(result) {
     groups: quotaGroupsFromResult(result || {}),
     windows: quotaWindowsFromResult(result || {}),
     quotaMode: quota.mode || '',
-    message: quota.quotaError || result?.actionReason || result?.error || '',
+    message: formatQuotaStatusMessage(quota.quotaError || result?.errorDetail || result?.actionReason || result?.error || ''),
   };
 }
 

@@ -1268,6 +1268,8 @@ pre {
 .quota-meta { display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 8px; flex-wrap: wrap; color: var(--cpa-text-secondary); text-align: right; font-family: var(--cpa-font-mono); font-variant-numeric: tabular-nums; }
 .quota-meta b { color: var(--cpa-text-primary); font-size: 13px; font-weight: 700; }
 .quota-meta span { color: var(--cpa-text-tertiary); font-size: 11px; }
+.quota-reset { white-space: nowrap; }
+.quota-reset-relative { color: var(--cpa-text-secondary) !important; }
 .quota-amount { color: var(--cpa-text-secondary) !important; }
 .quota-bar { height: 7px; border-radius: 999px; background: color-mix(in srgb, var(--cpa-text-tertiary) 14%, transparent); overflow: hidden; }
 .quota-bar > span { border-radius: inherit; }
