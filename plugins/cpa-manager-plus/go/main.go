@@ -192,6 +192,7 @@ func configure(raw []byte) error {
 			return err
 		}
 		runtime.SetAuthList(listHostAuth)
+		runtime.SetAuthGet(getHostAuth)
 		runtime.SetHTTPDo(hostHTTPDo)
 		runtimeState.runtime = runtime
 		return nil
@@ -303,6 +304,18 @@ func listHostAuth() ([]pluginapi.HostAuthFileEntry, error) {
 		return nil, err
 	}
 	return decodeHostAuthList(raw)
+}
+
+func getHostAuth(authIndex string) (pluginapi.HostAuthGetResponse, error) {
+	raw, err := callHost(pluginabi.MethodHostAuthGet, pluginapi.HostAuthGetRequest{AuthIndex: strings.TrimSpace(authIndex)})
+	if err != nil {
+		return pluginapi.HostAuthGetResponse{}, err
+	}
+	var response pluginapi.HostAuthGetResponse
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return pluginapi.HostAuthGetResponse{}, fmt.Errorf("decode host.auth.get response: %w", err)
+	}
+	return response, nil
 }
 
 func decodeHostAuthList(raw json.RawMessage) ([]pluginapi.HostAuthFileEntry, error) {

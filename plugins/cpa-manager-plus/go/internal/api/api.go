@@ -222,14 +222,17 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 		return jsonResponse(http.StatusOK, map[string]any{"ok": true})
 	case method == http.MethodPost && path == "/v0/management/account-quota-probe":
 		var payload struct {
+			AuthID    string `json:"authId"`
 			AuthIndex string `json:"authIndex"`
+			AuthType  string `json:"authType"`
 			Provider  string `json:"provider"`
 			Source    string `json:"source"`
+			FileName  string `json:"fileName"`
 		}
 		if err := json.Unmarshal(rawBody(request.Body), &payload); err != nil {
 			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid quota probe"})
 		}
-		result, err := runtime.ProbeAccountQuota(ctx, payload.AuthIndex, payload.Provider, payload.Source)
+		result, err := runtime.ProbeAccountQuotaWithIdentity(ctx, payload.AuthIndex, payload.Provider, payload.Source, payload.AuthID, payload.AuthType, payload.FileName)
 		if err != nil {
 			return jsonResponse(http.StatusConflict, map[string]any{"error": err.Error()})
 		}

@@ -265,20 +265,25 @@
         <div class="auth-card-head">
           <div class="auth-card-logo">{{ accountProviderChip(selectedAccount).tag.slice(0, 1) || '•' }}</div>
           <div class="auth-card-title">
-            <span v-if="accountProviderChip(selectedAccount).tag" :class="['provider-chip', accountProviderChip(selectedAccount).chip]">{{ accountProviderChip(selectedAccount).tag }}</span>
-            <h3>{{ accountSource(selectedAccount) }}</h3>
-            <div class="auth-card-file">{{ accountQuota.fileName || EMPTY_VALUE }}</div>
+            <div class="auth-card-badges">
+              <span v-if="accountProviderChip(selectedAccount).tag" :class="['provider-chip', accountProviderChip(selectedAccount).chip]">{{ accountProviderChip(selectedAccount).tag }}</span>
+              <span class="auth-type-badge">{{ formatAuthType(accountQuota.authMetadata?.authType || selectedAccount.auth_type) }}</span>
+            </div>
+            <h3>{{ accountQuota.authMetadata?.email || accountSource(selectedAccount) }}</h3>
+            <div class="auth-card-file">{{ accountQuota.fileName || accountQuota.authMetadata?.name || EMPTY_VALUE }}</div>
           </div>
           <span :class="['status-chip', accountQuota.disabled ? 'off' : '']">
             <i></i>{{ accountQuota.disabled ? t('monitoring.authCard.disabled') : t('monitoring.authCard.enabled') }}
           </span>
+        </div>
+        <div v-if="accountQuota.authMetadata?.statusMessage" class="auth-status-message">
+          {{ accountQuota.authMetadata.statusMessage }}
         </div>
         <div class="auth-health">
           <div class="auth-health-row">
             <span>{{ t('monitoring.authCard.health') }}</span>
             <span class="health-counts">
               <span class="good-text">{{ t('monitoring.authCard.successCount', { count: fmtInt(selectedAccount.success_calls) }) }}</span>
-              &nbsp;
               <span class="bad-text">{{ t('monitoring.authCard.failureCount', { count: fmtInt(selectedAccount.failure_calls) }) }}</span>
             </span>
           </div>
@@ -290,18 +295,70 @@
         <div class="auth-meta">
           {{ fmtCompact(selectedAccount.total_tokens) }} tok · {{ fmtMoney(selectedAccount.cost) }} · {{ fmtDuration(selectedAccount.average_latency_ms) }} · {{ formatDateTime(selectedAccount.last_seen_ms) }}
         </div>
-        <div class="auth-plan">
-          <div class="auth-plan-kicker">{{ t('monitoring.authCard.plan') }} <b>{{ accountQuota.planType || EMPTY_VALUE }}</b></div>
-          <template v-if="accountQuota.windows.length">
+        <div class="auth-file-meta">
+          <span v-if="accountQuota.authMetadata?.authIndex"><b>{{ t('monitoring.authCard.authIndex') }}</b> {{ accountQuota.authMetadata.authIndex }}</span>
+          <span v-if="accountQuota.authMetadata?.projectId"><b>{{ t('monitoring.authCard.projectId') }}</b> {{ accountQuota.authMetadata.projectId }}</span>
+          <span v-if="accountQuota.authMetadata?.size"><b>{{ t('monitoring.authCard.fileSize') }}</b> {{ formatBytes(accountQuota.authMetadata.size) }}</span>
+          <span v-if="accountQuota.authMetadata?.modTime"><b>{{ t('monitoring.authCard.modified') }}</b> {{ formatMetadataDate(accountQuota.authMetadata.modTime) }}</span>
+          <span v-if="accountQuota.authMetadata?.priority != null"><b>{{ t('monitoring.authCard.priority') }}</b> {{ accountQuota.authMetadata.priority }}</span>
+          <span v-if="accountQuota.authMetadata?.weight != null"><b>{{ t('monitoring.authCard.weight') }}</b> {{ accountQuota.authMetadata.weight }}</span>
+        </div>
+        <div v-if="accountQuota.authMetadata?.note" class="auth-note">
+          <span>{{ t('monitoring.authCard.note') }}</span>{{ accountQuota.authMetadata.note }}
+        </div>
+        <div v-if="hasQuotaSummary" class="auth-plan">
+          <div class="auth-summary-grid">
+            <div v-if="accountQuota.planType" class="auth-summary-item">
+              <span>{{ t('monitoring.authCard.plan') }}</span><b>{{ formatPlanType(accountQuota.planType) }}</b>
+            </div>
+            <div v-if="accountQuota.subscriptionActiveUntil" class="auth-summary-item">
+              <span>{{ t('monitoring.authCard.renewal') }}</span><b>{{ formatMetadataDate(accountQuota.subscriptionActiveUntil) }}</b>
+            </div>
+            <div v-if="accountQuota.resetCreditsAvailableCount != null" class="auth-summary-item">
+              <span>{{ t('monitoring.authCard.resetCredits') }}</span><b>{{ accountQuota.resetCreditsAvailableCount }}</b>
+            </div>
+            <div v-if="accountQuota.extraUsage?.is_enabled" class="auth-summary-item">
+              <span>{{ t('monitoring.authCard.extraUsage') }}</span><b>{{ formatExtraUsage(accountQuota.extraUsage) }}</b>
+            </div>
+          </div>
+          <div v-if="accountQuota.resetCreditsError" class="auth-quota-hint">{{ accountQuota.resetCreditsError }}</div>
+          <div v-if="accountQuota.resetCredits.length" class="reset-credit-list">
+            <span v-for="(credit, index) in accountQuota.resetCredits" :key="credit.id || index">
+              {{ t('monitoring.authCard.resetCreditItem', { index: index + 1, date: formatMetadataDate(credit.expiresAt) }) }}
+            </span>
+          </div>
+          <template v-if="accountQuota.groups.length">
+            <div v-for="group in accountQuota.groups" :key="group.id" class="quota-group">
+              <div class="quota-group-title">{{ group.label }}<span v-if="group.description">{{ group.description }}</span></div>
+              <div v-for="bucket in group.buckets" :key="bucket.id" class="quota-row quota-row-group">
+                <div class="quota-row-header">
+                  <span>{{ bucket.label }}</span>
+                  <div class="quota-meta"><b>{{ Math.round(bucket.remainingPercent) }}%</b><span v-if="bucket.resetAt">{{ formatQuotaReset(bucket.resetAt) }}</span></div>
+                </div>
+                <div class="quota-bar" :class="quotaTone(bucket.remainingPercent)"><span :style="{ width: `${bucket.remainingPercent}%` }"></span></div>
+              </div>
+            </div>
+          </template>
+          <template v-else-if="accountQuota.windows.length">
             <div v-for="window in accountQuota.windows" :key="window.id" class="quota-row">
-              <span>{{ window.label }}</span>
-              <div v-if="window.hasUsedPercent" :class="['quota-bar', window.usedPercent >= 80 ? 'warn' : '']"><span :style="{ width: `${Math.min(100, window.usedPercent)}%` }"></span></div>
-              <span v-else class="muted">{{ window.remainingText }}</span>
-              <span v-if="window.hasUsedPercent">{{ Math.round(window.usedPercent) }}%{{ window.resetText ? ` · ${window.resetText}` : '' }}</span>
-              <span v-else class="muted">{{ window.resetText }}</span>
+              <div class="quota-row-header">
+                <span>{{ quotaWindowLabel(window) }}</span>
+                <div class="quota-meta">
+                  <b v-if="window.hasRemainingPercent">{{ Math.round(window.remainingPercent) }}%</b>
+                  <span v-if="window.usedLabel" class="muted">{{ window.usedLabel }}</span>
+                  <span v-if="window.amountLabel" class="quota-amount">{{ window.amountLabel }}</span>
+                  <span v-if="window.resetText">{{ formatQuotaReset(window.resetText) }}</span>
+                </div>
+              </div>
+              <div v-if="window.hasRemainingPercent" class="quota-bar" :class="quotaTone(window.remainingPercent)"><span :style="{ width: `${window.remainingPercent}%` }"></span></div>
+              <div v-if="window.remainingText && !window.hasRemainingPercent" class="muted quota-text">{{ window.remainingText }}</div>
             </div>
           </template>
           <p v-else>{{ accountQuota.message || t('monitoring.authCard.noQuota') }}</p>
+        </div>
+        <div v-else class="auth-plan auth-plan-empty">
+          <div class="auth-plan-kicker">{{ t('monitoring.authCard.quota') }}</div>
+          <p>{{ accountQuota.message || t('monitoring.authCard.noQuota') }}</p>
         </div>
         <div class="auth-actions">
           <button class="btn primary" type="button" :disabled="quotaLoading" @click="queryAccountQuota(selectedAccount)">
@@ -391,7 +448,7 @@ const eventPage = ref(1);
 const eventPageSize = ref(50);
 const selectedAccountId = ref('');
 const quotaLoading = ref(false);
-const accountQuota = ref({ planType: '', fileName: '', disabled: false, windows: [], message: '' });
+const accountQuota = ref(emptyAccountQuota());
 const selectedModelId = ref('');
 const expandedEventKeys = ref(new Set());
 const expandedAccountSources = ref(new Set());
@@ -663,7 +720,7 @@ function clearKeyCollapseTimers() {
 
 function selectAccountAPIKey(row) {
   selectedAccountId.value = row.id || '';
-  accountQuota.value = { planType: '', fileName: '', disabled: false, windows: [], message: '' };
+  accountQuota.value = emptyAccountQuota();
   if (row && isOAuthAuthType(row.auth_type)) {
     queryAccountQuota(row);
   }
@@ -674,23 +731,60 @@ function accountProviderChip(row) {
 }
 
 function accountRecentPattern(row) {
-  const source = accountSource(row);
   return eventRows.value
-    .filter(event => String(event.source || '').trim() === source)
+    .filter(event => sameAccountIdentity(event, row))
     .slice(0, 15)
     .map(event => !event.failed)
     .reverse();
 }
 
+function sameAccountIdentity(event, row) {
+  const eventProvider = String(event?.auth_provider_snapshot || event?.provider || '').trim().toLowerCase();
+  const rowProvider = String(row?.auth_provider_snapshot || row?.provider || '').trim().toLowerCase();
+  if (eventProvider && rowProvider && eventProvider !== rowProvider) return false;
+  const eventType = String(event?.auth_type || '').trim().toLowerCase();
+  const rowType = String(row?.auth_type || '').trim().toLowerCase();
+  if (eventType && rowType && eventType !== rowType) return false;
+  if (row?.auth_index) return String(event?.auth_index || '') === String(row.auth_index);
+  if (row?.auth_id) return String(event?.auth_file_snapshot || event?.auth_id || '') === String(row.auth_id);
+  return String(event?.source || '').trim() === accountSource(row);
+}
+
 function matchInspectionResult(results, row) {
   const source = accountSource(row).toLowerCase();
   const provider = String(row?.auth_provider_snapshot || '').trim().toLowerCase();
-  const sameProvider = (item) => !provider || String(item.provider || '').trim().toLowerCase() === provider;
-  const items = (results || []).filter(sameProvider);
-  return items.find(item => String(item.displayAccount || '').trim().toLowerCase() === source)
+  const authType = String(row?.auth_type || '').trim().toLowerCase();
+  const authIndex = String(row?.auth_index || '').trim();
+  const authId = String(row?.auth_id || '').trim();
+  const sameIdentity = (item) => {
+    if (provider && String(item.provider || '').trim().toLowerCase() !== provider) return false;
+    if (authType && item.authType && String(item.authType).trim().toLowerCase() !== authType) return false;
+    return true;
+  };
+  const items = (results || []).filter(sameIdentity);
+  return items.find(item => authIndex && String(item.authIndex || '').trim() === authIndex)
+    || items.find(item => authId && String(item.authId || '').trim() === authId)
+    || items.find(item => String(item.displayAccount || '').trim().toLowerCase() === source)
     || items.find(item => String(item.fileName || '').trim().toLowerCase().includes(source))
     || null;
 }
+
+function emptyAccountQuota() {
+  return {
+    planType: '', fileName: '', disabled: false, authMetadata: null,
+    subscriptionActiveUntil: null, resetCreditsAvailableCount: null,
+    resetCreditsApplicableAvailableCount: null, resetCredits: [], resetCreditsError: '',
+    extraUsage: null, groups: [], windows: [], quotaMode: '', message: '',
+  };
+}
+
+const hasQuotaSummary = computed(() => {
+  const quota = accountQuota.value;
+  return Boolean(
+    quota.planType || quota.subscriptionActiveUntil || quota.resetCreditsAvailableCount != null ||
+    quota.extraUsage || quota.groups.length || quota.windows.length
+  );
+});
 
 function remainingTextFromWindow(window, remaining) {
   if (typeof window.remainingText === 'string' && window.remainingText.trim()) return window.remainingText;
@@ -698,21 +792,164 @@ function remainingTextFromWindow(window, remaining) {
   return '';
 }
 
+function numberOrNullValue(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function clampPercent(value) {
+  const number = numberOrNullValue(value);
+  return number == null ? null : Math.max(0, Math.min(100, number));
+}
+
+function quotaGroupsFromResult(result) {
+  const meta = result?.quotaMetadata || {};
+  const groups = Array.isArray(meta.groups) ? meta.groups : [];
+  return groups.map((group, groupIndex) => ({
+    id: group?.id || `quota-group-${groupIndex}`,
+    label: group?.label || t('monitoring.authCard.quota'),
+    description: group?.description || '',
+    buckets: (Array.isArray(group?.buckets) ? group.buckets : []).map((bucket, bucketIndex) => {
+      const fraction = numberOrNullValue(bucket?.remainingFraction);
+      const remainingPercent = clampPercent(bucket?.remainingPercent ?? (fraction == null ? null : fraction * 100)) ?? 0;
+      return {
+        id: bucket?.id || `${groupIndex}-${bucketIndex}`,
+        label: bucket?.label || bucket?.id || t('monitoring.authCard.quota'),
+        remainingPercent,
+        resetAt: bucket?.resetAt || '',
+      };
+    }),
+  })).filter(group => group.buckets.length);
+}
+
+function formatQuotaAmount(value) {
+  const number = numberOrNullValue(value);
+  if (number == null) return '';
+  return new Intl.NumberFormat(undefined, {style: 'currency', currency: 'USD'}).format(number / 100);
+}
+
 function quotaWindowsFromResult(result) {
-  return normalizeQuotaWindows(result).map(window => ({
-    ...window,
-    label: window.label || t('monitoring.authCard.quota'),
-    remainingText: remainingTextFromWindow(window, window.remaining),
-  }));
+  const rawWindows = Array.isArray(result?.quotaWindows)
+    ? result.quotaWindows
+    : (Array.isArray(result?.quotaMetadata?.windows) ? result.quotaMetadata.windows : []);
+  return normalizeQuotaWindows({...(result || {}), quotaWindows: rawWindows}).map((window, index) => {
+    const raw = rawWindows[index] || {};
+    const remainingPercent = clampPercent(raw.remainingPercent ?? (window.hasUsedPercent ? 100 - window.usedPercent : null));
+    const used = numberOrNullValue(raw.used);
+    const limit = numberOrNullValue(raw.limit);
+    const remaining = numberOrNullValue(raw.remaining);
+    const amountWindow = ['monthly', 'on-demand'].includes(String(raw.kind || '').toLowerCase());
+    const amountLabel = amountWindow && limit != null
+      ? `${formatQuotaAmount(remaining ?? Math.max(0, limit - (used || 0)))} / ${formatQuotaAmount(limit)}`
+      : '';
+    const usedLabel = raw.kind === 'product' && window.hasUsedPercent
+      ? t('monitoring.authCard.usedPercent', {value: Math.round(window.usedPercent)})
+      : (used != null && limit != null && !amountWindow ? `${fmtCompact(used)} / ${fmtCompact(limit)}` : '');
+    return {
+      ...window,
+      kind: raw.kind || '',
+      used,
+      limit,
+      hasRemainingPercent: Number.isFinite(remainingPercent),
+      remainingPercent: Number.isFinite(remainingPercent) ? remainingPercent : 0,
+      amountLabel,
+      usedLabel,
+      description: raw.description || '',
+      remainingText: remainingTextFromWindow(window, window.remaining),
+    };
+  });
+}
+
+function formatAuthType(value) {
+  const type = String(value || '').trim().toLowerCase();
+  if (type === 'oauth' || type === 'oauth2') return 'OAuth';
+  if (type === 'apikey' || type === 'api_key' || type === 'api-key' || type === 'api') return 'API Key';
+  return value || EMPTY_VALUE;
+}
+
+function formatBytes(value) {
+  const bytes = numberOrNullValue(value);
+  if (bytes == null) return EMPTY_VALUE;
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function formatMetadataDate(value) {
+  if (value == null || value === '') return EMPTY_VALUE;
+  let timestamp = numberOrNullValue(value);
+  if (timestamp != null) {
+    if (timestamp > 0 && timestamp < 1e11) timestamp *= 1000;
+  } else {
+    timestamp = Date.parse(String(value));
+  }
+  if (!Number.isFinite(timestamp)) return String(value);
+  return new Date(timestamp).toLocaleString(undefined, {hour12: false});
+}
+
+function formatQuotaReset(value) {
+  if (!value) return '';
+  const formatted = formatMetadataDate(value);
+  return formatted === EMPTY_VALUE ? String(value) : formatted;
+}
+
+function formatPlanType(value) {
+  const plan = String(value || '').trim();
+  const labels = {
+    plan_max: 'Max', plan_pro: 'Pro', plan_team: 'Team', plan_free: 'Free',
+    plan_plus: 'Plus', supergrok: 'SuperGrok', 'supergrok heavy': 'SuperGrok Heavy',
+    paid: 'Paid', ultra: 'Ultra', 'ultra-lite': 'Ultra Lite', pro: 'Pro', free: 'Free',
+  };
+  return labels[plan.toLowerCase()] || plan || EMPTY_VALUE;
+}
+
+function formatExtraUsage(extra) {
+  const used = numberOrNullValue(extra?.used_credits ?? extra?.usedCredits);
+  const limit = numberOrNullValue(extra?.monthly_limit ?? extra?.monthlyLimit);
+  if (used == null && limit == null) return EMPTY_VALUE;
+  const format = value => value == null ? EMPTY_VALUE : new Intl.NumberFormat(undefined, {style: 'currency', currency: 'USD'}).format(value / 100);
+  return `${format(used)} / ${format(limit)}`;
+}
+
+function quotaTone(remainingPercent) {
+  const remaining = numberOrNullValue(remainingPercent);
+  if (remaining != null && remaining <= 20) return 'bad';
+  if (remaining != null && remaining <= 50) return 'warn';
+  return '';
+}
+
+function quotaWindowLabel(window) {
+  return window?.label || window?.kind || t('monitoring.authCard.quota');
 }
 
 function applyQuotaResult(result) {
-  accountQuota.value = {
-    planType: result?.planType || '',
-    fileName: result?.fileName || '',
+  const quota = result?.quotaMetadata || {};
+  const authMetadata = result?.authMetadata || {
+    id: result?.authId || selectedAccount.value?.auth_id || '',
+    authIndex: result?.authIndex || selectedAccount.value?.auth_index || '',
+    name: result?.fileName || '',
+    email: result?.displayAccount || accountSource(selectedAccount.value),
+    provider: result?.provider || selectedAccount.value?.auth_provider_snapshot || '',
+    authType: result?.authType || selectedAccount.value?.auth_type || '',
     disabled: Boolean(result?.disabled),
+  };
+  accountQuota.value = {
+    ...emptyAccountQuota(),
+    planType: result?.planType || quota.planType || '',
+    fileName: result?.fileName || authMetadata?.name || '',
+    disabled: Boolean(result?.disabled || authMetadata?.disabled),
+    authMetadata,
+    subscriptionActiveUntil: result?.subscriptionActiveUntil || quota.subscriptionActiveUntil || null,
+    resetCreditsAvailableCount: result?.resetCreditsAvailableCount ?? quota.resetCreditsAvailableCount ?? null,
+    resetCreditsApplicableAvailableCount: result?.resetCreditsApplicableAvailableCount ?? quota.resetCreditsApplicableAvailableCount ?? null,
+    resetCredits: Array.isArray(result?.resetCredits) ? result.resetCredits : (Array.isArray(quota.resetCredits) ? quota.resetCredits : []),
+    resetCreditsError: result?.resetCreditsError || quota.resetCreditsError || '',
+    extraUsage: result?.extraUsage || quota.extraUsage || null,
+    groups: quotaGroupsFromResult(result || {}),
     windows: quotaWindowsFromResult(result || {}),
-    message: result?.actionReason || result?.error || '',
+    quotaMode: quota.mode || '',
+    message: quota.quotaError || result?.actionReason || result?.error || '',
   };
 }
 
@@ -724,9 +961,12 @@ async function queryAccountQuota(row) {
       method: 'POST',
       path: '/v0/management/account-quota-probe',
       body: {
+        authId: row.auth_id || '',
         authIndex: row.auth_index || '',
+        authType: row.auth_type || '',
         provider: row.auth_provider_snapshot || '',
         source: accountSource(row),
+        fileName: row.file_name || '',
       },
     });
     if (probed && !probed.error) {
@@ -987,8 +1227,10 @@ function buildEventTableRow(row, groupMap) {
 function eventGroupKey(row) {
   const source = String(row.source || '').trim() || 'unknown';
   const provider = row.auth_provider_snapshot || row.provider || '';
+  const authType = row.auth_type || '';
+  const stableIdentity = row.auth_index || row.auth_file_snapshot || row.api_key_hash || source;
   const model = row.model || '';
-  return [source, provider, model].join('::');
+  return [source, provider, authType, stableIdentity, model].join('::');
 }
 
 function numberOrNull(v) {

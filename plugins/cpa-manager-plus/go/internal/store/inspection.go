@@ -29,32 +29,66 @@ type InspectionRun struct {
 	SettingsJSON  string `json:"settings,omitempty"`
 }
 
+type InspectionAuthMetadata struct {
+	ID             string `json:"id,omitempty"`
+	AuthIndex      string `json:"authIndex,omitempty"`
+	Name           string `json:"name,omitempty"`
+	Type           string `json:"type,omitempty"`
+	Provider       string `json:"provider,omitempty"`
+	AuthType       string `json:"authType,omitempty"`
+	Label          string `json:"label,omitempty"`
+	Status         string `json:"status,omitempty"`
+	StatusMessage  string `json:"statusMessage,omitempty"`
+	Disabled       bool   `json:"disabled,omitempty"`
+	Unavailable    bool   `json:"unavailable,omitempty"`
+	RuntimeOnly    bool   `json:"runtimeOnly,omitempty"`
+	Source         string `json:"source,omitempty"`
+	Path           string `json:"path,omitempty"`
+	Email          string `json:"email,omitempty"`
+	ProjectID      string `json:"projectId,omitempty"`
+	AccountType    string `json:"accountType,omitempty"`
+	Account        string `json:"account,omitempty"`
+	Note           string `json:"note,omitempty"`
+	Size           int64  `json:"size,omitempty"`
+	ModTime        string `json:"modTime,omitempty"`
+	UpdatedAt      string `json:"updatedAt,omitempty"`
+	CreatedAt      string `json:"createdAt,omitempty"`
+	LastRefresh    string `json:"lastRefresh,omitempty"`
+	NextRetryAfter string `json:"nextRetryAfter,omitempty"`
+	Priority       *int   `json:"priority,omitempty"`
+	Weight         *int   `json:"weight,omitempty"`
+}
+
 type InspectionResult struct {
-	ID                  int64    `json:"id"`
-	RunID               int64    `json:"runId"`
-	AccountKey          string   `json:"accountKey"`
-	FileName            string   `json:"fileName"`
-	DisplayAccount      string   `json:"displayAccount"`
-	AuthIndex           string   `json:"authIndex,omitempty"`
-	AccountID           string   `json:"accountId,omitempty"`
-	Provider            string   `json:"provider"`
-	Disabled            bool     `json:"disabled"`
-	Status              string   `json:"status,omitempty"`
-	State               string   `json:"state,omitempty"`
-	Action              string   `json:"action"`
-	ActionReason        string   `json:"actionReason"`
-	ActionStatus        string   `json:"actionStatus"`
-	ExecutedAction      string   `json:"executedAction,omitempty"`
-	ActionError         string   `json:"actionError,omitempty"`
-	StatusCode          *int     `json:"statusCode,omitempty"`
-	UsedPercent         *float64 `json:"usedPercent,omitempty"`
-	IsQuota             bool     `json:"isQuota"`
-	AutoRecoverEligible bool     `json:"autoRecoverEligible"`
-	PlanType            string   `json:"planType,omitempty"`
-	QuotaWindows        any      `json:"quotaWindows,omitempty"`
-	Error               string   `json:"error,omitempty"`
-	ErrorKind           string   `json:"errorKind,omitempty"`
-	ErrorDetail         string   `json:"errorDetail,omitempty"`
+	ID                  int64                   `json:"id"`
+	RunID               int64                   `json:"runId"`
+	AccountKey          string                  `json:"accountKey"`
+	FileName            string                  `json:"fileName"`
+	DisplayAccount      string                  `json:"displayAccount"`
+	AuthID              string                  `json:"authId,omitempty"`
+	AuthIndex           string                  `json:"authIndex,omitempty"`
+	AuthType            string                  `json:"authType,omitempty"`
+	AccountID           string                  `json:"accountId,omitempty"`
+	Provider            string                  `json:"provider"`
+	Disabled            bool                    `json:"disabled"`
+	Status              string                  `json:"status,omitempty"`
+	State               string                  `json:"state,omitempty"`
+	Action              string                  `json:"action"`
+	ActionReason        string                  `json:"actionReason"`
+	ActionStatus        string                  `json:"actionStatus"`
+	ExecutedAction      string                  `json:"executedAction,omitempty"`
+	ActionError         string                  `json:"actionError,omitempty"`
+	StatusCode          *int                    `json:"statusCode,omitempty"`
+	UsedPercent         *float64                `json:"usedPercent,omitempty"`
+	IsQuota             bool                    `json:"isQuota"`
+	AutoRecoverEligible bool                    `json:"autoRecoverEligible"`
+	PlanType            string                  `json:"planType,omitempty"`
+	QuotaWindows        any                     `json:"quotaWindows,omitempty"`
+	AuthMetadata        *InspectionAuthMetadata `json:"authMetadata,omitempty"`
+	QuotaMetadata       map[string]any          `json:"quotaMetadata,omitempty"`
+	Error               string                  `json:"error,omitempty"`
+	ErrorKind           string                  `json:"errorKind,omitempty"`
+	ErrorDetail         string                  `json:"errorDetail,omitempty"`
 }
 
 type InspectionLog struct {
@@ -68,8 +102,9 @@ type InspectionLog struct {
 
 type InspectionAccount struct {
 	Key, FileName, DisplayName, Provider, Status string
-	AuthIndex, AccountID                         string
+	AuthID, AuthIndex, AuthType, AccountID       string
 	Disabled                                     bool
+	Metadata                                     InspectionAuthMetadata
 }
 
 type InspectionDisableOwnership struct {
@@ -108,7 +143,7 @@ func (s *Store) StartInspectionWithAccounts(ctx context.Context, trigger string,
 		if account.Status != "" && account.Status != "available" && account.Status != "ok" {
 			action, reason = "review", account.Status
 		}
-		if _, err := s.InsertInspectionResult(ctx, InspectionResult{RunID: run.ID, AccountKey: account.Key, FileName: account.FileName, DisplayAccount: account.DisplayName, AuthIndex: account.AuthIndex, AccountID: account.AccountID, Provider: account.Provider, Disabled: account.Disabled, Status: account.Status, Action: action, ActionReason: reason, ActionStatus: "pending"}); err != nil {
+		if _, err := s.InsertInspectionResult(ctx, InspectionResult{RunID: run.ID, AccountKey: account.Key, FileName: account.FileName, DisplayAccount: account.DisplayName, AuthID: account.AuthID, AuthIndex: account.AuthIndex, AuthType: account.AuthType, AccountID: account.AccountID, Provider: account.Provider, Disabled: account.Disabled, Status: account.Status, AuthMetadata: &account.Metadata, Action: action, ActionReason: reason, ActionStatus: "pending"}); err != nil {
 			return InspectionRun{}, err
 		}
 	}
@@ -167,8 +202,20 @@ func (s *Store) InsertInspectionResult(ctx context.Context, result InspectionRes
 			quotaJSON = string(raw)
 		}
 	}
+	authMetadataJSON := ""
+	if result.AuthMetadata != nil {
+		if raw, err := json.Marshal(result.AuthMetadata); err == nil {
+			authMetadataJSON = string(raw)
+		}
+	}
+	quotaMetadataJSON := ""
+	if result.QuotaMetadata != nil {
+		if raw, err := json.Marshal(result.QuotaMetadata); err == nil {
+			quotaMetadataJSON = string(raw)
+		}
+	}
 	var id int64
-	err := s.db.QueryRowContext(ctx, `insert into codex_inspection_results(run_id,account_key,file_name,display_account,auth_index,account_id,provider,disabled,status,state,action,action_reason,action_status,executed_action,action_error,status_code,used_percent,is_quota,auto_recover_eligible,plan_type,quota_windows_json,error,error_kind,error_detail,created_at_ms) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) on conflict(run_id,account_key) do update set file_name=excluded.file_name,display_account=excluded.display_account,auth_index=excluded.auth_index,account_id=excluded.account_id,provider=excluded.provider,disabled=excluded.disabled,status=excluded.status,state=excluded.state,action=excluded.action,action_reason=excluded.action_reason,action_status=excluded.action_status,executed_action=excluded.executed_action,action_error=excluded.action_error,status_code=excluded.status_code,used_percent=excluded.used_percent,is_quota=excluded.is_quota,auto_recover_eligible=excluded.auto_recover_eligible,plan_type=excluded.plan_type,quota_windows_json=excluded.quota_windows_json,error=excluded.error,error_kind=excluded.error_kind,error_detail=excluded.error_detail returning id`, result.RunID, result.AccountKey, result.FileName, result.DisplayAccount, nullText(result.AuthIndex), nullText(result.AccountID), nullText(result.Provider), boolInt(result.Disabled), nullText(result.Status), nullText(result.State), result.Action, nullText(result.ActionReason), result.ActionStatus, nullText(result.ExecutedAction), nullText(result.ActionError), nullInt(result.StatusCode), nullFloat(result.UsedPercent), boolInt(result.IsQuota), boolInt(result.AutoRecoverEligible), nullText(result.PlanType), nullText(quotaJSON), nullText(result.Error), nullText(result.ErrorKind), nullText(result.ErrorDetail), time.Now().UnixMilli()).Scan(&id)
+	err := s.db.QueryRowContext(ctx, `insert into codex_inspection_results(run_id,account_key,file_name,display_account,auth_id,auth_index,auth_type,account_id,provider,disabled,status,state,action,action_reason,action_status,executed_action,action_error,status_code,used_percent,is_quota,auto_recover_eligible,plan_type,quota_windows_json,auth_metadata_json,quota_metadata_json,error,error_kind,error_detail,created_at_ms) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) on conflict(run_id,account_key) do update set file_name=excluded.file_name,display_account=excluded.display_account,auth_id=excluded.auth_id,auth_index=excluded.auth_index,auth_type=excluded.auth_type,account_id=excluded.account_id,provider=excluded.provider,disabled=excluded.disabled,status=excluded.status,state=excluded.state,action=excluded.action,action_reason=excluded.action_reason,action_status=excluded.action_status,executed_action=excluded.executed_action,action_error=excluded.action_error,status_code=excluded.status_code,used_percent=excluded.used_percent,is_quota=excluded.is_quota,auto_recover_eligible=excluded.auto_recover_eligible,plan_type=excluded.plan_type,quota_windows_json=excluded.quota_windows_json,auth_metadata_json=excluded.auth_metadata_json,quota_metadata_json=excluded.quota_metadata_json,error=excluded.error,error_kind=excluded.error_kind,error_detail=excluded.error_detail returning id`, result.RunID, result.AccountKey, result.FileName, result.DisplayAccount, nullText(result.AuthID), nullText(result.AuthIndex), nullText(result.AuthType), nullText(result.AccountID), nullText(result.Provider), boolInt(result.Disabled), nullText(result.Status), nullText(result.State), result.Action, nullText(result.ActionReason), result.ActionStatus, nullText(result.ExecutedAction), nullText(result.ActionError), nullInt(result.StatusCode), nullFloat(result.UsedPercent), boolInt(result.IsQuota), boolInt(result.AutoRecoverEligible), nullText(result.PlanType), nullText(quotaJSON), nullText(authMetadataJSON), nullText(quotaMetadataJSON), nullText(result.Error), nullText(result.ErrorKind), nullText(result.ErrorDetail), time.Now().UnixMilli()).Scan(&id)
 	if err != nil {
 		return InspectionResult{}, err
 	}
@@ -242,7 +289,7 @@ func (s *Store) InspectionResults(ctx context.Context, runID int64) ([]Inspectio
 }
 
 func (s *Store) inspectionResults(ctx context.Context, runID int64) ([]InspectionResult, error) {
-	rows, err := s.db.QueryContext(ctx, `select id,run_id,account_key,file_name,display_account,coalesce(auth_index,''),coalesce(account_id,''),coalesce(provider,''),disabled,coalesce(status,''),coalesce(state,''),action,coalesce(action_reason,''),coalesce(action_status,''),coalesce(executed_action,''),coalesce(action_error,''),status_code,used_percent,is_quota,auto_recover_eligible,coalesce(plan_type,''),coalesce(quota_windows_json,''),coalesce(error,''),coalesce(error_kind,''),coalesce(error_detail,'') from codex_inspection_results where run_id=? order by id`, runID)
+	rows, err := s.db.QueryContext(ctx, `select id,run_id,account_key,file_name,display_account,coalesce(auth_id,''),coalesce(auth_index,''),coalesce(auth_type,''),coalesce(account_id,''),coalesce(provider,''),disabled,coalesce(status,''),coalesce(state,''),action,coalesce(action_reason,''),coalesce(action_status,''),coalesce(executed_action,''),coalesce(action_error,''),status_code,used_percent,is_quota,auto_recover_eligible,coalesce(plan_type,''),coalesce(quota_windows_json,''),coalesce(auth_metadata_json,''),coalesce(quota_metadata_json,''),coalesce(error,''),coalesce(error_kind,''),coalesce(error_detail,'') from codex_inspection_results where run_id=? order by id`, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -253,8 +300,8 @@ func (s *Store) inspectionResults(ctx context.Context, runID int64) ([]Inspectio
 		var disabled, quota, recover int
 		var code sql.NullInt64
 		var percent sql.NullFloat64
-		var quotaJSON string
-		if err := rows.Scan(&item.ID, &item.RunID, &item.AccountKey, &item.FileName, &item.DisplayAccount, &item.AuthIndex, &item.AccountID, &item.Provider, &disabled, &item.Status, &item.State, &item.Action, &item.ActionReason, &item.ActionStatus, &item.ExecutedAction, &item.ActionError, &code, &percent, &quota, &recover, &item.PlanType, &quotaJSON, &item.Error, &item.ErrorKind, &item.ErrorDetail); err != nil {
+		var quotaJSON, authMetadataJSON, quotaMetadataJSON string
+		if err := rows.Scan(&item.ID, &item.RunID, &item.AccountKey, &item.FileName, &item.DisplayAccount, &item.AuthID, &item.AuthIndex, &item.AuthType, &item.AccountID, &item.Provider, &disabled, &item.Status, &item.State, &item.Action, &item.ActionReason, &item.ActionStatus, &item.ExecutedAction, &item.ActionError, &code, &percent, &quota, &recover, &item.PlanType, &quotaJSON, &authMetadataJSON, &quotaMetadataJSON, &item.Error, &item.ErrorKind, &item.ErrorDetail); err != nil {
 			return nil, err
 		}
 		item.Disabled, item.IsQuota, item.AutoRecoverEligible = disabled != 0, quota != 0, recover != 0
@@ -268,6 +315,15 @@ func (s *Store) inspectionResults(ctx context.Context, runID int64) ([]Inspectio
 		}
 		if quotaJSON != "" {
 			_ = json.Unmarshal([]byte(quotaJSON), &item.QuotaWindows)
+		}
+		if authMetadataJSON != "" {
+			var metadata InspectionAuthMetadata
+			if err := json.Unmarshal([]byte(authMetadataJSON), &metadata); err == nil {
+				item.AuthMetadata = &metadata
+			}
+		}
+		if quotaMetadataJSON != "" {
+			_ = json.Unmarshal([]byte(quotaMetadataJSON), &item.QuotaMetadata)
 		}
 		result = append(result, item)
 	}

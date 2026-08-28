@@ -82,7 +82,7 @@ func TestAggregateProviderBackfillPrefersSourceSnapshot(t *testing.T) {
 	}
 }
 
-func TestAggregateAccountAPIKeyStatsBySource(t *testing.T) {
+func TestAggregateAccountAPIKeyStatsByStableIdentity(t *testing.T) {
 	rows := []eventRow{
 		{ID: 1, TimestampMS: 100, Model: "model", Source: "oauth@example.com", AuthType: "oauth", AuthIndex: "account-a", APIKeyHash: "key-1", Provider: "openai", TotalTokens: 10},
 		{ID: 2, TimestampMS: 200, Model: "model", Source: "oauth@example.com", AuthType: "oauth", AuthIndex: "account-b", APIKeyHash: "key-2", Provider: "xai", TotalTokens: 20},
@@ -91,32 +91,25 @@ func TestAggregateAccountAPIKeyStatsBySource(t *testing.T) {
 
 	result := aggregate(rows, nil, AnalyticsRequest{Limit: 100, Granularity: "hour"})
 	combined := result["account_api_key_stats"].([]map[string]any)
-	if len(combined) != 2 {
-		t.Fatalf("account_api_key_stats count = %d, want 2", len(combined))
+	if len(combined) != 3 {
+		t.Fatalf("account_api_key_stats count = %d, want 3", len(combined))
 	}
 
-	bySource := map[string]map[string]any{}
+	byIdentity := map[string]map[string]any{}
 	for _, row := range combined {
-		bySource[row["source"].(string)] = row
+		byIdentity[row["id"].(string)] = row
 	}
-	oauth := bySource["oauth@example.com"]
-	if calls := oauth["calls"]; calls != int64(2) {
-		t.Fatalf("oauth calls = %#v, want 2", calls)
+	firstOAuth := byIdentity["auth-index::oauth::openai::account-a"]
+	if firstOAuth["calls"] != int64(1) || firstOAuth["total_tokens"] != int64(10) || firstOAuth["auth_provider_snapshot"] != "openai" {
+		t.Fatalf("first OAuth identity = %#v", firstOAuth)
 	}
-	if tokens := oauth["total_tokens"]; tokens != int64(30) {
-		t.Fatalf("oauth tokens = %#v, want 30", tokens)
+	secondOAuth := byIdentity["auth-index::oauth::xai::account-b"]
+	if secondOAuth["calls"] != int64(1) || secondOAuth["total_tokens"] != int64(20) || secondOAuth["auth_provider_snapshot"] != "xai" {
+		t.Fatalf("second OAuth identity = %#v", secondOAuth)
 	}
-	if oauth["auth_provider_snapshot"] != "xai" {
-		t.Fatalf("oauth provider = %#v, want xai", oauth["auth_provider_snapshot"])
-	}
-	if oauth["account_snapshot"] != "oauth@example.com" {
-		t.Fatalf("compat account snapshot = %#v", oauth["account_snapshot"])
-	}
-	if oauth["auth_type"] != "oauth" {
-		t.Fatalf("oauth auth type = %#v", oauth["auth_type"])
-	}
-	if bySource["sk-custom-key"]["calls"] != int64(1) || bySource["sk-custom-key"]["auth_type"] != "apikey" {
-		t.Fatalf("custom source row = %#v", bySource["sk-custom-key"])
+	custom := byIdentity["auth-index::apikey::openai::account-a"]
+	if custom["calls"] != int64(1) || custom["auth_type"] != "apikey" || custom["source"] != "sk-custom-key" {
+		t.Fatalf("custom identity = %#v", custom)
 	}
 	if len(result["account_stats"].([]map[string]any)) != 2 || len(result["api_key_stats"].([]map[string]any)) != 2 {
 		t.Fatalf("legacy dimensions must remain available: %#v", result)

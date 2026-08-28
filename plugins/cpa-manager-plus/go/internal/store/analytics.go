@@ -341,7 +341,7 @@ type stats struct {
 
 type accountAPIKeyStats struct {
 	stats
-	Source, APIKey, Provider, AuthType, AuthIndex string
+	Source, APIKey, Provider, AuthType, AuthID, AuthIndex string
 }
 
 func (s *stats) add(row eventRow, price Price) {
@@ -439,7 +439,7 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 		apiKey := apiKeySnapshot(row)
 		addStats(byAccount, account, row, price)
 		addStats(byKey, apiKey, row, price)
-		addAccountAPIKeyStats(byAccountAPIKey, sourceSnapshot(row), row, price)
+		addAccountAPIKeyStats(byAccountAPIKey, row, price)
 		bucket := row.TimestampMS / bucketSize * bucketSize
 		addStats(byBucket, fmt.Sprint(bucket), row, price)
 		heatAt := time.UnixMilli(row.TimestampMS).UTC()
@@ -468,31 +468,71 @@ func addStats(group map[string]*stats, key string, row eventRow, price Price) {
 	}
 	value.add(row, price)
 }
-func addAccountAPIKeyStats(group map[string]*accountAPIKeyStats, source string, row eventRow, price Price) {
-	value := group[source]
+func accountAPIKeyIdentity(row eventRow) string {
+	authType := normalizeAuthTypeSnapshot(row.AuthType)
+	provider := normalizeProvider(row.Provider)
+	if row.AuthIndex != "" {
+		return strings.Join([]string{"auth-index", authType, provider, row.AuthIndex}, "::")
+	}
+	if row.AuthID != "" {
+		return strings.Join([]string{"auth-id", authType, provider, row.AuthID}, "::")
+	}
+	if row.APIKeyHash != "" {
+		return strings.Join([]string{"api-key", authType, provider, row.APIKeyHash}, "::")
+	}
+	return strings.Join([]string{"source", authType, provider, sourceSnapshot(row)}, "::")
+}
+
+func normalizeAuthTypeSnapshot(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "oauth", "oauth2":
+		return "oauth"
+	case "api", "api_key", "api-key", "apikey":
+		return "apikey"
+	default:
+		return strings.TrimSpace(value)
+	}
+}
+
+func addAccountAPIKeyStats(group map[string]*accountAPIKeyStats, row eventRow, price Price) {
+	identity := accountAPIKeyIdentity(row)
+	value := group[identity]
 	if value == nil {
-		value = &accountAPIKeyStats{Source: source}
-		group[source] = value
+		value = &accountAPIKeyStats{Source: sourceSnapshot(row)}
+		group[identity] = value
 	}
 	if row.TimestampMS >= value.Last {
-		value.Provider = row.Provider
-		value.APIKey = apiKeySnapshot(row)
-		value.AuthType = row.AuthType
-		value.AuthIndex = row.AuthIndex
+		value.Source = sourceSnapshot(row)
+		if row.Provider != "" {
+			value.Provider = row.Provider
+		}
+		if row.APIKeyHash != "" || value.APIKey == "" {
+			value.APIKey = apiKeySnapshot(row)
+		}
+		if row.AuthType != "" {
+			value.AuthType = normalizeAuthTypeSnapshot(row.AuthType)
+		}
+		if row.AuthID != "" {
+			value.AuthID = row.AuthID
+		}
+		if row.AuthIndex != "" {
+			value.AuthIndex = row.AuthIndex
+		}
 	}
 	value.add(row, price)
 }
 
 func accountAPIKeyStatsRows(group map[string]*accountAPIKeyStats) []map[string]any {
 	out := make([]map[string]any, 0, len(group))
-	for _, value := range group {
+	for identity, value := range group {
 		row := value.json()
-		row["id"] = value.Source
+		row["id"] = identity
 		row["source"] = value.Source
 		row["account_snapshot"] = value.Source
 		row["api_key_hash"] = value.APIKey
 		row["auth_provider_snapshot"] = value.Provider
 		row["auth_type"] = value.AuthType
+		row["auth_id"] = value.AuthID
 		row["auth_index"] = value.AuthIndex
 		out = append(out, row)
 	}

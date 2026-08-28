@@ -44,6 +44,7 @@ type Runtime struct {
 	masterKey          []byte
 	connection         connection
 	authList           func() ([]pluginapi.HostAuthFileEntry, error)
+	authGet            func(string) (pluginapi.HostAuthGetResponse, error)
 	httpDo             func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)
 	syncMu             sync.Mutex
 	priceMu            sync.Mutex
@@ -268,6 +269,14 @@ func (r *Runtime) SetAuthList(list func() ([]pluginapi.HostAuthFileEntry, error)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.authList = list
+}
+
+// SetAuthGet supplies the host callback used to inspect provider-owned metadata
+// without exposing the credential payload to the management UI.
+func (r *Runtime) SetAuthGet(get func(string) (pluginapi.HostAuthGetResponse, error)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.authGet = get
 }
 
 func (r *Runtime) SetHTTPDo(do func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)) {

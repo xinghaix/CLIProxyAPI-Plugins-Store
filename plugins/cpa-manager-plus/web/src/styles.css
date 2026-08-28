@@ -1068,6 +1068,80 @@ pre {
   align-items: center;
 }
 .auth-actions .btn { border-radius: 10px; }
+
+/* Authentication cards mirror the official provider-specific quota layout. */
+.auth-card {
+  width: min(100%, 720px);
+  max-width: 720px;
+}
+.auth-card-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.auth-type-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border: 1px solid var(--cpa-rule);
+  border-radius: 999px;
+  color: var(--cpa-text-tertiary);
+  font-size: 11px;
+  line-height: 1.2;
+}
+.auth-status-message {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--cpa-warning);
+  background: var(--cpa-warning-soft);
+  color: var(--cpa-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.auth-health .health-counts { display: inline-flex; gap: 10px; }
+.auth-file-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  margin-top: 10px;
+  color: var(--cpa-text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.auth-file-meta span { overflow-wrap: anywhere; }
+.auth-file-meta b { color: var(--cpa-text-tertiary); font-weight: 500; }
+.auth-note {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--cpa-rule);
+  color: var(--cpa-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.auth-note > span { color: var(--cpa-text-tertiary); margin-right: 8px; }
+.auth-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px 16px;
+  margin-bottom: 12px;
+}
+.auth-summary-item { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.auth-summary-item > span { color: var(--cpa-text-tertiary); font-size: 11px; }
+.auth-summary-item > b { color: var(--cpa-text-primary); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.auth-quota-hint { margin: 4px 0 8px; color: var(--cpa-text-tertiary); font-size: 11px; line-height: 1.45; }
+.reset-credit-list { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 4px 0 8px; color: var(--cpa-text-tertiary); font-size: 11px; line-height: 1.45; }
+.auth-plan-empty { padding-bottom: 12px; }
+.quota-group { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--cpa-rule); }
+.quota-group:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.quota-group-title { display: flex; flex-direction: column; gap: 2px; color: var(--cpa-text-primary); font-size: 12px; font-weight: 650; }
+.quota-group-title span { color: var(--cpa-text-tertiary); font-size: 11px; font-weight: 400; }
+.quota-row { display: flex; flex-direction: column; gap: 6px; margin-top: 11px; font-size: 12px; }
+.quota-row-header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.quota-row-header > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.quota-meta { display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 8px; flex-wrap: wrap; color: var(--cpa-text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
+.quota-meta b { color: var(--cpa-text-primary); font-weight: 650; }
+.quota-meta span { color: var(--cpa-text-tertiary); font-size: 11px; }
+.quota-amount { color: var(--cpa-text-secondary) !important; }
+.quota-bar.bad > span { background: var(--cpa-error); }
+.quota-text { line-height: 1.45; overflow-wrap: anywhere; }
 @media (max-width: 620px) {
   .auth-card { max-width: 100%; }
   .provider-cell { max-width: 100%; }

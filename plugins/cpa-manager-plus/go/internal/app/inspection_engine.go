@@ -18,17 +18,26 @@ import (
 )
 
 const (
-	codexUsageURL         = "https://chatgpt.com/backend-api/wham/usage"
-	xaiOfficialAPIBaseURL = "https://api.x.ai/v1"
-	xaiBillingWeeklyURL   = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
-	xaiBillingMonthlyURL  = "https://cli-chat-proxy.grok.com/v1/billing"
-	xaiInferenceURL       = "https://cli-chat-proxy.grok.com/v1/responses"
-	claudeModelsURL       = "https://api.anthropic.com/v1/models"
-	kimiModelsURL         = "https://api.kimi.com/coding/v1/models"
-	antigravityAssistURL  = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
-	googleUserInfoURL     = "https://www.googleapis.com/oauth2/v3/userinfo"
-	maxInspectionBody     = 2048
+	codexUsageURL                 = "https://chatgpt.com/backend-api/wham/usage"
+	codexResetCreditsURL          = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
+	xaiOfficialAPIBaseURL         = "https://api.x.ai/v1"
+	xaiBillingWeeklyURL           = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
+	xaiBillingMonthlyURL          = "https://cli-chat-proxy.grok.com/v1/billing"
+	xaiInferenceURL               = "https://cli-chat-proxy.grok.com/v1/responses"
+	claudeModelsURL               = "https://api.anthropic.com/v1/models"
+	claudeUsageURL                = "https://api.anthropic.com/api/oauth/usage"
+	claudeProfileURL              = "https://api.anthropic.com/api/oauth/profile"
+	kimiModelsURL                 = "https://api.kimi.com/coding/v1/models"
+	kimiUsageURL                  = "https://api.kimi.com/coding/v1/usages"
+	antigravityAssistURL          = "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
+	antigravityQuotaURL           = "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+	antigravitySandboxQuotaURL    = "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary"
+	antigravityProductionQuotaURL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+	googleUserInfoURL             = "https://www.googleapis.com/oauth2/v3/userinfo"
+	maxInspectionBody             = 2048
 )
+
+var antigravityQuotaURLs = []string{antigravityQuotaURL, antigravitySandboxQuotaURL, antigravityProductionQuotaURL}
 
 type inspectionAPIResponse struct {
 	StatusCode int
@@ -154,7 +163,7 @@ func (r *Runtime) executeInspection(runCtx context.Context, settings CodexInspec
 func filterInspectionAccounts(auths []pluginapi.HostAuthFileEntry, settings CodexInspectionSettings) []store.InspectionAccount {
 	allowed := map[string]bool{}
 	for _, provider := range settings.TargetTypes {
-		allowed[provider] = true
+		allowed[strings.ToLower(strings.TrimSpace(provider))] = true
 	}
 	accounts := make([]store.InspectionAccount, 0, len(auths))
 	for _, auth := range auths {
@@ -162,8 +171,22 @@ func filterInspectionAccounts(auths []pluginapi.HostAuthFileEntry, settings Code
 		if !allowed[provider] {
 			continue
 		}
+		authType := inspectionAuthType(auth)
+		metadata := inspectionAuthMetadataFromEntry(auth, authType)
 		key := firstNonEmpty(auth.AuthIndex, auth.ID, auth.Name)
-		accounts = append(accounts, store.InspectionAccount{Key: key, FileName: auth.Name, DisplayName: firstNonEmpty(auth.Email, auth.Account, auth.Label, auth.Name), AuthIndex: auth.AuthIndex, AccountID: auth.Account, Provider: provider, Status: auth.Status, Disabled: auth.Disabled})
+		display := firstNonEmpty(auth.Email, auth.ProjectID, auth.Label, auth.Name)
+		if display == "" && authType == "oauth" {
+			display = auth.Account
+		}
+		accountID := auth.Account
+		if authType == "apikey" {
+			accountID = ""
+		}
+		accounts = append(accounts, store.InspectionAccount{
+			Key: key, FileName: firstNonEmpty(auth.Name, auth.ID), DisplayName: display,
+			AuthID: auth.ID, AuthIndex: auth.AuthIndex, AuthType: authType, AccountID: accountID,
+			Provider: provider, Status: auth.Status, Disabled: auth.Disabled, Metadata: metadata,
+		})
 	}
 	return accounts
 }
@@ -230,7 +253,13 @@ func (r *Runtime) probeInspectionAccounts(ctx context.Context, settings CodexIns
 }
 
 func (r *Runtime) probeInspectionAccount(ctx context.Context, settings CodexInspectionSettings, account store.InspectionAccount) store.InspectionResult {
-	base := store.InspectionResult{AccountKey: account.Key, FileName: account.FileName, DisplayAccount: account.DisplayName, AuthIndex: account.AuthIndex, AccountID: account.AccountID, Provider: account.Provider, Disabled: account.Disabled, Status: account.Status, Action: "keep", ActionReason: "探测中", ActionStatus: "pending"}
+	account = r.enrichInspectionAccount(ctx, account)
+	base := store.InspectionResult{
+		AccountKey: account.Key, FileName: account.FileName, DisplayAccount: account.DisplayName,
+		AuthID: account.AuthID, AuthIndex: account.AuthIndex, AuthType: account.AuthType, AccountID: account.AccountID,
+		Provider: account.Provider, Disabled: account.Disabled, Status: account.Status,
+		AuthMetadata: inspectionAuthMetadataResult(account), Action: "keep", ActionReason: "探测中", ActionStatus: "pending",
+	}
 	if account.AuthIndex == "" {
 		base.Action, base.ActionReason, base.ErrorKind, base.ErrorDetail = "review", "缺少 CPA auth_index，无法安全代理探测", "missing_auth_index", "host auth entry has no auth_index"
 		return base
@@ -246,7 +275,7 @@ func (r *Runtime) probeInspectionAccount(ctx context.Context, settings CodexInsp
 	case "kimi":
 		result = r.probeKimi(ctx, settings, base)
 	case "antigravity":
-		result = r.probeLoadCodeAssist(ctx, settings, base, "ANTIGRAVITY")
+		result = r.probeAntigravityQuota(ctx, settings, base)
 	case "gemini-cli":
 		result = r.probeLoadCodeAssist(ctx, settings, base, "IDE_UNSPECIFIED")
 	case "vertex":
@@ -266,34 +295,11 @@ func (r *Runtime) probeInspectionAccount(ctx context.Context, settings CodexInsp
 }
 
 func (r *Runtime) probeClaude(ctx context.Context, settings CodexInspectionSettings, result store.InspectionResult) store.InspectionResult {
-	response, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodGet, claudeModelsURL, map[string]string{
-		"Authorization":     "Bearer $TOKEN$",
-		"anthropic-version": "2023-06-01",
-		"Content-Type":      "application/json",
-	}, nil)
-	if err != nil {
-		return inspectionFailure(result, 0, "upstream_error", err.Error())
-	}
-	result = resolveInspectionHTTPResult(result, response, settings.UsedPercentThreshold, "claude")
-	if result.ErrorKind == "healthy" {
-		result.ActionReason = "Claude 身份探测正常；Anthropic 不提供可量化的额度总量"
-	}
-	return result
+	return r.probeClaudeQuota(ctx, settings, result)
 }
 
 func (r *Runtime) probeKimi(ctx context.Context, settings CodexInspectionSettings, result store.InspectionResult) store.InspectionResult {
-	response, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodGet, kimiModelsURL, map[string]string{
-		"Authorization": "Bearer $TOKEN$",
-		"Accept":        "application/json",
-	}, nil)
-	if err != nil {
-		return inspectionFailure(result, 0, "upstream_error", err.Error())
-	}
-	result = resolveInspectionHTTPResult(result, response, settings.UsedPercentThreshold, "kimi")
-	if result.ErrorKind == "healthy" {
-		result.ActionReason = "Kimi 身份探测正常"
-	}
-	return result
+	return r.probeKimiQuota(ctx, settings, result)
 }
 
 func (r *Runtime) probeLoadCodeAssist(ctx context.Context, settings CodexInspectionSettings, result store.InspectionResult, ideType string) store.InspectionResult {
@@ -310,6 +316,15 @@ func (r *Runtime) probeLoadCodeAssist(ctx context.Context, settings CodexInspect
 	}
 	result = resolveInspectionHTTPResult(result, response, settings.UsedPercentThreshold, result.Provider)
 	if result.ErrorKind == "healthy" {
+		// The official quota page only treats Antigravity as a quota provider;
+		// Gemini CLI keeps the health check but has no quantitative quota card.
+		if result.Provider != "antigravity" {
+			result.QuotaWindows = nil
+			result.QuotaMetadata = map[string]any{"provider": result.Provider, "mode": "health_only", "quotaSupported": false}
+			result.UsedPercent = nil
+			result.ActionReason = result.Provider + " 身份探测正常；官方未提供可量化额度"
+			return result
+		}
 		result = applyLoadCodeAssistCredits(result, response.Body)
 		if result.PlanType == "" && len(asWindowSlice(result.QuotaWindows)) == 0 {
 			result.ActionReason = result.Provider + " 身份探测正常"
@@ -353,10 +368,15 @@ func applyXAIBilling(result store.InspectionResult, weeklyBody, monthlyBody any)
 	windows := []map[string]any{}
 	percentValues := []float64{}
 	addWindow := func(id, label string, usedPercent *float64, resetAt string, remaining any) {
-		window := map[string]any{"id": id, "label": label}
+		kind := strings.TrimPrefix(id, "xai-")
+		if strings.HasPrefix(kind, "product-") {
+			kind = "product"
+		}
+		window := map[string]any{"id": id, "kind": kind, "label": label}
 		if usedPercent != nil {
 			value := clampInspectionPercent(*usedPercent)
 			window["usedPercent"] = value
+			window["remainingPercent"] = clampInspectionPercent(100 - value)
 			percentValues = append(percentValues, value)
 		}
 		if strings.TrimSpace(resetAt) != "" {
@@ -495,9 +515,129 @@ func applyXAIBilling(result store.InspectionResult, weeklyBody, monthlyBody any)
 		}
 		result.UsedPercent = &maxPercent
 	}
+
+	// Keep xAI's separate clocks and money units intact. The weekly endpoint
+	// describes rate-limited capacity; the monthly endpoint describes included
+	// billing credits and the optional on-demand cap.
+	periodType := "unknown"
+	periodStart := ""
+	periodEnd := ""
+	periodTypeRaw := strings.ToLower(firstString(weeklyPeriod, "type"))
+	if strings.Contains(periodTypeRaw, "weekly") {
+		periodType = "weekly"
+	} else if strings.Contains(periodTypeRaw, "monthly") {
+		periodType = "monthly"
+	}
+	periodStart = firstString(weeklyPeriod, "start")
+	periodEnd = firstString(weeklyPeriod, "end")
+	if periodType == "unknown" {
+		monthlyPeriod := mapValue(firstMap(monthlyConfig["currentPeriod"], monthlyConfig["current_period"]))
+		monthlyTypeRaw := strings.ToLower(firstString(monthlyPeriod, "type"))
+		if strings.Contains(monthlyTypeRaw, "weekly") {
+			periodType = "weekly"
+		} else if strings.Contains(monthlyTypeRaw, "monthly") {
+			periodType = "monthly"
+		}
+		if periodStart == "" {
+			periodStart = firstString(monthlyPeriod, "start")
+		}
+		if periodEnd == "" {
+			periodEnd = firstString(monthlyPeriod, "end")
+		}
+	}
+	if periodType == "unknown" && len(windows) > 0 {
+		periodType = "weekly"
+	}
+	billingPeriodStart := firstString(monthlyConfig, "billingPeriodStart", "billing_period_start")
+	billingPeriodEnd = firstString(monthlyConfig, "billingPeriodEnd", "billing_period_end")
+	monthlyRemaining := 0.0
+	if hasMonthlyLimit {
+		monthlyRemaining = monthlyLimit
+		if hasMonthlyUsed {
+			monthlyRemaining = monthlyLimit - monthlyUsed
+		}
+		if monthlyRemaining < 0 {
+			monthlyRemaining = 0
+		}
+	}
+	includedUsed := monthlyUsed
+	if hasMonthlyLimit && hasMonthlyUsed && includedUsed > monthlyLimit {
+		includedUsed = monthlyLimit
+	}
+	derivedOnDemandUsed := 0.0
+	if hasMonthlyLimit && hasMonthlyUsed && monthlyUsed > monthlyLimit {
+		derivedOnDemandUsed = monthlyUsed - monthlyLimit
+	}
+	if !hasOnDemandUsed && derivedOnDemandUsed > 0 {
+		onDemandUsed = derivedOnDemandUsed
+		hasOnDemandUsed = true
+	}
+	for _, window := range windows {
+		switch fmt.Sprint(window["id"]) {
+		case "xai-monthly", "monthly":
+			if hasMonthlyLimit {
+				window["limit"] = monthlyLimit
+				window["remaining"] = monthlyRemaining
+			}
+			if hasMonthlyUsed {
+				window["used"] = monthlyUsed
+			}
+		case "xai-on-demand":
+			if hasOnDemandCap {
+				window["limit"] = onDemandCap
+			}
+			if hasOnDemandUsed {
+				window["used"] = onDemandUsed
+				if hasOnDemandCap {
+					window["remaining"] = maxFloat(onDemandCap - onDemandUsed)
+				}
+			}
+		}
+	}
+	productUsage := []map[string]any{}
+	for _, rawProduct := range products {
+		if product := mapValue(rawProduct); product != nil {
+			productUsage = append(productUsage, map[string]any{
+				"product":      firstString(product, "product"),
+				"usagePercent": numberFrom(product, "usagePercent", "usage_percent"),
+			})
+		}
+	}
+	billingMetadata := map[string]any{
+		"provider":           "xai",
+		"mode":               "billing",
+		"periodType":         periodType,
+		"periodStart":        periodStart,
+		"periodEnd":          periodEnd,
+		"billingPeriodStart": billingPeriodStart,
+		"billingPeriodEnd":   billingPeriodEnd,
+		"productUsage":       productUsage,
+	}
+	if hasWeeklyUsed {
+		billingMetadata["usagePercent"] = clampInspectionPercent(weeklyUsed)
+	}
+	if hasMonthlyLimit {
+		billingMetadata["monthlyLimitCents"] = monthlyLimit
+	}
+	if hasMonthlyUsed {
+		billingMetadata["usedCents"] = monthlyUsed
+		billingMetadata["includedUsedCents"] = includedUsed
+	}
+	if hasOnDemandCap {
+		billingMetadata["onDemandCapCents"] = onDemandCap
+	}
+	if hasOnDemandUsed {
+		billingMetadata["onDemandUsedCents"] = onDemandUsed
+		if hasOnDemandCap && onDemandCap > 0 {
+			billingMetadata["onDemandUsedPercent"] = clampInspectionPercent(onDemandUsed / onDemandCap * 100)
+		}
+	}
+	if result.PlanType != "" {
+		billingMetadata["planType"] = result.PlanType
+	}
+	result = quotaMetadata(result, billingMetadata, windows)
 	if len(windows) > 0 {
-		result.QuotaWindows = windows
-		result.ActionReason = "已读取 xAI 配额窗口"
+		result.ActionReason = "已读取 xAI 套餐与额度窗口"
 		if result.ErrorKind == "" {
 			result.ErrorKind = "healthy"
 		}
@@ -661,6 +801,10 @@ func asWindowSlice(value any) []map[string]any {
 }
 
 func (r *Runtime) ProbeAccountQuota(ctx context.Context, authIndex, provider, source string) (store.InspectionResult, error) {
+	return r.ProbeAccountQuotaWithIdentity(ctx, authIndex, provider, source, "", "", "")
+}
+
+func (r *Runtime) ProbeAccountQuotaWithIdentity(ctx context.Context, authIndex, provider, source, authID, authType, fileName string) (store.InspectionResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -674,12 +818,20 @@ func (r *Runtime) ProbeAccountQuota(ctx context.Context, authIndex, provider, so
 	if err != nil {
 		return store.InspectionResult{}, err
 	}
-	account, ok := findInspectionAccount(auths, authIndex, provider, source)
+	account, ok := findInspectionAccountByIdentity(auths, authIndex, provider, source, authID, authType, fileName)
 	if !ok {
 		return store.InspectionResult{}, fmt.Errorf("未找到对应认证文件")
 	}
 	if !supportedInspectionProvider(account.Provider) {
 		return store.InspectionResult{}, fmt.Errorf("不支持的巡检提供商: %s", account.Provider)
+	}
+	if normalized := normalizeInspectionAuthType(authType); normalized != "" {
+		account.AuthType = normalized
+		account.Metadata.AuthType = normalized
+	}
+	if strings.TrimSpace(authID) != "" {
+		account.AuthID = strings.TrimSpace(authID)
+		account.Metadata.ID = account.AuthID
 	}
 	settings := r.CodexInspectionSettings()
 	settings.XAIInferenceEnabled = false
@@ -687,59 +839,110 @@ func (r *Runtime) ProbeAccountQuota(ctx context.Context, authIndex, provider, so
 }
 
 func findInspectionAccount(auths []pluginapi.HostAuthFileEntry, authIndex, provider, source string) (store.InspectionAccount, bool) {
+	return findInspectionAccountByIdentity(auths, authIndex, provider, source, "", "", "")
+}
+
+func findInspectionAccountByIdentity(auths []pluginapi.HostAuthFileEntry, authIndex, provider, source, authID, authType, fileName string) (store.InspectionAccount, bool) {
 	authIndex = strings.TrimSpace(authIndex)
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	source = strings.ToLower(strings.TrimSpace(source))
+	authID = strings.TrimSpace(authID)
+	authType = normalizeInspectionAuthType(authType)
+	fileName = strings.ToLower(strings.TrimSpace(fileName))
 	accounts := filterInspectionAccounts(auths, CodexInspectionSettings{TargetTypes: append([]string{}, inspectionProviders...)})
 	matchProvider := func(account store.InspectionAccount) bool {
 		return provider == "" || account.Provider == provider
 	}
+	matchType := func(account store.InspectionAccount) bool {
+		return authType == "" || normalizeInspectionAuthType(account.AuthType) == authType || account.AuthType == ""
+	}
 	if authIndex != "" {
 		for _, account := range accounts {
-			if strings.TrimSpace(account.AuthIndex) == authIndex && matchProvider(account) {
+			if strings.TrimSpace(account.AuthIndex) == authIndex && matchProvider(account) && matchType(account) {
+				return account, true
+			}
+		}
+	}
+	if authID != "" {
+		for _, account := range accounts {
+			if strings.TrimSpace(account.AuthID) == authID && matchProvider(account) && matchType(account) {
+				return account, true
+			}
+		}
+	}
+	if fileName != "" {
+		for _, account := range accounts {
+			if strings.ToLower(strings.TrimSpace(account.FileName)) == fileName && matchProvider(account) && matchType(account) {
 				return account, true
 			}
 		}
 	}
 	if source != "" {
+		candidates := make([]store.InspectionAccount, 0, 2)
 		for _, account := range accounts {
+			if !matchProvider(account) || !matchType(account) {
+				continue
+			}
 			display := strings.ToLower(strings.TrimSpace(account.DisplayName))
-			if display == source && matchProvider(account) {
-				return account, true
+			if display == source {
+				candidates = append(candidates, account)
 			}
 		}
+		if len(candidates) == 1 {
+			return candidates[0], true
+		}
+		candidates = candidates[:0]
 		for _, account := range accounts {
-			fileName := strings.ToLower(account.FileName)
-			if matchProvider(account) && (strings.Contains(fileName, source) || strings.Contains(strings.ToLower(account.DisplayName), source)) {
-				return account, true
+			if !matchProvider(account) || !matchType(account) {
+				continue
 			}
+			name := strings.ToLower(strings.TrimSpace(account.FileName))
+			if strings.Contains(name, source) || strings.Contains(strings.ToLower(account.DisplayName), source) {
+				candidates = append(candidates, account)
+			}
+		}
+		if len(candidates) == 1 {
+			return candidates[0], true
 		}
 	}
 	return store.InspectionAccount{}, false
 }
 
 func (r *Runtime) probeCodex(ctx context.Context, settings CodexInspectionSettings, result store.InspectionResult) store.InspectionResult {
-	response, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodGet, codexUsageURL, map[string]string{"Authorization": "Bearer $TOKEN$", "Content-Type": "application/json", "User-Agent": settings.UserAgent}, nil)
-	if err != nil {
-		return inspectionFailure(result, 0, "upstream_error", err.Error())
-	}
-	return resolveInspectionHTTPResult(result, response, settings.UsedPercentThreshold, "codex")
+	return r.probeCodexQuota(ctx, settings, result)
 }
 
 func (r *Runtime) probeXAI(ctx context.Context, settings CodexInspectionSettings, result store.InspectionResult) store.InspectionResult {
 	metadata, _ := r.inspectionAuthMetadata(ctx, result.AuthIndex)
 	baseURL, officialAPI, userID := resolveXAIProbeMetadata(metadata)
+	if normalizeInspectionAuthType(result.AuthType) == "apikey" {
+		officialAPI = true
+	}
 	if officialAPI {
-		response, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodGet, strings.TrimSuffix(baseURL, "/")+"/me", map[string]string{"Authorization": "Bearer $TOKEN$", "Accept": "application/json"}, nil)
+		base := strings.TrimSuffix(baseURL, "/")
+		profile, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodGet, base+"/me", map[string]string{"Authorization": "Bearer $TOKEN$", "Accept": "application/json"}, nil)
 		if err != nil {
 			return inspectionFailure(result, 0, "upstream_error", err.Error())
 		}
-		result = resolveInspectionHTTPResult(result, response, settings.UsedPercentThreshold, "xai")
+		result = resolveInspectionHTTPResult(result, profile, settings.UsedPercentThreshold, "xai")
+		if profile.StatusCode >= 200 && profile.StatusCode < 300 {
+			chat, chatErr := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodPost, base+"/chat/completions", map[string]string{"Authorization": "Bearer $TOKEN$", "Content-Type": "application/json", "Accept": "application/json"}, map[string]any{
+				"model": "grok-4.5", "messages": []map[string]string{{"role": "user", "content": "ping"}}, "max_tokens": 1, "stream": false,
+			})
+			if chatErr != nil {
+				return inspectionFailure(result, 0, "upstream_error", chatErr.Error())
+			}
+			if chat.StatusCode < 200 || chat.StatusCode >= 300 {
+				return resolveInspectionHTTPResult(result, chat, settings.UsedPercentThreshold, "xai")
+			}
+		}
 		if result.ErrorKind == "healthy" {
-			result.ActionReason = "xAI 官方 API 身份探测正常"
+			result.PlanType = "paid"
+			result = quotaMetadata(result, map[string]any{"provider": "xai", "mode": "paid-health", "quotaSupported": false, "healthStatus": "chat-ok"}, nil)
+			result.ActionReason = "xAI 官方 API 身份探测正常；付费额度由 xAI 账单管理"
 		}
 		if settings.XAIInferenceEnabled && result.Action == "keep" {
-			return r.probeXAIInference(ctx, settings, result, strings.TrimSuffix(baseURL, "/")+"/responses", map[string]string{"Authorization": "Bearer $TOKEN$", "Content-Type": "application/json", "User-Agent": settings.XAIInferenceUserAgent})
+			return r.probeXAIInference(ctx, settings, result, base+"/responses", map[string]string{"Authorization": "Bearer $TOKEN$", "Content-Type": "application/json", "User-Agent": settings.XAIInferenceUserAgent})
 		}
 		return result
 	}
@@ -785,6 +988,9 @@ func (r *Runtime) probeXAIInference(ctx context.Context, settings CodexInspectio
 }
 
 func (r *Runtime) inspectionAuthMetadata(ctx context.Context, authIndex string) (map[string]any, error) {
+	if document := r.inspectionAuthDocument(ctx, authIndex); document != nil {
+		return document, nil
+	}
 	response, err := r.callCPA(ctx, http.MethodGet, "/v0/management/auth-files", nil)
 	if err != nil {
 		return nil, err
@@ -897,11 +1103,6 @@ func applyInspectionQuotaThreshold(result store.InspectionResult, threshold floa
 
 func resolveInspectionHTTPResult(result store.InspectionResult, response inspectionAPIResponse, threshold float64, provider string) store.InspectionResult {
 	result.StatusCode = intPtr(response.StatusCode)
-	used := findHighestPercent(response.Body)
-	if used != nil {
-		result.UsedPercent = used
-		result.QuotaWindows = []map[string]any{{"id": provider + "-usage", "usedPercent": *used}}
-	}
 	status := response.StatusCode
 	body := strings.ToLower(response.BodyText)
 	switch {
@@ -938,7 +1139,11 @@ func (r *Runtime) callInspectionAPI(ctx context.Context, settings CodexInspectio
 	defer cancel()
 	payload := map[string]any{"authIndex": authIndex, "method": method, "url": target, "header": headers}
 	if requestBody != nil {
-		payload["data"] = requestBody
+		encodedBody, err := json.Marshal(requestBody)
+		if err != nil {
+			return inspectionAPIResponse{}, err
+		}
+		payload["data"] = string(encodedBody)
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

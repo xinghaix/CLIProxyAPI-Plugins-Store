@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -160,6 +161,81 @@ func TestInspectionProbesXAIProvider(t *testing.T) {
 	windows := asWindowSlice(results[0].QuotaWindows)
 	if len(windows) != 1 || windows[0]["id"] != "xai-weekly" || windows[0]["usedPercent"] != float64(25) {
 		t.Fatalf("xAI quota windows = %#v", windows)
+	}
+}
+
+func TestInspectionProbesXAIAPIKeyWithoutOAuthBilling(t *testing.T) {
+	runtime, err := New([]byte("data_dir: " + t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	settings := DefaultCodexInspectionSettings()
+	settings.TargetTypes = []string{"xai"}
+	settings.TargetType = "xai"
+	if err := runtime.UpdateCodexInspectionSettings(context.Background(), settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.UpdateConnection(context.Background(), "http://127.0.0.1:8317", "secret"); err != nil {
+		t.Fatal(err)
+	}
+	runtime.SetAuthList(func() ([]pluginapi.HostAuthFileEntry, error) {
+		return []pluginapi.HostAuthFileEntry{{Name: "xai-api.json", AuthIndex: "xai-api-1", Provider: "xai", AccountType: "api_key", Account: "secret-api-key", Status: "available"}}, nil
+	})
+	runtime.SetAuthGet(func(authIndex string) (pluginapi.HostAuthGetResponse, error) {
+		if authIndex != "xai-api-1" {
+			t.Fatalf("auth index = %q", authIndex)
+		}
+		return pluginapi.HostAuthGetResponse{
+			AuthIndex: authIndex,
+			JSON:      []byte(`{"type":"xai","auth_kind":"api_key","using_api":true,"base_url":"https://api.x.ai/v1"}`),
+		}, nil
+	})
+	calls := []string{}
+	runtime.SetHTTPDo(func(_ context.Context, method, target string, _ http.Header, body []byte) (pricesync.HTTPResponse, error) {
+		if method != http.MethodPost || !strings.Contains(target, "/v0/management/api-call") {
+			t.Fatalf("unexpected xAI API-key inspection request: %s %s", method, target)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("decode api-call payload: %v", err)
+		}
+		upstream, _ := payload["url"].(string)
+		calls = append(calls, upstream)
+		switch {
+		case strings.HasSuffix(upstream, "/me"):
+			return pricesync.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"status_code":200,"body":"{\"id\":\"user-1\"}"}`)}, nil
+		case strings.HasSuffix(upstream, "/chat/completions"):
+			return pricesync.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"status_code":200,"body":"{\"id\":\"chat-1\"}"}`)}, nil
+		case strings.Contains(upstream, "cli-chat-proxy.grok.com"):
+			t.Fatalf("API key probe must not call OAuth billing endpoint: %s", upstream)
+		default:
+			t.Fatalf("unexpected xAI API-key upstream URL: %s", upstream)
+		}
+		return pricesync.HTTPResponse{}, nil
+	})
+
+	detail, err := runtime.RunInspection(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, ok := detail["results"].([]store.InspectionResult)
+	if !ok || len(results) != 1 {
+		t.Fatalf("xAI API-key inspection detail = %#v", detail)
+	}
+	result := results[0]
+	if result.AuthType != "apikey" || result.AccountID != "" || result.Action != "keep" || result.PlanType != "paid" {
+		t.Fatalf("xAI API-key result = %#v", result)
+	}
+	if len(calls) != 2 || !strings.HasSuffix(calls[0], "/me") || !strings.HasSuffix(calls[1], "/chat/completions") {
+		t.Fatalf("xAI API-key upstream calls = %#v", calls)
+	}
+	metadataJSON, err := json.Marshal(result.AuthMetadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(metadataJSON), "secret-api-key") {
+		t.Fatalf("xAI API-key metadata leaked credential: %s", metadataJSON)
 	}
 }
 

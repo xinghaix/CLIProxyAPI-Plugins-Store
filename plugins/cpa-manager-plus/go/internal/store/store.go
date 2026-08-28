@@ -193,9 +193,9 @@ func (s *Store) ensureInspectionColumns(ctx context.Context) error {
 			{"disable_count", "integer not null default 0"}, {"enable_count", "integer not null default 0"}, {"reauth_count", "integer not null default 0"}, {"keep_count", "integer not null default 0"},
 		},
 		"codex_inspection_results": {
-			{"auth_index", "text"}, {"account_id", "text"}, {"state", "text"}, {"status_code", "integer"}, {"used_percent", "real"},
+			{"auth_id", "text"}, {"auth_index", "text"}, {"auth_type", "text"}, {"account_id", "text"}, {"state", "text"}, {"status_code", "integer"}, {"used_percent", "real"},
 			{"is_quota", "integer not null default 0"}, {"auto_recover_eligible", "integer not null default 0"}, {"executed_action", "text"},
-			{"plan_type", "text"}, {"quota_windows_json", "text"}, {"error", "text"}, {"error_kind", "text"}, {"error_detail", "text"},
+			{"plan_type", "text"}, {"quota_windows_json", "text"}, {"auth_metadata_json", "text"}, {"quota_metadata_json", "text"}, {"error", "text"}, {"error_kind", "text"}, {"error_detail", "text"},
 		},
 	}
 	for table, additions := range columns {
