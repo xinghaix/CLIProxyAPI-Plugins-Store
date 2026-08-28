@@ -738,6 +738,7 @@ pre {
   width: 100%;
 }
 .event-model-pill {
+  --provider-border: #7eae86;
   display: inline-block;
   flex: 0 0 auto;
   max-width: 100%;
@@ -745,7 +746,7 @@ pre {
   border-radius: 999px;
   background: #cde8d1;
   color: #163222;
-  box-shadow: inset 0 0 0 1px #7eae86;
+  box-shadow: inset 0 0 0 1px var(--provider-border);
   font-family: var(--cpa-font-mono);
   font-size: 12px;
   font-weight: 600;
@@ -889,48 +890,58 @@ pre {
   box-sizing: border-box;
   flex: 0 0 auto;
 }
-.provider-chip.is-xai {
+.provider-chip.is-xai,
+.event-model-pill.is-xai {
   --provider-border: #d18b86;
   color: #4a1715;
   background: #f5c8c4;
 }
-.provider-chip.is-codex {
+.provider-chip.is-codex,
+.event-model-pill.is-codex {
   --provider-border: #7eae86;
   color: #163222;
   background: #cde8d1;
 }
-.provider-chip.is-api {
+.provider-chip.is-api,
+.event-model-pill.is-api {
   --provider-border: #7aa4d4;
   color: #1e3a5f;
   background: #c5daf0;
 }
-.provider-chip.is-kimi {
+.provider-chip.is-kimi,
+.event-model-pill.is-kimi {
   --provider-border: #27272a;
   color: #f4f4f5;
   background: #18181b;
 }
 .provider-chip.is-gemini,
-.provider-chip.is-interactions {
+.event-model-pill.is-gemini,
+.provider-chip.is-interactions,
+.event-model-pill.is-interactions {
   --provider-border: #c4b5fd;
   color: #3b0764;
   background: #ead7ff;
 }
-.provider-chip.is-claude {
+.provider-chip.is-claude,
+.event-model-pill.is-claude {
   --provider-border: #fdba74;
   color: #7c2d12;
   background: #ffedd5;
 }
-.provider-chip.is-antigravity {
+.provider-chip.is-antigravity,
+.event-model-pill.is-antigravity {
   --provider-border: #fb923c;
   color: #9a3412;
   background: #ffedd5;
 }
-.provider-chip.is-vertex {
+.provider-chip.is-vertex,
+.event-model-pill.is-vertex {
   --provider-border: #93c5fd;
   color: #1e3a8a;
   background: #dbeafe;
 }
-.provider-chip.is-oauth {
+.provider-chip.is-oauth,
+.event-model-pill.is-oauth {
   color: var(--cpa-text-primary);
   background: var(--cpa-surface-muted);
 }

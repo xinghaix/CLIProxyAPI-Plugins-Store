@@ -127,7 +127,7 @@
                 </div>
                 <span class="event-model-cap" aria-hidden="true"></span>
               </div>
-              <strong v-else>{{ row.model }}</strong>
+              <span v-else :class="['event-model-pill', row.providerChip.chip || 'is-oauth']">{{ row.model }}</span>
             </td>
             <td class="event-effort-cell" :title="row.hints.model">
               <div><span class="event-metric-label">{{ t('monitoring.eventMeta.intensityLabel') }}</span> {{ row.intensityDisplay }}</div>
