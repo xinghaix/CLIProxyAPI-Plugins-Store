@@ -792,6 +792,22 @@ const hasQuotaSummary = computed(() => {
   );
 });
 
+function quotaResultHasData(result) {
+  const metadata = result?.quotaMetadata || {};
+  const windows = (Array.isArray(result?.quotaWindows) && result.quotaWindows.length > 0)
+    || (Array.isArray(metadata.windows) && metadata.windows.length > 0);
+  const groups = Array.isArray(metadata.groups) && metadata.groups.some(group => Array.isArray(group?.buckets) && group.buckets.length > 0);
+  const extraUsage = (result?.extraUsage && typeof result.extraUsage === 'object')
+    || (metadata.extraUsage && typeof metadata.extraUsage === 'object');
+  return Boolean(
+    result?.planType || metadata.planType || result?.subscriptionActiveUntil || metadata.subscriptionActiveUntil ||
+    result?.resetCreditsAvailableCount != null || metadata.resetCreditsAvailableCount != null ||
+    (Array.isArray(result?.resetCredits) && result.resetCredits.length > 0) ||
+    (Array.isArray(metadata.resetCredits) && metadata.resetCredits.length > 0) ||
+    extraUsage || windows || groups
+  );
+}
+
 function remainingTextFromWindow(window, remaining) {
   if (typeof window.remainingText === 'string' && window.remainingText.trim()) return window.remainingText;
   if (Number.isFinite(remaining)) return t('monitoring.authCard.remaining', { value: remaining });
@@ -959,11 +975,21 @@ function applyQuotaResult(result) {
   };
 }
 
+async function loadLatestInspectionResult(row) {
+  const runsResp = await props.proxyCall({ method: 'GET', path: '/v0/management/codex-inspection/runs', query: 'limit=8' });
+  const runs = Array.isArray(runsResp?.items) ? runsResp.items : [];
+  const completed = runs.find(run => run.status === 'completed');
+  if (!completed?.id) return null;
+  const detail = await props.proxyCall({ method: 'GET', path: `/v0/management/codex-inspection/runs/${completed.id}` });
+  return matchInspectionResult(detail?.results || [], row);
+}
+
 async function queryAccountQuota(row) {
   if (!row || !props.proxyCall) return;
   quotaLoading.value = true;
+  let probed = null;
   try {
-    const probed = await props.proxyCall({
+    probed = await props.proxyCall({
       method: 'POST',
       path: '/v0/management/account-quota-probe',
       body: {
@@ -975,23 +1001,27 @@ async function queryAccountQuota(row) {
         fileName: row.file_name || '',
       },
     });
+
+    if (probed && !probed.error && quotaResultHasData(probed)) {
+      applyQuotaResult(probed);
+      return;
+    }
+
+    const stored = await loadLatestInspectionResult(row);
+    if (stored && quotaResultHasData(stored)) {
+      applyQuotaResult(stored);
+      return;
+    }
+
     if (probed && !probed.error) {
       applyQuotaResult(probed);
-      if (!accountQuota.value.planType && !accountQuota.value.windows.length && !accountQuota.value.message) {
+      if (!hasQuotaSummary.value && !accountQuota.value.message) {
         accountQuota.value.message = t('monitoring.authCard.noQuota');
       }
       return;
     }
-    const runsResp = await props.proxyCall({ method: 'GET', path: '/v0/management/codex-inspection/runs', query: 'limit=8' });
-    const runs = runsResp?.items || [];
-    const completed = (Array.isArray(runs) ? runs : []).find(run => run.status === 'completed');
-    if (!completed?.id) {
-      applyQuotaResult({ actionReason: probed?.error || t('monitoring.authCard.noQuota') });
-      return;
-    }
-    const detail = await props.proxyCall({ method: 'GET', path: `/v0/management/codex-inspection/runs/${completed.id}` });
-    const result = matchInspectionResult(detail?.results || [], row);
-    applyQuotaResult(result || { actionReason: t('monitoring.authCard.noQuota') });
+
+    applyQuotaResult(stored || { actionReason: probed?.error || t('monitoring.authCard.noQuota') });
   } catch (error) {
     applyQuotaResult({ actionReason: error.message || String(error) });
   } finally {

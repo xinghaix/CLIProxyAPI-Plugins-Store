@@ -162,6 +162,9 @@ func TestInspectionProbesXAIProvider(t *testing.T) {
 	if len(windows) != 1 || windows[0]["id"] != "xai-weekly" || windows[0]["usedPercent"] != float64(25) {
 		t.Fatalf("xAI quota windows = %#v", windows)
 	}
+	if results[0].QuotaMetadata == nil || results[0].QuotaMetadata["provider"] != "xai" || results[0].QuotaMetadata["windows"] == nil {
+		t.Fatalf("xAI persisted quota metadata = %#v", results[0].QuotaMetadata)
+	}
 }
 
 func TestInspectionProbesXAIAPIKeyWithoutOAuthBilling(t *testing.T) {
