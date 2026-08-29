@@ -81,7 +81,7 @@ func (w *Writer) LastWriteMS() int64 { return w.lastWriteMS.Load() }
 
 func ToEvent(record pluginapi.UsageRecord) store.Event {
 	at := record.RequestedAt
-	if at.IsZero() {
+	if at.IsZero() || at.UnixMilli() <= 0 {
 		at = time.Now()
 	}
 	failure := sanitize(record.Failure.Body, 1_024)
@@ -126,8 +126,9 @@ func ToEvent(record pluginapi.UsageRecord) store.Event {
 
 func eventHash(event store.Event) string {
 	value := strings.Join([]string{
-		strconvInt(event.TimestampMS), event.Provider, event.Model, event.APIKeyHash, event.AuthIndex,
-		strconvInt(event.TotalTokens), strconvInt(event.LatencyMS), strconvInt(int64(event.FailStatusCode)), event.FailSummary,
+		strconvInt(event.TimestampMS), event.Provider, event.Model, event.Alias, event.APIKeyHash, event.AuthID, event.AuthIndex,
+		strconvInt(event.InputTokens), strconvInt(event.OutputTokens), strconvInt(event.TotalTokens), strconvInt(event.LatencyMS),
+		strconvInt(int64(event.FailStatusCode)), event.FailSummary, event.ResponseHeadersJSON,
 	}, "\x00")
 	return digest(value)
 }

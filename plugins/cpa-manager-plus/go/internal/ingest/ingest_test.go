@@ -44,3 +44,11 @@ func TestKeepUnflushedBatchOnBusy(t *testing.T) {
 		t.Fatal("success must not keep the batch")
 	}
 }
+
+func TestToEventRewritesEpochTimestamp(t *testing.T) {
+	before := time.Now().Add(-time.Second).UnixMilli()
+	event := ToEvent(pluginapi.UsageRecord{Model: "gpt-5", RequestedAt: time.Unix(0, 0)})
+	if event.TimestampMS <= 0 || event.TimestampMS < before {
+		t.Fatalf("timestamp = %d, want current time", event.TimestampMS)
+	}
+}

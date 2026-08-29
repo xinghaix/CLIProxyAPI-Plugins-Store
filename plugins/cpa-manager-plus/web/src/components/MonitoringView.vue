@@ -564,8 +564,13 @@ const eventDetailCards = computed(() => selectedEvent.value ? [
 const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'alias', 'requested_model', 'resolved_model', 'endpoint', 'method', 'path', 'protocol', 'executor_type', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'cache_input_mode', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
 const eventHeaderDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['header_quota_recover_at_ms', 'header_quota_used_percent', 'header_quota_plan_type', 'header_error_kind', 'header_error_code', 'header_trace_id'])) : {});
 
-watch([timeRange, searchQuery, filters], () => {
+watch(timeRange, () => {
   eventPage.value = 1;
+  refresh(true);
+});
+watch(filters, () => {
+  eventPage.value = 1;
+  refresh(true);
 }, {deep: true});
 watch(autoRefreshMs, setupTimer);
 watch(() => props.ready, (ready) => {
@@ -602,6 +607,9 @@ async function refresh(force = false) {
       props.proxyCall({method: 'POST', path: '/v0/management/monitoring/analytics', body: buildAnalyticsRequest()}),
       loadModelPrices(),
     ]);
+    if (analyticsData && analyticsData.error) {
+      error.value = String(analyticsData.error);
+    }
     data.value = analyticsData;
     modelPrices.value = pricesData;
   } catch (e) {
