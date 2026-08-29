@@ -65,6 +65,7 @@
 
     <section v-if="error" class="notice error">{{ error }}</section>
     <section v-if="!ready" class="notice">{{ t('monitoring.missingKey') }}</section>
+    <section v-if="ingestHint" class="notice">{{ ingestHint }}</section>
 
     <MetricGrid :cards="summaryCards"/>
 
@@ -491,6 +492,16 @@ const quotaQueryLabel = computed(() => {
   return t('monitoring.authCard.queryQuota');
 });
 
+const ingestHint = computed(() => {
+  const ingest = data.value?.ingest;
+  if (!ingest || Number(summary.value.total_calls) > 0) return '';
+  const lastEvent = Number(ingest.last_event_at_ms) || 0;
+  const lastHandle = Number(ingest.last_usage_handle_at_ms) || 0;
+  const lastEventText = lastEvent > 0 ? new Date(lastEvent).toLocaleString() : '无';
+  const lastHandleText = lastHandle > 0 ? new Date(lastHandle).toLocaleString() : '无';
+  const collector = ingest.collector_enabled === false ? '关' : '开';
+  return `采集${collector} · 库 ${ingest.event_count ?? 0} 条 · 最后写入 ${lastEventText} · usage.handle ${ingest.usage_handle_calls ?? 0} 次 (${lastHandleText}) · 丢弃 ${ingest.dropped_events ?? 0} · 写失败 ${ingest.write_failures ?? 0} · ${ingest.version || ''}`;
+});
 const summary = computed(() => data.value?.summary || {});
 const eventRows = computed(() => (data.value?.events?.items || []).map((row, idx) => ({...row, __id: idx})));
 const hasPrices = computed(() => Object.keys(modelPrices.value).length > 0);

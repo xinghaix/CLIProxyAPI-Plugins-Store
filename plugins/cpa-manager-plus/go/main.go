@@ -41,7 +41,7 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 )
 
-var pluginVersion = "0.5.23"
+var pluginVersion = "0.5.24"
 
 const (
 	// supportedPluginSchemaVersion 保持为 1，确保插件可加载于 schema 1 和 schema 2 host。
@@ -166,9 +166,7 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 		return okEnvelope(pluginRegistration())
 	case pluginabi.MethodUsageHandle:
 		var record pluginapi.UsageRecord
-		if err := json.Unmarshal(request, &record); err != nil {
-			return nil, err
-		}
+		_ = json.Unmarshal(request, &record)
 		if runtime := currentRuntime(); runtime != nil {
 			runtime.HandleUsage(record)
 		}

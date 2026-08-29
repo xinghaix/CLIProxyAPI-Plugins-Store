@@ -60,6 +60,18 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 		if err != nil {
 			return errorResponse(err)
 		}
+		health := runtime.Health(ctx)
+		result["ingest"] = map[string]any{
+			"collector_enabled":       health["collector_enabled"],
+			"event_count":             health["event_count"],
+			"last_event_at_ms":        health["last_event_at_ms"],
+			"dropped_events":          health["dropped_events"],
+			"write_failures":          health["write_failures"],
+			"queue_depth":             health["queue_depth"],
+			"usage_handle_calls":      health["usage_handle_calls"],
+			"last_usage_handle_at_ms": health["last_usage_handle_at_ms"],
+			"version":                 health["version"],
+		}
 		return jsonResponse(http.StatusOK, result)
 	case method == http.MethodGet && path == "/v0/management/model-prices":
 		prices, err := runtime.Store().Prices(ctx)

@@ -24,7 +24,7 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/store"
 )
 
-const runtimeVersion = "0.5.23"
+const runtimeVersion = "0.5.24"
 
 type connection struct {
 	BaseURL       string `json:"cpaBaseUrl"`
@@ -60,6 +60,8 @@ type Runtime struct {
 	autoBanSettings    AutoBanSettings
 	autoBanWake        chan struct{}
 	autoBanActionMu    sync.Mutex
+	usageSeen          atomic.Int64
+	lastUsageMS        atomic.Int64
 }
 
 func New(rawConfig []byte) (*Runtime, error) {
@@ -135,7 +137,12 @@ func (r *Runtime) Reconfigure(rawConfig []byte) error {
 }
 
 func (r *Runtime) HandleUsage(record pluginapi.UsageRecord) {
-	if r == nil || r.closed.Load() {
+	if r == nil {
+		return
+	}
+	r.usageSeen.Add(1)
+	r.lastUsageMS.Store(time.Now().UnixMilli())
+	if r.closed.Load() {
 		return
 	}
 	r.mu.Lock()
@@ -244,17 +251,20 @@ func (r *Runtime) Health(ctx context.Context) map[string]any {
 	last, lastErr := r.store.LastEventAt(ctx)
 	cfg := r.Config()
 	result := map[string]any{
-		"ok":               countErr == nil && lastErr == nil && !r.closed.Load(),
-		"runtime":          "local",
-		"version":          runtimeVersion,
-		"data_dir":         cfg.DataDir,
-		"started_at_ms":    r.started.UnixMilli(),
-		"event_count":      count,
-		"last_event_at_ms": last,
-		"queue_depth":      r.writer.Depth(),
-		"dropped_events":   r.writer.Dropped(),
-		"write_failures":   r.writer.Failed(),
-		"last_write_at_ms": r.writer.LastWriteMS(),
+		"ok":                      countErr == nil && lastErr == nil && !r.closed.Load(),
+		"runtime":                 "local",
+		"version":                 runtimeVersion,
+		"data_dir":                cfg.DataDir,
+		"started_at_ms":           r.started.UnixMilli(),
+		"event_count":             count,
+		"last_event_at_ms":        last,
+		"queue_depth":             r.writer.Depth(),
+		"dropped_events":          r.writer.Dropped(),
+		"write_failures":          r.writer.Failed(),
+		"last_write_at_ms":        r.writer.LastWriteMS(),
+		"collector_enabled":       cfg.Collector.Enabled,
+		"usage_handle_calls":      r.usageSeen.Load(),
+		"last_usage_handle_at_ms": r.lastUsageMS.Load(),
 	}
 	if countErr != nil {
 		result["error"] = countErr.Error()

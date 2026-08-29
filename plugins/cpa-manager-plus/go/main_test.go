@@ -40,7 +40,7 @@ func TestPluginRegistrationExposesUsagePlugin(t *testing.T) {
 	if !registration.Capabilities.ManagementAPI || !registration.Capabilities.UsagePlugin {
 		t.Fatalf("capabilities = %#v", registration.Capabilities)
 	}
-	if registration.Metadata.Version != "0.5.23" {
+	if registration.Metadata.Version != "0.5.24" {
 		t.Fatalf("version = %s", registration.Metadata.Version)
 	}
 	if registration.SchemaVersion != 1 {
@@ -162,5 +162,12 @@ func TestHandleMethodQuiesce(t *testing.T) {
 	}
 	if parsed.OK {
 		t.Fatal("unknown method must not be ok")
+	}
+}
+
+func TestHandleUsageMalformedJSONIsAccepted(t *testing.T) {
+	_, err := handleMethod("usage.handle", []byte(`{"RequestedAt":1,"Latency":"1s"}`))
+	if err != nil {
+		t.Fatal(err)
 	}
 }
