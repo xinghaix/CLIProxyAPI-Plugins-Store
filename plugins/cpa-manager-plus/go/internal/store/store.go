@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -16,7 +17,7 @@ type Store struct {
 }
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
-	dsn := filepath.Join(dataDir, "usage.sqlite") + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	dsn := filepath.Join(dataDir, "usage.sqlite") + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -37,6 +38,16 @@ func Open(ctx context.Context, dataDir string) (*Store, error) {
 }
 
 func (s *Store) Close() error { return s.db.Close() }
+
+// IsBusy reports SQLITE_BUSY / SQLITE_BUSY_SNAPSHOT. busy_timeout does not
+// retry snapshot upgrades; callers must restart the write transaction.
+func IsBusy(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "database is locked") || strings.Contains(msg, "sqlite_busy") || strings.Contains(msg, "busy_snapshot")
+}
 
 func (s *Store) migrate(ctx context.Context) error {
 	statements := []string{

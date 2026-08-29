@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -29,5 +30,17 @@ func TestToEventTrimsAliasAndLeavesItEmptyWhenMissing(t *testing.T) {
 	}
 	if event.Alias != "" {
 		t.Fatalf("alias = %q, want empty", event.Alias)
+	}
+}
+
+func TestKeepUnflushedBatchOnBusy(t *testing.T) {
+	if !keepUnflushedBatch(fmt.Errorf("database is locked (517)")) {
+		t.Fatal("busy insert must keep the batch")
+	}
+	if keepUnflushedBatch(fmt.Errorf("constraint failed")) {
+		t.Fatal("non-busy insert must drop the batch")
+	}
+	if keepUnflushedBatch(nil) {
+		t.Fatal("success must not keep the batch")
 	}
 }

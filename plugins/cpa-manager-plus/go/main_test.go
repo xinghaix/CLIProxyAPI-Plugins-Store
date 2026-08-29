@@ -40,7 +40,7 @@ func TestPluginRegistrationExposesUsagePlugin(t *testing.T) {
 	if !registration.Capabilities.ManagementAPI || !registration.Capabilities.UsagePlugin {
 		t.Fatalf("capabilities = %#v", registration.Capabilities)
 	}
-	if registration.Metadata.Version != "0.5.21" {
+	if registration.Metadata.Version != "0.5.22" {
 		t.Fatalf("version = %s", registration.Metadata.Version)
 	}
 	if registration.SchemaVersion != 1 {
@@ -138,5 +138,29 @@ func TestDecodeHostAuthList(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestHandleMethodQuiesce(t *testing.T) {
+	body, err := handleMethod(methodPluginQuiesce, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed envelope
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if !parsed.OK {
+		t.Fatalf("quiesce envelope = %s", body)
+	}
+	unknown, err := handleMethod("plugin.unknown", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(unknown, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.OK {
+		t.Fatal("unknown method must not be ok")
 	}
 }

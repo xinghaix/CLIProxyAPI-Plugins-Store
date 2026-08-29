@@ -47,6 +47,9 @@ func (w *Writer) Run(ctx context.Context) {
 		}
 		if _, committed, err := w.store.InsertEventsCommitted(ctx, batch); err != nil {
 			w.failed.Add(int64(len(batch)))
+			if keepUnflushedBatch(err) {
+				return
+			}
 		} else {
 			w.lastWriteMS.Store(time.Now().UnixMilli())
 			if len(committed) > 0 && w.onCommitted != nil {
@@ -156,3 +159,7 @@ func selectHeaders(headers map[string][]string) map[string][]string {
 }
 
 func strconvInt(value int64) string { return strconv.FormatInt(value, 10) }
+
+func keepUnflushedBatch(err error) bool {
+	return store.IsBusy(err)
+}

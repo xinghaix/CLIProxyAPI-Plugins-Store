@@ -41,7 +41,7 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 )
 
-var pluginVersion = "0.5.21"
+var pluginVersion = "0.5.22"
 
 const (
 	// supportedPluginSchemaVersion 保持为 1，确保插件可加载于 schema 1 和 schema 2 host。
@@ -54,6 +54,7 @@ const (
 	resourceAppPath         = "/v0/resource/plugins/cpa-manager-plus/app"
 	contentTypeJSON         = "application/json; charset=utf-8"
 	contentTypeHTML         = "text/html; charset=utf-8"
+	methodPluginQuiesce     = "plugin.quiesce"
 )
 
 type envelope struct {
@@ -143,6 +144,10 @@ func cliproxyPluginFree(ptr unsafe.Pointer, _ C.size_t) {
 
 //export cliproxyPluginShutdown
 func cliproxyPluginShutdown() {
+	stopRuntime()
+}
+
+func stopRuntime() {
 	runtimeState.Lock()
 	runtime := runtimeState.runtime
 	runtimeState.runtime = nil
@@ -172,6 +177,9 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 		return okEnvelope(managementRegistration())
 	case pluginabi.MethodManagementHandle:
 		return handleManagement(request)
+	case methodPluginQuiesce:
+		stopRuntime()
+		return okEnvelope(map[string]any{})
 	default:
 		return errorEnvelope("unknown_method", "unknown method: "+method), nil
 	}
