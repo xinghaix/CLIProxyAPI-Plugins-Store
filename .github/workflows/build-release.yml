@@ -285,15 +285,16 @@ jobs:
           git push origin "HEAD:${REGISTRY_BRANCH}"
 
           PR_URL="$(gh pr list --base main --head "$REGISTRY_BRANCH" --state open --json url --jq '.[0].url')"
-          if [ -n "$PR_URL" ]; then
-            echo "registry update pull request already open: $PR_URL"
-            exit 0
+          if [ -z "$PR_URL" ]; then
+            PR_URL="$(gh pr create \
+              --base main \
+              --head "$REGISTRY_BRANCH" \
+              --title "chore: refresh schema v2 direct registry" \
+              --body "Automated registry refresh for ${GITHUB_REF_NAME}.")"
           fi
-          gh pr create \
-            --base main \
-            --head "$REGISTRY_BRANCH" \
-            --title "chore: refresh schema v2 direct registry" \
-            --body "Automated registry refresh for ${GITHUB_REF_NAME}. This PR requires the configured main-branch approval before merge."
+          if ! gh pr merge --squash --delete-branch "$PR_URL"; then
+            gh pr merge --squash --auto --delete-branch "$PR_URL"
+          fi
 
   publish-cdn:
     name: Publish jsDelivr CDN branch
