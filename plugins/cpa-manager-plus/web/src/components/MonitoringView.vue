@@ -569,13 +569,21 @@ watch([timeRange, searchQuery, filters], () => {
 }, {deep: true});
 watch(autoRefreshMs, setupTimer);
 watch(() => props.ready, (ready) => {
-  if (ready && !data.value) refresh(true);
+  if (!ready) {
+    clearTimer();
+    return;
+  }
+  setupTimer();
+  if (!data.value) refresh(true);
 });
 onMounted(() => {
   quotaClockTimer = window.setInterval(() => {
     quotaNowMs.value = Date.now();
   }, 30000);
-  if (props.ready) refresh(true);
+  if (props.ready) {
+    setupTimer();
+    refresh(true);
+  }
 });
 onBeforeUnmount(() => {
   clearTimer();
@@ -596,7 +604,6 @@ async function refresh(force = false) {
     ]);
     data.value = analyticsData;
     modelPrices.value = pricesData;
-    setupTimer();
   } catch (e) {
     error.value = e.message || String(e);
   } finally {
@@ -647,7 +654,7 @@ function buildAnalyticsRequest() {
       anomaly_points: true,
       task_buckets: true,
       recent_failures: 30,
-      events_page: {limit: 5000},
+      events_page: {limit: 3000},
       granularity: shouldUseHour(fromMs, toMs) ? 'hour' : 'day',
     },
   };
@@ -1164,7 +1171,7 @@ function setModelFilter(row) {
 
 function setupTimer() {
   clearTimer();
-  if (autoRefreshMs.value > 0) timer = window.setInterval(() => refresh(false), autoRefreshMs.value);
+  if (props.ready && autoRefreshMs.value > 0) timer = window.setInterval(() => refresh(false), autoRefreshMs.value);
 }
 
 function clearTimer() {

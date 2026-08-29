@@ -7,18 +7,18 @@ import (
 	"time"
 )
 
-func TestClampEventLimitAllowsFiveThousandWindow(t *testing.T) {
-	if got := clampEventLimit(5_000); got != 5_000 {
-		t.Fatalf("max window = %d, want 5000", got)
+func TestClampEventLimitAllowsThreeThousandWindow(t *testing.T) {
+	if got := clampEventLimit(3_000); got != 3_000 {
+		t.Fatalf("max window = %d, want 3000", got)
 	}
 	if got := clampEventLimit(1); got != 1 {
 		t.Fatalf("min window = %d, want 1", got)
 	}
-	if got := clampEventLimit(0); got != 5_000 {
-		t.Fatalf("empty limit = %d, want 5000", got)
+	if got := clampEventLimit(0); got != 3_000 {
+		t.Fatalf("empty limit = %d, want 3000", got)
 	}
-	if got := clampEventLimit(5_001); got != 5_000 {
-		t.Fatalf("over max = %d, want 5000", got)
+	if got := clampEventLimit(3_001); got != 3_000 {
+		t.Fatalf("over max = %d, want 3000", got)
 	}
 }
 

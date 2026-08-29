@@ -126,7 +126,7 @@ func finiteNonNegative(values ...float64) bool {
 	return true
 }
 
-const maxEventWindow = 5_000
+const maxEventWindow = 3_000
 
 func clampEventLimit(limit int) int {
 	if limit < 1 || limit > maxEventWindow {
