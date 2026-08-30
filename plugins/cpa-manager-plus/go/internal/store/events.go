@@ -45,6 +45,17 @@ func (s *Store) InsertEvents(ctx context.Context, events []Event) (int, error) {
 // Consumers must use the returned slice for side effects so duplicate usage events are not
 // evaluated more than once.
 func (s *Store) InsertEventsCommitted(ctx context.Context, events []Event) (int, []Event, error) {
+	inserted, committed, err := s.insertEventsCommitted(ctx, events)
+	if err == nil || !IsCorrupt(err) {
+		return inserted, committed, err
+	}
+	if recErr := s.repair(ctx, err); recErr != nil {
+		return 0, nil, err
+	}
+	return s.insertEventsCommitted(ctx, events)
+}
+
+func (s *Store) insertEventsCommitted(ctx context.Context, events []Event) (int, []Event, error) {
 	if len(events) == 0 {
 		return 0, nil, nil
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,26 +14,48 @@ import (
 
 // Store serializes SQLite access for the local plugin runtime.
 type Store struct {
-	db *sql.DB
+	db   *sql.DB
+	path string
+	dsn  string
 }
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
-	dsn := filepath.Join(dataDir, "usage.sqlite") + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate"
+	path := filepath.Join(dataDir, "usage.sqlite")
+	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-	db.SetConnMaxLifetime(0)
+	configureDB(db)
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("ping sqlite: %w", err)
+		if !isWALSalvageError(err) {
+			return nil, fmt.Errorf("ping sqlite: %w", err)
+		}
+		_ = os.Remove(path + "-wal")
+		_ = os.Remove(path + "-shm")
+		db, err = sql.Open("sqlite", dsn)
+		if err != nil {
+			return nil, fmt.Errorf("reopen sqlite: %w", err)
+		}
+		configureDB(db)
+		if err := db.PingContext(ctx); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("ping sqlite: %w", err)
+		}
 	}
-	store := &Store{db: db}
+	store := &Store{db: db, path: path, dsn: dsn}
 	if err := store.migrate(ctx); err != nil {
-		_ = db.Close()
-		return nil, err
+		if recErr := store.repair(ctx, err); recErr != nil {
+			_ = store.Close()
+			return nil, recErr
+		}
+	}
+	if err := store.ensureWritable(ctx); err != nil {
+		if recErr := store.repair(ctx, err); recErr != nil {
+			_ = store.Close()
+			return nil, recErr
+		}
 	}
 	return store, nil
 }

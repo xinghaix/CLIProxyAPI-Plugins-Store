@@ -172,5 +172,5 @@ func selectHeaders(headers map[string][]string) map[string][]string {
 func strconvInt(value int64) string { return strconv.FormatInt(value, 10) }
 
 func keepUnflushedBatch(err error) bool {
-	return store.IsBusy(err)
+	return store.IsBusy(err) || store.IsCorrupt(err)
 }

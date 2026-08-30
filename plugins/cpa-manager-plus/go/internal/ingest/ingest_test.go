@@ -40,6 +40,9 @@ func TestKeepUnflushedBatchOnBusy(t *testing.T) {
 	if keepUnflushedBatch(fmt.Errorf("constraint failed")) {
 		t.Fatal("non-busy insert must drop the batch")
 	}
+	if !keepUnflushedBatch(fmt.Errorf("insert usage event: database disk image is malformed (11)")) {
+		t.Fatal("corrupt insert must keep the batch")
+	}
 	if keepUnflushedBatch(nil) {
 		t.Fatal("success must not keep the batch")
 	}
