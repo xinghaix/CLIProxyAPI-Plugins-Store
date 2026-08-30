@@ -70,6 +70,8 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 			"queue_depth":             health["queue_depth"],
 			"usage_handle_calls":      health["usage_handle_calls"],
 			"last_usage_handle_at_ms": health["last_usage_handle_at_ms"],
+			"last_write_error":        health["last_write_error"],
+			"write_probe_error":       health["write_probe_error"],
 			"version":                 health["version"],
 		}
 		return jsonResponse(http.StatusOK, result)

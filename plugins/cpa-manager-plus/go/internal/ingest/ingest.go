@@ -22,6 +22,7 @@ type Writer struct {
 	lastWriteMS atomic.Int64
 	dropped     atomic.Int64
 	failed      atomic.Int64
+	lastErr     atomic.Value
 }
 
 func NewWriter(database *store.Store, capacity, batchSize int, onCommitted func([]store.Event)) *Writer {
@@ -45,12 +46,17 @@ func (w *Writer) Run(ctx context.Context) {
 		if len(batch) == 0 {
 			return
 		}
-		if _, committed, err := w.store.InsertEventsCommitted(ctx, batch); err != nil {
+		writeCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		_, committed, err := w.store.InsertEventsCommitted(writeCtx, batch)
+		cancel()
+		if err != nil {
 			w.failed.Add(int64(len(batch)))
+			w.lastErr.Store(err.Error())
 			if keepUnflushedBatch(err) {
 				return
 			}
 		} else {
+			w.lastErr.Store("")
 			w.lastWriteMS.Store(time.Now().UnixMilli())
 			if len(committed) > 0 && w.onCommitted != nil {
 				w.onCommitted(committed)
@@ -78,6 +84,10 @@ func (w *Writer) Depth() int         { return len(w.queue) }
 func (w *Writer) Dropped() int64     { return w.dropped.Load() }
 func (w *Writer) Failed() int64      { return w.failed.Load() }
 func (w *Writer) LastWriteMS() int64 { return w.lastWriteMS.Load() }
+func (w *Writer) LastError() string {
+	value, _ := w.lastErr.Load().(string)
+	return value
+}
 
 func ToEvent(record pluginapi.UsageRecord) store.Event {
 	at := record.RequestedAt

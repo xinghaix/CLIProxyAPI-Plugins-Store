@@ -39,6 +39,11 @@ func Open(ctx context.Context, dataDir string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+func (s *Store) PingWrite(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `insert into settings(key, value, updated_at_ms) values('write_probe', 'ok', ?) on conflict(key) do update set value=excluded.value, updated_at_ms=excluded.updated_at_ms`, time.Now().UnixMilli())
+	return err
+}
+
 // IsBusy reports SQLITE_BUSY / SQLITE_BUSY_SNAPSHOT. busy_timeout does not
 // retry snapshot upgrades; callers must restart the write transaction.
 func IsBusy(err error) bool {

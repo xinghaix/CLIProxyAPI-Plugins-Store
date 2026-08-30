@@ -24,7 +24,7 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/store"
 )
 
-const runtimeVersion = "0.5.24"
+const runtimeVersion = "0.5.25"
 
 type connection struct {
 	BaseURL       string `json:"cpaBaseUrl"`
@@ -265,6 +265,10 @@ func (r *Runtime) Health(ctx context.Context) map[string]any {
 		"collector_enabled":       cfg.Collector.Enabled,
 		"usage_handle_calls":      r.usageSeen.Load(),
 		"last_usage_handle_at_ms": r.lastUsageMS.Load(),
+		"last_write_error":        r.writer.LastError(),
+	}
+	if err := r.store.PingWrite(ctx); err != nil {
+		result["write_probe_error"] = err.Error()
 	}
 	if countErr != nil {
 		result["error"] = countErr.Error()
