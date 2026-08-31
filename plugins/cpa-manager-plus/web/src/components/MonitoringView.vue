@@ -378,8 +378,8 @@
           <p>{{ accountQuota.message || t('monitoring.authCard.noQuota') }}</p>
         </div>
         <div class="auth-actions">
-          <button class="btn primary" type="button" :disabled="quotaQueryDisabled" @click="queryAccountQuota(selectedAccount, {force: true})">
-            {{ quotaQueryLabel }}
+          <button class="btn primary" type="button" :disabled="quotaLoading" @click="queryAccountQuota(selectedAccount, {force: true})">
+            {{ quotaLoading ? t('monitoring.authCard.querying') : t('monitoring.authCard.queryQuota') }}
           </button>
           <button class="btn" type="button" @click="filterAccountAPIKey(selectedAccount)">{{ t('monitoring.authCard.filterEvents') }}</button>
           <button class="btn" type="button" @click="emit('open-inspection')">{{ t('monitoring.authCard.openInspection') }}</button>
@@ -479,7 +479,6 @@ const selectedAccountId = ref('');
 const selectedQuotaKey = ref('');
 const quotaLoading = ref(false);
 const accountQuota = ref(emptyAccountQuota());
-const quotaNextRequestAt = ref(0);
 const selectedModelId = ref('');
 const expandedEventKeys = ref(new Set());
 const expandedAccountSources = ref(new Set());
@@ -500,15 +499,6 @@ const dataTabs = computed(() => [
   {key: 'models', label: t('monitoring.tabs.models'), count: modelRows.value.length, note: t('monitoring.cards.modelsSubtitle')},
 ]);
 const activeMonitorNote = computed(() => dataTabs.value.find((tab) => tab.key === activeDataTab.value)?.note || '');
-const quotaCooldownRemainingMs = computed(() => Math.max(0, quotaNextRequestAt.value - quotaNowMs.value));
-const quotaQueryDisabled = computed(() => quotaLoading.value || quotaCooldownRemainingMs.value > 0);
-const quotaQueryLabel = computed(() => {
-  if (quotaLoading.value) return t('monitoring.authCard.querying');
-  if (quotaCooldownRemainingMs.value > 0) {
-    return `${t('monitoring.authCard.queryQuota')} (${formatQuotaCooldown(quotaCooldownRemainingMs.value)})`;
-  }
-  return t('monitoring.authCard.queryQuota');
-});
 
 const summary = computed(() => data.value?.summary || {});
 const eventRows = computed(() => (data.value?.events?.items || []).map((row, idx) => ({...row, __id: idx})));
@@ -788,7 +778,6 @@ function selectAccountAPIKey(row) {
   selectedAccountId.value = row?.id || '';
   selectedQuotaKey.value = row ? quotaCacheKey(row) : '';
   quotaLoading.value = false;
-  quotaNextRequestAt.value = 0;
   accountQuota.value = emptyAccountQuota();
   if (!row || !isOAuthAuthType(row.auth_type)) return;
 
@@ -995,10 +984,6 @@ function formatQuotaResetRelative(value) {
   return formatQuotaResetRelativeValue(value, quotaNowMs.value, locale.value);
 }
 
-function formatQuotaCooldown(value) {
-  return formatQuotaResetRelativeValue(quotaNowMs.value + value, quotaNowMs.value, locale.value);
-}
-
 function formatPlanType(value) {
   const plan = String(value || '').trim();
   const labels = {
@@ -1041,7 +1026,6 @@ function applyQuotaResultForDisplay(result) {
 
 function applyCachedQuotaResult(key, entry) {
   if (!isSelectedQuotaKey(key)) return;
-  quotaNextRequestAt.value = Number(entry?.nextRequestAt) || 0;
   applyQuotaResultForDisplay(entry?.result || {});
 }
 
@@ -1138,28 +1122,16 @@ async function queryAccountQuota(row, {force = false} = {}) {
     return cached.result;
   }
 
-  const now = Date.now();
-  if (cached && Number(cached.nextRequestAt) > now) {
-    applyCachedQuotaResult(key, cached);
-    return cached.result;
-  }
-
   if (isSelectedQuotaKey(key)) quotaLoading.value = true;
   try {
     const response = await getOrCreateQuotaRequest(key, () => fetchQuotaResult(row));
-    const entry = setQuotaCacheEntry(key, response.result, response.cooldownMs);
-    if (isSelectedQuotaKey(key)) {
-      quotaNextRequestAt.value = entry.nextRequestAt;
-      applyQuotaResultForDisplay(response.result);
-    }
+    setQuotaCacheEntry(key, response.result, response.cooldownMs);
+    if (isSelectedQuotaKey(key)) applyQuotaResultForDisplay(response.result);
     return response.result;
   } catch (error) {
     const result = {actionReason: error.message || String(error)};
-    const entry = setQuotaCacheEntry(key, result, QUOTA_ERROR_COOLDOWN_MS);
-    if (isSelectedQuotaKey(key)) {
-      quotaNextRequestAt.value = entry.nextRequestAt;
-      applyQuotaResultForDisplay(result);
-    }
+    setQuotaCacheEntry(key, result, QUOTA_ERROR_COOLDOWN_MS);
+    if (isSelectedQuotaKey(key)) applyQuotaResultForDisplay(result);
     return result;
   } finally {
     if (isSelectedQuotaKey(key)) quotaLoading.value = false;
