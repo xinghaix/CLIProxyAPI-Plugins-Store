@@ -270,7 +270,7 @@ jobs:
 
       - name: Commit registry-v2.json and create pull request
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_MERGE_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -292,8 +292,40 @@ jobs:
               --title "chore: refresh schema v2 direct registry" \
               --body "Automated registry refresh for ${GITHUB_REF_NAME}.")"
           fi
-          if [ -z "${{ secrets.RELEASE_MERGE_TOKEN }}" ]; then
+          echo "REGISTRY_PR_URL=${PR_URL}" >> "$GITHUB_ENV"
+
+      - name: Auto-merge registry pull request
+        if: env.REGISTRY_PR_URL != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_MERGE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
             echo "RELEASE_MERGE_TOKEN is required to auto-merge registry PRs past main-branch review rules"
+            exit 1
+          fi
+          PR_URL="${REGISTRY_PR_URL}"
+          PR_JSON="$(gh pr view "$PR_URL" --json baseRefName,headRefName,author,files,state)"
+          BASE="$(printf '%s' "$PR_JSON" | jq -r .baseRefName)"
+          HEAD="$(printf '%s' "$PR_JSON" | jq -r .headRefName)"
+          AUTHOR="$(printf '%s' "$PR_JSON" | jq -r .author.login)"
+          FILES="$(printf '%s' "$PR_JSON" | jq -r '[.files[].path] | join("\n")')"
+          EXPECTED_HEAD="automation/refresh-registry-v2-${GITHUB_REF_NAME}"
+          if [ "$BASE" != "main" ]; then
+            echo "refusing to merge PR based on $BASE"
+            exit 1
+          fi
+          if [ "$HEAD" != "$EXPECTED_HEAD" ]; then
+            echo "refusing to merge unexpected head $HEAD"
+            exit 1
+          fi
+          if [ "$AUTHOR" != "github-actions[bot]" ] && [ "$AUTHOR" != "app/github-actions" ]; then
+            echo "refusing to merge PR from $AUTHOR"
+            exit 1
+          fi
+          if [ "$FILES" != "registry-v2.json" ]; then
+            echo "refusing to merge PR that changes: $FILES"
             exit 1
           fi
           echo "Merging $PR_URL"
