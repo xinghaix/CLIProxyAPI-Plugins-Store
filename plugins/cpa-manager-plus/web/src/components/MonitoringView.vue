@@ -214,11 +214,11 @@
         <div v-if="modelRouteTooltip.visible" class="event-model-tooltip" :style="modelRouteTooltip.style"
              @mouseenter="keepModelRouteTooltip" @mouseleave="hideModelRouteTooltip">
           <div class="event-model-tooltip-row">
-            <span>{{ t('monitoring.eventMeta.requestedBilling') }}</span>
+            <span>{{ t('monitoring.eventMeta.requestedModel') }}</span>
             <strong class="event-model-tip-chip is-requested">{{ modelRouteTooltip.row?.model }}</strong>
           </div>
           <div class="event-model-tooltip-row">
-            <span>{{ t('monitoring.eventMeta.actualModel') }}</span>
+            <span>{{ t('monitoring.eventMeta.billedModel') }}</span>
             <strong class="event-model-tip-chip is-actual">{{ modelRouteTooltip.row?.mappedModel }}</strong>
           </div>
         </div>
