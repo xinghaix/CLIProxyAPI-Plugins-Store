@@ -76,27 +76,6 @@
       </div>
     </DataCard>
 
-    <!-- ====== Quick stats ====== -->
-    <div class="dashboard-bento-grid">
-      <button v-for="item in quickStats" :key="item.key" class="dashboard-bento-card" @click="openTab(item.tab)">
-        <div class="dashboard-bento-top">
-          <span class="dashboard-bento-label">{{ item.label }}</span>
-          <span class="dashboard-bento-arrow">→</span>
-        </div>
-        <div class="dashboard-bento-value">{{ item.value }}</div>
-        <div class="dashboard-bento-sub muted small-text">{{ item.sub }}</div>
-      </button>
-    </div>
-
-    <!-- ====== Config summary ====== -->
-    <DataCard v-if="configSummary.length" :title="t('dashboard.configSummary')" :subtitle="t('dashboard.configSummarySub')">
-      <div class="config-summary-grid">
-        <div v-for="item in configSummary" :key="item.label" class="config-summary-item">
-          <span class="config-summary-label">{{ item.label }}</span>
-          <span :class="['config-summary-value', item.on ? 'good-text' : item.off ? 'muted' : '']">{{ item.value }}</span>
-        </div>
-      </div>
-    </DataCard>
     </section>
 
     <!-- ====== Usage analytics ====== -->
@@ -375,30 +354,6 @@ const dashboardKpi = computed(() => {
   ];
 });
 
-const quickStats = computed(() => {
-  const s = dSummary.value;
-  return [
-    { key: 'config', label: t('dashboard.quick.apiKeys'), value: s.api_keys ?? EMPTY_VALUE, sub: t('dashboard.quick.apiKeysSub'), tab: 'config' },
-    { key: 'inspection', label: t('dashboard.quick.oauth'), value: s.auth_files ?? EMPTY_VALUE, sub: t('dashboard.quick.oauthSub'), tab: 'inspection' },
-    { key: 'monitoring', label: t('dashboard.quick.monitoring'), value: recentFailures.value.length, sub: t('dashboard.quick.monitoringSub'), tab: 'monitoring' },
-    { key: 'model-prices', label: t('dashboard.quick.modelPrices'), value: t('dashboard.quick.modelPricesValue'), sub: t('dashboard.quick.modelPricesSub'), tab: 'model-prices' },
-  ];
-});
-
-const configSummary = computed(() => {
-  const c = dashData.value?.config_summary;
-  if (!c) return [];
-  const onOff = (on) => (on ? t('common.enabled') : t('common.disabled'));
-  return [
-    { label: t('dashboard.config.debug'), value: onOff(c.debug), on: c.debug, off: !c.debug },
-    { label: t('dashboard.config.loggingToFile'), value: onOff(c.logging_to_file), on: c.logging_to_file, off: !c.logging_to_file },
-    { label: t('dashboard.config.requestRetry'), value: String(c.request_retry ?? 0) },
-    { label: t('dashboard.config.wsAuth'), value: onOff(c.ws_auth), on: c.ws_auth, off: !c.ws_auth },
-    { label: t('dashboard.config.routingStrategy'), value: c.routing_strategy || EMPTY_VALUE },
-    ...(c.proxy_url ? [{ label: t('dashboard.config.proxyUrl'), value: c.proxy_url }] : []),
-  ];
-});
-
 // ===== Analytics state =====
 const analyticsData = ref(null);
 const analyticsLoading = ref(false);
@@ -632,10 +587,6 @@ onMounted(() => {
 watch(() => props.ready, (ready) => {
   if (ready && !dashData.value) refreshAll();
 });
-
-function openTab(tab) {
-  window.dispatchEvent(new CustomEvent('cpa-manager-plus:open-tab', { detail: { tab } }));
-}
 
 async function refreshAll() {
   await Promise.all([refreshDashboard(true), refreshAnalytics(true)]);

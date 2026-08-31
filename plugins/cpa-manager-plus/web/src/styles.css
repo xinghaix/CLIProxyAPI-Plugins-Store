@@ -361,39 +361,6 @@ h2 { margin: 0; font-weight: 600; }
   font-weight: 600;
   letter-spacing: 0.01em;
 }
-.dashboard-bento-grid { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:0; border-top: 1px solid var(--cpa-rule); }
-.dashboard-bento-card {
-  text-align:left;
-  border: 0;
-  border-right: 1px solid var(--cpa-rule);
-  background: transparent;
-  border-radius: 0;
-  padding: 16px 28px;
-  box-shadow: none;
-  cursor:pointer;
-}
-.dashboard-bento-card:first-child { padding-left: 0; }
-.dashboard-bento-card:last-child { border-right: 0; padding-right: 0; }
-.dashboard-bento-top { display:flex; justify-content:space-between; align-items:center; gap:10px; }
-.dashboard-bento-label {
-  font-family: var(--cpa-font-mono);
-  font-size: 10px;
-  color: var(--cpa-text-tertiary);
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.dashboard-bento-arrow { color: var(--cpa-text-tertiary); font-weight: 500; }
-.dashboard-bento-value {
-  font-family: var(--cpa-font-mono);
-  font-size: 24px;
-  font-weight: 500;
-  margin-top: 8px;
-  line-height: 1.05;
-  letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums;
-}
-.dashboard-bento-sub { margin-top:6px; }
 .rank-list { display:grid; gap:0; }
 .rank-item { display:grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap:12px; align-items:end; padding: 10px 0; }
 .rank-index {
@@ -1596,7 +1563,6 @@ pre {
   .clickable:hover td { background: color-mix(in srgb, var(--cpa-ink) 3.5%, transparent); }
   .heatmap-cell:hover { transform: none; outline: 1px solid var(--cpa-ink); z-index: 1; position: relative; }
   .config-overview-chip:hover, .run-history-card:hover { color: var(--cpa-ink); background: transparent; border-color: var(--cpa-rule); }
-  .dashboard-bento-card:hover { transform: none; border-color: var(--cpa-rule); background: transparent; }
   .sensitive-value-toggle:hover { color: var(--cpa-ink); text-decoration: underline; }
   .failure-tooltip-copy:hover { border-color: var(--cpa-ink); color: var(--cpa-ink); }
 }
@@ -1621,7 +1587,6 @@ pre {
   .metric-grid > .metric-card { flex: 1 1 21%; }
   .metric-grid > :nth-child(4n + 1) { padding-left: 0; }
   .metric-grid > :nth-child(4n) { border-right: 0; padding-right: 0; }
-  .dashboard-bento-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .split { grid-template-columns: 1fr; }
   .timeline-row { grid-template-columns: 92px minmax(80px,1fr) 48px; }
   .timeline-sub { display:none; }
