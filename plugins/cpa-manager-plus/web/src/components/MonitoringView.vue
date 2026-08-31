@@ -127,10 +127,9 @@
               >
                 <span class="event-model-name">{{ row.model }}</span>
                 <span class="event-model-route-icon" aria-hidden="true">
-                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none">
-                    <circle cx="4.5" cy="4.2" r="1.7" fill="currentColor"/>
-                    <circle cx="11.5" cy="11.8" r="1.7" fill="currentColor"/>
-                    <path d="M4.5 4.2c4.2 0 2.8 7.6 7 7.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                  <svg viewBox="2 3 10.2 10" width="13" height="13" fill="none">
+                    <path d="M2.5 3.5h4.2c2.3 0 2.3 3.5 0 3.5H7M11.5 10.5H7.3c-2.3 0-2.3-3.5 0-3.5H7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                    <path d="M9.7 8.7 11.5 10.5 9.7 12.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                 </span>
               </button>
