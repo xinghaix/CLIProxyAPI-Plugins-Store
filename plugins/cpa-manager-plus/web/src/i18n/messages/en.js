@@ -621,6 +621,8 @@ export default {
       intensityLabel: 'Intensity',
       tierLabel: 'Tier',
       mapped: 'Mapped {value}',
+      requestedBilling: 'Requested and billed model',
+      actualModel: 'Actual model',
       calls: '{value} calls',
       tps: 'TPS {value}',
       cache: 'Cache {value}',

@@ -498,6 +498,8 @@ export default {
       intensityLabel: 'Интенсивность',
       tierLabel: 'Уровень',
       mapped: 'Сопоставлено {value}',
+      requestedBilling: 'Запрошенная и тарифицируемая модель',
+      actualModel: 'Фактическая модель',
       calls: '{value} вызовов',
       tps: 'TPS {value}',
       cache: 'Кэш {value}',

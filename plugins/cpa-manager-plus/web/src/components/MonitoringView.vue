@@ -115,19 +115,26 @@
                 <span v-if="row.providerChip.showName" class="provider-chip-name">{{ row.providerChip.name }}</span>
               </div>
             </td>
-            <td class="event-model-cell" :title="row.hints.model">
-              <div v-if="row.hasMapping" class="event-model-map" :aria-label="row.hints.model">
-                <div class="event-model-row">
-                  <span class="event-model-pill">{{ row.model }}</span>
-                  <span class="event-model-stub"></span>
-                </div>
-                <div class="event-model-row">
-                  <span class="event-model-pill is-target">{{ row.mappedModel }}</span>
-                  <span class="event-model-stub is-arrow"></span>
-                </div>
-                <span class="event-model-cap" aria-hidden="true"></span>
-              </div>
-              <span v-else :class="['event-model-pill', row.providerChip.chip || 'is-oauth']">{{ row.model }}</span>
+            <td class="event-model-cell">
+              <button
+                v-if="row.hasMapping"
+                type="button"
+                class="event-model-route"
+                :aria-label="row.hints.model"
+                @click.stop="toggleModelRouteTooltip($event, row)"
+                @mouseenter="showModelRouteTooltip($event, row)"
+                @mouseleave="hideModelRouteTooltip"
+              >
+                <span class="event-model-name">{{ row.model }}</span>
+                <span class="event-model-route-icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none">
+                    <circle cx="4.5" cy="4.2" r="1.7" fill="currentColor"/>
+                    <circle cx="11.5" cy="11.8" r="1.7" fill="currentColor"/>
+                    <path d="M4.5 4.2c4.2 0 2.8 7.6 7 7.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                  </svg>
+                </span>
+              </button>
+              <span v-else class="event-model-name">{{ row.model }}</span>
             </td>
             <td class="event-effort-cell" :title="row.hints.model">
               <div><span class="event-metric-label">{{ t('monitoring.eventMeta.intensityLabel') }}</span> {{ row.intensityDisplay }}</div>
@@ -202,6 +209,17 @@
           </div>
           <div v-if="failureTooltip.row?.failSummary" class="failure-tooltip-body">
             {{ decodeHtmlEntities(failureTooltip.row.failSummary) }}
+          </div>
+        </div>
+        <div v-if="modelRouteTooltip.visible" class="event-model-tooltip" :style="modelRouteTooltip.style"
+             @mouseenter="keepModelRouteTooltip" @mouseleave="hideModelRouteTooltip">
+          <div class="event-model-tooltip-row">
+            <span>{{ t('monitoring.eventMeta.requestedBilling') }}</span>
+            <strong class="event-model-tip-chip is-requested">{{ modelRouteTooltip.row?.model }}</strong>
+          </div>
+          <div class="event-model-tooltip-row">
+            <span>{{ t('monitoring.eventMeta.actualModel') }}</span>
+            <strong class="event-model-tip-chip is-actual">{{ modelRouteTooltip.row?.mappedModel }}</strong>
           </div>
         </div>
       </Teleport>
@@ -470,8 +488,10 @@ const eventKeyCollapseTimers = new Map();
 const accountSourceCollapseTimers = new Map();
 const filters = ref(defaultFilters());
 const failureTooltip = ref({visible: false, row: null, style: {}});
+const modelRouteTooltip = ref({visible: false, row: null, style: {}});
 const quotaNowMs = ref(Date.now());
 let failureHideTimer = null;
+let modelRouteHideTimer = null;
 let timer = null;
 let quotaClockTimer = null;
 
@@ -595,6 +615,8 @@ onBeforeUnmount(() => {
   clearKeyCollapseTimers();
   if (quotaClockTimer) window.clearInterval(quotaClockTimer);
   quotaClockTimer = null;
+  if (failureHideTimer) clearTimeout(failureHideTimer);
+  if (modelRouteHideTimer) clearTimeout(modelRouteHideTimer);
 });
 
 async function refresh(force = false) {
@@ -1192,6 +1214,7 @@ function showFailureTooltip(event, row) {
     clearTimeout(failureHideTimer);
     failureHideTimer = null;
   }
+  modelRouteTooltip.value.visible = false;
   const el = event.currentTarget;
   const rect = el.getBoundingClientRect();
   const left = Math.max(12, Math.min(rect.left, window.innerWidth - 440 - 12));
@@ -1225,6 +1248,53 @@ function hideFailureTooltip() {
   if (failureHideTimer) clearTimeout(failureHideTimer);
   failureHideTimer = setTimeout(() => {
     failureTooltip.value.visible = false;
+  }, 120);
+}
+
+function showModelRouteTooltip(event, row) {
+  if (modelRouteHideTimer) {
+    clearTimeout(modelRouteHideTimer);
+    modelRouteHideTimer = null;
+  }
+  failureTooltip.value.visible = false;
+  const el = event.currentTarget;
+  const rect = el.getBoundingClientRect();
+  const left = Math.max(12, Math.min(rect.left, window.innerWidth - 420 - 12));
+  const spaceBelow = window.innerHeight - rect.bottom - 12;
+  const placement = spaceBelow >= 120 || spaceBelow >= rect.top ? 'below' : 'above';
+  modelRouteTooltip.value = {
+    visible: true,
+    row,
+    style: placement === 'below'
+      ? {top: `${rect.bottom + 8}px`, left: `${left}px`}
+      : {bottom: `${window.innerHeight - rect.top + 8}px`, left: `${left}px`},
+  };
+}
+
+function toggleModelRouteTooltip(event, row) {
+  if (modelRouteTooltip.value.visible && modelRouteTooltip.value.row?.id === row.id) {
+    hideModelRouteTooltip(true);
+  } else {
+    showModelRouteTooltip(event, row);
+  }
+}
+
+function keepModelRouteTooltip() {
+  if (modelRouteHideTimer) {
+    clearTimeout(modelRouteHideTimer);
+    modelRouteHideTimer = null;
+  }
+}
+
+function hideModelRouteTooltip(immediate = false) {
+  if (modelRouteHideTimer) clearTimeout(modelRouteHideTimer);
+  if (immediate === true) {
+    modelRouteTooltip.value.visible = false;
+    modelRouteHideTimer = null;
+    return;
+  }
+  modelRouteHideTimer = setTimeout(() => {
+    modelRouteTooltip.value.visible = false;
   }, 120);
 }
 
