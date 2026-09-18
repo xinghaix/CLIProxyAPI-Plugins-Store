@@ -127,7 +127,14 @@ https://purge.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2
 
 ## Release process
 
-Releases use standard semver tags such as `v0.3.8`. Do not use plugin-suffixed tags such as `v0.3.8-cpa-manager-plus`.
+Releases use standard semver tags, in one of two forms:
+
+| Tag form | Behaviour |
+|----------|-----------|
+| `v<version>` | Release train: builds every plugin whose source version equals the tag version. |
+| `<plugin-id>-v<version>` | Plugin-scoped: builds exactly that plugin, at its own version. |
+
+A plugin-scoped tag gives each plugin its own version line: even when a number is already taken by another plugin in the shared `v<version>` namespace (for example `v0.1.0` belongs to developer-role-normalizer), a new plugin can still start at `0.1.0`. Do not put the plugin name after the version (such as `v0.3.8-cpa-manager-plus`) — CI does not recognise that form.
 
 1. Change plugin code.
 2. Choose a new version, for example `0.3.9`.
@@ -138,13 +145,22 @@ Releases use standard semver tags such as `v0.3.8`. Do not use plugin-suffixed t
 4. Commit and push to `main`.
 5. Create and push the tag:
 
+Plugin-scoped tag (preferred: the version belongs to that plugin alone):
+
+```bash
+git tag -a cpa-manager-plus-v0.3.9 -m "cpa-manager-plus 0.3.9"
+git push origin cpa-manager-plus-v0.3.9
+```
+
+Release train tag (only when several plugins share one version):
+
 ```bash
 git tag -a v0.3.9 -m "v0.3.9"
 git push origin v0.3.9
 ```
 
 6. GitHub Actions automatically:
-   - Builds only plugins whose source version equals the tag version.
+   - Builds only the plugins matching that tag (one plugin for a plugin-scoped tag; every plugin sharing the version for a release-train tag).
    - Creates six platform zips per matching plugin.
    - Publishes GitHub Release.
    - Generates `registry-v2.json` on main.

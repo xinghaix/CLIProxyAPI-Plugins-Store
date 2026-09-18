@@ -106,16 +106,44 @@ def normalize_version(version: str) -> str:
     return version
 
 
-def release_tag_for(version: str) -> str:
+def release_tag_candidates(plugin_id: str, version: str) -> list[str]:
+    """Release tags that may carry this plugin version, most specific first.
+
+    A plugin owns an independent version line through a plugin-scoped tag, which
+    lets it use a version number that another plugin already claimed in the shared
+    v<version> namespace (for example starting a brand new plugin at 0.1.0).
+    Older releases use the plain v<version> form.
+    """
     version = normalize_version(version)
-    return f"v{version}"
+    tags = []
+    if plugin_id:
+        tags.append(f"{plugin_id}-v{version}")
+    tags.append(f"v{version}")
+    return tags
 
 
-def release_by_tag(repository: str, version: str) -> dict[str, Any]:
+def fetch_json_optional(url: str) -> dict[str, Any] | None:
+    try:
+        return fetch_json(url)
+    except RuntimeError as exc:
+        if "HTTP 404" in str(exc):
+            return None
+        raise
+
+
+def release_for(repository: str, plugin_id: str, version: str) -> tuple[dict[str, Any], str]:
+    """Resolve the release carrying a plugin version, and the tag it lives under."""
     owner, repo = github_repo_parts(repository)
-    tag = release_tag_for(version)
-    url = f"https://api.github.com/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}/releases/tags/{urllib.parse.quote(tag)}"
-    return fetch_json(url)
+    candidates = release_tag_candidates(plugin_id, version)
+    for tag in candidates:
+        url = f"https://api.github.com/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}/releases/tags/{urllib.parse.quote(tag)}"
+        release = fetch_json_optional(url)
+        if release is not None:
+            return release, tag
+    raise ValueError(
+        f"{plugin_id}: no GitHub release found for version {version} "
+        f"(tried tags: {', '.join(candidates)})"
+    )
 
 
 def parse_checksums(data: bytes) -> dict[str, str]:
@@ -185,7 +213,7 @@ def direct_artifacts(
     if not repository:
         raise ValueError(f"{plugin_id}: repository is required to discover release assets")
 
-    release = release_by_tag(repository, version)
+    release, resolved_tag = release_for(repository, plugin_id, version)
     checksums = checksum_map_from_release(release)
     pattern = re.compile(
         r"^" + re.escape(plugin_id) + r"_" + re.escape(version) + r"_([^_]+)_([^_]+)\.zip$"
@@ -201,7 +229,7 @@ def direct_artifacts(
         url = format_artifact_url(
             artifact_url_template,
             asset_name=name,
-            release_tag=str(release.get("tag_name") or release_tag_for(version)),
+            release_tag=str(release.get("tag_name") or resolved_tag),
             plugin_id=plugin_id,
             version=version,
             goos=goos,

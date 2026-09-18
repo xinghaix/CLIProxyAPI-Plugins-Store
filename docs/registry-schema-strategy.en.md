@@ -196,15 +196,17 @@ scripts/generate-registry-v2.py \
    - `registry.json` -> `"version": "0.3.9"`
    - `plugins/<id>/Makefile` -> `VERSION := 0.3.9` when present
 4. Commit and push to `main`.
-5. Push a standard semver tag:
+5. Push a tag. Two forms are supported:
+
+`v<version>` is a release train and builds every plugin on that version; `<plugin-id>-v<version>` is plugin-scoped and builds exactly that plugin, so each plugin can own an independent version line (a new plugin can start at `0.1.0` even when `v0.1.0` already belongs to another plugin):
 
 ```bash
-git tag -a v0.3.9 -m "v0.3.9"
-git push origin v0.3.9
+git tag -a <plugin-id>-v0.3.9 -m "<plugin-id> 0.3.9"
+git push origin <plugin-id>-v0.3.9
 ```
 
 6. The workflow automatically:
-   - Discovers plugins with versions matching the tag.
+   - Discovers the plugins matching the tag (one plugin for a plugin-scoped tag, every plugin on that version for a release train).
    - Builds six platform zips.
    - Publishes GitHub Release.
    - Refreshes main branch `registry-v2.json`.
@@ -238,7 +240,7 @@ Dynamic library name at zip root:
 
 1. Add plugin source under `plugins/<plugin-id>/go/`.
 2. Add metadata and version to `registry.json`.
-3. Push a matching version tag.
+3. Push a plugin-scoped tag such as `<plugin-id>-v0.1.0` so the new plugin owns its own version line.
 4. Wait for CI to publish the release and cdn branch.
 5. Verify that the CDN registry contains the new plugin's `install.artifacts`.
 

@@ -196,11 +196,13 @@ scripts/generate-registry-v2.py \
    - `registry.json` → `"version": "0.3.9"`
    - `plugins/<id>/Makefile` → `VERSION := 0.3.9`（如存在）
 4. commit 并 push 到 `main`。
-5. 推送标准 semver tag：
+5. 推送 tag。两种格式：
+
+`v<version>` 是发布列车，会构建所有版本等于该版本的插件；`<plugin-id>-v<version>` 是插件级发布，只构建该插件，因此每个插件可以拥有独立版本线（新插件可以从 `0.1.0` 开始，即使 `v0.1.0` 已被别的插件占用）：
 
 ```bash
-git tag -a v0.3.9 -m "v0.3.9"
-git push origin v0.3.9
+git tag -a <plugin-id>-v0.3.9 -m "<plugin-id> 0.3.9"
+git push origin <plugin-id>-v0.3.9
 ```
 
 6. workflow 自动：
@@ -238,7 +240,7 @@ zip 根目录动态库名称：
 
 1. 在 `plugins/<plugin-id>/go/` 添加插件源码。
 2. 在 `registry.json` 添加插件元数据和版本。
-3. 推送匹配版本的 tag。
+3. 推送插件级 tag，例如 `<plugin-id>-v0.1.0`，让新插件拥有自己的版本线。
 4. 等 CI 发布 release 和 cdn 分支。
 5. 验证 CDN registry 中有新插件的 `install.artifacts`。
 

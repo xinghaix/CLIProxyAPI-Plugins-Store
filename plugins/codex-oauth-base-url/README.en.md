@@ -200,7 +200,7 @@ Restart CPA after installing or upgrading. Already loaded dynamic libraries are 
 Place the dynamic library in the CPA plugin directory, for example:
 
 ```text
-plugins/darwin/arm64/codex-oauth-base-url-v0.5.29.dylib
+plugins/darwin/arm64/codex-oauth-base-url-v0.1.0.dylib
 ```
 
 ## Compatibility notes

@@ -1,4 +1,12 @@
-# Tag format is v<version> (standard semver, e.g. v1.2.0).
+# Two tag formats are supported.
+#
+#   v<version>                 release train. Builds every plugin whose hardcoded
+#                              version equals the tag version.
+#   <plugin-id>-v<version>     plugin-scoped. Builds exactly that plugin at its own
+#                              version, so a plugin can own an independent version
+#                              line (e.g. start at 0.1.0) even when that number is
+#                              already taken by another plugin's release.
+#
 # Before tagging, the plugin's version must be bumped in:
 #   1. plugins/<id>/go/main.go   -> var pluginVersion = "1.2.0"
 #   2. registry.json             -> "version": "1.2.0"
@@ -16,6 +24,8 @@ on:
   push:
     tags:
       - "v[0-9]*"
+      # plugin-scoped releases, e.g. codex-oauth-base-url-v0.1.0
+      - "*-v[0-9]*"
 
 permissions:
   contents: write
@@ -54,19 +64,36 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          if [ "$VERSION" = "$TAG" ]; then
-            echo "invalid tag: $TAG (need v<version>, e.g. v1.2.0)" >&2
-            exit 1
-          fi
-          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+][0-9A-Za-z.-]+)?$'; then
-            echo "invalid version in tag: $VERSION (need semver like 1.2.0)" >&2
-            exit 1
+
+          # v<version>              -> release train: build every plugin on that version
+          # <plugin-id>-v<version>  -> plugin-scoped: build exactly that plugin at its own
+          #                            version, so a plugin can own an independent version
+          #                            line (e.g. 0.1.0) even when another plugin already
+          #                            used that number in the shared tag namespace
+          SCOPED_PLUGIN=""
+          if [[ "$TAG" =~ ^(.+)-v([0-9]+\.[0-9]+\.[0-9]+([+][0-9A-Za-z.-]+)?)$ ]]; then
+            SCOPED_PLUGIN="${BASH_REMATCH[1]}"
+            VERSION="${BASH_REMATCH[2]}"
+          else
+            VERSION="${TAG#v}"
+            if [ "$VERSION" = "$TAG" ]; then
+              echo "invalid tag: $TAG (need v<version> or <plugin-id>-v<version>)" >&2
+              exit 1
+            fi
+            if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+][0-9A-Za-z.-]+)?$'; then
+              echo "invalid version in tag: $VERSION (need semver like 1.2.0)" >&2
+              exit 1
+            fi
           fi
 
           PLUGINS=$(find plugins -type f -path '*/go/go.mod' | sed 's|/go/go.mod$||;s|^plugins/||' | sort -u)
           if [ -z "$PLUGINS" ]; then
             echo "no plugins under plugins/*/go" >&2
+            exit 1
+          fi
+
+          if [ -n "$SCOPED_PLUGIN" ] && ! printf '%s\n' "$PLUGINS" | grep -qx "$SCOPED_PLUGIN"; then
+            echo "tag $TAG names plugin $SCOPED_PLUGIN, but plugins/${SCOPED_PLUGIN}/go/go.mod does not exist" >&2
             exit 1
           fi
 
@@ -79,7 +106,15 @@ jobs:
               continue
             fi
             ALL_VERSIONS="${ALL_VERSIONS}  ${pid}: ${pv}\n"
-            if [ "$pv" = "$VERSION" ]; then
+            if [ -n "$SCOPED_PLUGIN" ]; then
+              if [ "$pid" = "$SCOPED_PLUGIN" ]; then
+                if [ "$pv" != "$VERSION" ]; then
+                  echo "plugins/${pid}/go/main.go declares $pv, but tag $TAG says $VERSION" >&2
+                  exit 1
+                fi
+                MATCHING_PLUGINS="$MATCHING_PLUGINS $pid"
+              fi
+            elif [ "$pv" = "$VERSION" ]; then
               MATCHING_PLUGINS="$MATCHING_PLUGINS $pid"
             fi
           done
@@ -248,7 +283,7 @@ jobs:
             plugins/${{ matrix.plugin_id }}/go/checksums_fragment.txt
 
   release:
-    name: Release v${{ needs.discover.outputs.version }}
+    name: Release ${{ github.ref_name }}
     runs-on: ubuntu-latest
     needs: [discover, build]
     steps:
