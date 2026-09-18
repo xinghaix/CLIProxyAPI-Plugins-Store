@@ -50,7 +50,9 @@ plugins:
     - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
 ```
 
-schema v1 仍然保留给老 CPA 使用。注意：v1 使用 GitHub `releases/latest` 模型，多个插件共用一个仓库时会受到 latest release 的限制。
+schema v1 仍然保留给老 CPA 使用。注意：v1 使用 GitHub `releases/latest` 模型，`latest` 只指向**最近一次**发布的 release；由于每次发布只包含被 tag 的那一个插件，其余插件经 v1 安装会失败（通常表现为 502）。
+
+也就是说，v1 入口只在「最新 release 恰好包含你要装的插件」时才可用。老 CPA 用户建议升级到 `v7.2.46+` 改用 v2 入口；暂时无法升级时，请确认 `latest` 是否包含目标插件再安装。
 
 ## CPA 版本建议
 

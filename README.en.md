@@ -50,7 +50,9 @@ plugins:
     - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
 ```
 
-Schema v1 remains available for older CPA builds. Note that v1 uses GitHub `releases/latest`, which is awkward for a multi-plugin repository.
+Schema v1 remains available for older CPA builds. Note that v1 uses GitHub `releases/latest`, and `latest` only ever points at the **most recent** release. Because each release contains just the one tagged plugin, installing any other plugin through v1 fails (usually a 502).
+
+In other words the v1 entry point only works when the newest release happens to contain the plugin you want. Older CPA users should upgrade to `v7.2.46+` and switch to the v2 entry point; if that is not possible yet, check whether `latest` contains your plugin before installing.
 
 ## CPA version recommendation
 
