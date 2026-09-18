@@ -63,14 +63,11 @@ The CDN adds two more benefits:
 
 ## Plugin version lines
 
-Every plugin owns its own version sequence; numbers are never shared across plugins. Releases use a plugin-scoped tag:
-
-| Tag form | Behaviour |
-|----------|-----------|
-| `<plugin-id>-v<version>` | Plugin-scoped (the standard): builds exactly that plugin, at its own version. |
-| `v<version>` | Release train: builds every plugin whose source version equals the tag version. |
+Every plugin owns its own version sequence; numbers are never shared across plugins. Releases use plugin-scoped tags only — `<plugin-id>-v<version>` — and the workflow builds just the one plugin that tag names.
 
 Even when a number is already taken by another plugin (for example `v0.1.0` belongs to developer-role-normalizer), a new plugin can still start at `0.1.0`.
+
+The shared `v<version>` release train was retired on 2026-09-18 and such tags are rejected. Historical releases (`v0.3.8`, `v0.5.28`, and so on) still live under their original global tags, so the generator keeps a `v<version>` fallback when resolving those existing versions; every new version uses a plugin-scoped tag.
 
 ## CDN branch layout
 

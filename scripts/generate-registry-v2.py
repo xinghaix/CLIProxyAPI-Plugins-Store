@@ -109,10 +109,10 @@ def normalize_version(version: str) -> str:
 def release_tag_candidates(plugin_id: str, version: str) -> list[str]:
     """Release tags that may carry this plugin version, most specific first.
 
-    A plugin owns an independent version line through a plugin-scoped tag, which
-    lets it use a version number that another plugin already claimed in the shared
-    v<version> namespace (for example starting a brand new plugin at 0.1.0).
-    Older releases use the plain v<version> form.
+    New releases always use a plugin-scoped tag. The plain v<version> fallback
+    exists only to resolve releases published before the shared release train was
+    retired on 2026-09-18 (for example cpa-manager-plus 0.5.28 under v0.5.28);
+    without it the generated registry could not pin those versions.
     """
     version = normalize_version(version)
     tags = []

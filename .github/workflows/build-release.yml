@@ -1,11 +1,10 @@
-# Two tag formats are supported.
+# Release tags are plugin-scoped: <plugin-id>-v<version>.
 #
-#   v<version>                 release train. Builds every plugin whose hardcoded
-#                              version equals the tag version.
-#   <plugin-id>-v<version>     plugin-scoped. Builds exactly that plugin at its own
-#                              version, so a plugin can own an independent version
-#                              line (e.g. start at 0.1.0) even when that number is
-#                              already taken by another plugin's release.
+# Each plugin owns an independent version line, so a number is never shared across
+# plugins: a new plugin can start at 0.1.0 even though v0.1.0 already belongs to
+# another plugin's release. The workflow builds exactly the plugin named in the tag.
+#
+# The shared v<version> release train was retired on 2026-09-18 and is rejected.
 #
 # Before tagging, the plugin's version must be bumped in:
 #   1. plugins/<id>/go/main.go   -> var pluginVersion = "1.2.0"
@@ -25,8 +24,7 @@ name: Build and Release Matching Plugins
 on:
   push:
     tags:
-      - "v[0-9]*"
-      # plugin-scoped releases, e.g. codex-oauth-base-url-v0.1.0
+      # plugin-scoped releases only, e.g. codex-oauth-base-url-v0.1.0
       - "*-v[0-9]*"
 
 permissions:
@@ -67,25 +65,15 @@ jobs:
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
 
-          # v<version>              -> release train: build every plugin on that version
-          # <plugin-id>-v<version>  -> plugin-scoped: build exactly that plugin at its own
-          #                            version, so a plugin can own an independent version
-          #                            line (e.g. 0.1.0) even when another plugin already
-          #                            used that number in the shared tag namespace
-          SCOPED_PLUGIN=""
+          # <plugin-id>-v<version>, e.g. cpa-manager-plus-v0.5.29
           if [[ "$TAG" =~ ^(.+)-v([0-9]+\.[0-9]+\.[0-9]+([+][0-9A-Za-z.-]+)?)$ ]]; then
             SCOPED_PLUGIN="${BASH_REMATCH[1]}"
             VERSION="${BASH_REMATCH[2]}"
           else
-            VERSION="${TAG#v}"
-            if [ "$VERSION" = "$TAG" ]; then
-              echo "invalid tag: $TAG (need v<version> or <plugin-id>-v<version>)" >&2
-              exit 1
-            fi
-            if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+][0-9A-Za-z.-]+)?$'; then
-              echo "invalid version in tag: $VERSION (need semver like 1.2.0)" >&2
-              exit 1
-            fi
+            echo "invalid tag: $TAG" >&2
+            echo "tags must be <plugin-id>-v<version>, e.g. cpa-manager-plus-v0.5.29" >&2
+            echo "the shared v<version> release train was retired on 2026-09-18" >&2
+            exit 1
           fi
 
           PLUGINS=$(find plugins -type f -path '*/go/go.mod' | sed 's|/go/go.mod$||;s|^plugins/||' | sort -u)
@@ -94,7 +82,7 @@ jobs:
             exit 1
           fi
 
-          if [ -n "$SCOPED_PLUGIN" ] && ! printf '%s\n' "$PLUGINS" | grep -qx "$SCOPED_PLUGIN"; then
+          if ! printf '%s\n' "$PLUGINS" | grep -qx "$SCOPED_PLUGIN"; then
             echo "tag $TAG names plugin $SCOPED_PLUGIN, but plugins/${SCOPED_PLUGIN}/go/go.mod does not exist" >&2
             exit 1
           fi
@@ -108,15 +96,11 @@ jobs:
               continue
             fi
             ALL_VERSIONS="${ALL_VERSIONS}  ${pid}: ${pv}\n"
-            if [ -n "$SCOPED_PLUGIN" ]; then
-              if [ "$pid" = "$SCOPED_PLUGIN" ]; then
-                if [ "$pv" != "$VERSION" ]; then
-                  echo "plugins/${pid}/go/main.go declares $pv, but tag $TAG says $VERSION" >&2
-                  exit 1
-                fi
-                MATCHING_PLUGINS="$MATCHING_PLUGINS $pid"
+            if [ "$pid" = "$SCOPED_PLUGIN" ]; then
+              if [ "$pv" != "$VERSION" ]; then
+                echo "plugins/${pid}/go/main.go declares $pv, but tag $TAG says $VERSION" >&2
+                exit 1
               fi
-            elif [ "$pv" = "$VERSION" ]; then
               MATCHING_PLUGINS="$MATCHING_PLUGINS $pid"
             fi
           done

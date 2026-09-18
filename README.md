@@ -121,18 +121,11 @@ https://purge.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2
 
 ## 发布流程
 
-发布使用标准 semver tag，支持两种格式：
+发布只使用插件级 tag：`<plugin-id>-v<version>`。每个插件拥有独立的版本号序列，版本号不在插件之间复用 —— 即使某个版本号已被别的插件占用（例如 `v0.1.0` 属于 developer-role-normalizer），新插件仍可以从 `0.1.0` 开始。
 
-| tag 格式 | 行为 |
-|----------|------|
-| `v<version>` | 发布列车：构建所有源码版本等于该 tag 版本的插件。 |
-| `<plugin-id>-v<version>` | 插件级发布：只构建该插件，版本号即插件自己的版本。 |
+全局 `v<version>` 发布列车已于 2026-09-18 停用：推送这种 tag 会被 workflow 拒绝，请改用 `<plugin-id>-v<version>`。不要把插件名放在版本号后面（例如 `v0.3.8-cpa-manager-plus`），那种形式 CI 也识别不了。
 
-**插件级 tag 是本仓库的标准做法**：每个插件都有自己的版本号列表，互不复用。即使某个版本号已被别的插件占用（例如 `v0.1.0` 属于 developer-role-normalizer），新插件仍可以从 `0.1.0` 开始。
-
-发布列车 tag 只在确实需要一次发布多个同版本插件时使用。不要把插件名放在版本号后面（例如 `v0.3.8-cpa-manager-plus`），那种形式 CI 不会识别。
-
-既有插件（cpa-manager-plus、developer-role-normalizer）保留各自当前版本号，历史 release 继续可用，从下一个版本起也改用插件级 tag。
+既有插件（cpa-manager-plus、developer-role-normalizer）保留各自当前版本号，历史 release 与安装入口不受影响；下一个版本起同样使用插件级 tag。
 
 1. 修改插件代码。
 2. 选择新版本号，例如 `0.3.9`。
@@ -143,22 +136,13 @@ https://purge.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2
 4. commit 并 push 到 `main`。
 5. 创建并推送 tag：
 
-插件级 tag（标准做法，版本号只属于该插件）：
-
 ```bash
 git tag -a cpa-manager-plus-v0.3.9 -m "cpa-manager-plus 0.3.9"
 git push origin cpa-manager-plus-v0.3.9
 ```
 
-发布列车 tag（仅在需要一次发布多个同版本插件时使用）：
-
-```bash
-git tag -a v0.3.9 -m "v0.3.9"
-git push origin v0.3.9
-```
-
 6. GitHub Actions 自动执行：
-   - 只构建与该 tag 匹配的插件（插件级 tag 对应单个插件，发布列车 tag 对应所有版本相同的插件）。
+   - 只构建该 tag 指定的那一个插件，并校验其源码版本与 tag 一致。
    - 每个插件生成 6 平台 zip。
    - 发布 GitHub Release。
    - 生成 main 分支 `registry-v2.json`。

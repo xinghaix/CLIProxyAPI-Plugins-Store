@@ -121,18 +121,11 @@ https://purge.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2
 
 ## Release process
 
-Releases use standard semver tags, in one of two forms:
+Releases use plugin-scoped tags only: `<plugin-id>-v<version>`. Every plugin owns an independent version sequence, and numbers are never reused across plugins — even when a number is already taken by another plugin (for example `v0.1.0` belongs to developer-role-normalizer), a new plugin can still start at `0.1.0`.
 
-| Tag form | Behaviour |
-|----------|-----------|
-| `v<version>` | Release train: builds every plugin whose source version equals the tag version. |
-| `<plugin-id>-v<version>` | Plugin-scoped: builds exactly that plugin, at its own version. |
+The shared `v<version>` release train was retired on 2026-09-18: pushing such a tag is rejected by the workflow, so use `<plugin-id>-v<version>` instead. Do not put the plugin name after the version (such as `v0.3.8-cpa-manager-plus`) either — CI does not recognise that form.
 
-**Plugin-scoped tags are the standard here**: every plugin owns its own version list, and numbers are never reused across plugins. Even when a number is already taken in the shared `v<version>` namespace (for example `v0.1.0` belongs to developer-role-normalizer), a new plugin can still start at `0.1.0`.
-
-Use a release-train tag only when several plugins genuinely ship the same version at once. Do not put the plugin name after the version (such as `v0.3.8-cpa-manager-plus`) — CI does not recognise that form.
-
-The existing plugins (cpa-manager-plus, developer-role-normalizer) keep their current version numbers and existing releases stay downloadable; each switches to a plugin-scoped tag with its next version.
+The existing plugins (cpa-manager-plus, developer-role-normalizer) keep their current version numbers and their releases stay downloadable; each uses a plugin-scoped tag from its next version on.
 
 1. Change plugin code.
 2. Choose a new version, for example `0.3.9`.
@@ -143,22 +136,13 @@ The existing plugins (cpa-manager-plus, developer-role-normalizer) keep their cu
 4. Commit and push to `main`.
 5. Create and push the tag:
 
-Plugin-scoped tag (the standard: the version belongs to that plugin alone):
-
 ```bash
 git tag -a cpa-manager-plus-v0.3.9 -m "cpa-manager-plus 0.3.9"
 git push origin cpa-manager-plus-v0.3.9
 ```
 
-Release train tag (only when several plugins share one version):
-
-```bash
-git tag -a v0.3.9 -m "v0.3.9"
-git push origin v0.3.9
-```
-
 6. GitHub Actions automatically:
-   - Builds only the plugins matching that tag (one plugin for a plugin-scoped tag; every plugin sharing the version for a release-train tag).
+   - Builds only the single plugin that tag names, and checks its source version matches the tag.
    - Creates six platform zips per matching plugin.
    - Publishes GitHub Release.
    - Generates `registry-v2.json` on main.
