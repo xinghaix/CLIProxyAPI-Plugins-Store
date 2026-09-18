@@ -143,6 +143,17 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Install aarch64 mingw toolchain
+        if: matrix.goos == 'windows' && matrix.goarch == 'arm64'
+        shell: bash
+        run: |
+          # The runner's default clang targets aarch64-pc-windows-msvc, and the
+          # msvc driver does not understand the -mthreads flag that Go always
+          # passes on Windows. Install the mingw-w64 aarch64 toolchain (target
+          # aarch64-w64-windows-gnu) and build with that clang instead.
+          /c/msys64/usr/bin/pacman.exe -S --noconfirm --needed mingw-w64-clang-aarch64-toolchain
+          echo "C:/msys64/clangarm64/bin" >> "$GITHUB_PATH"
+
       - name: Update go.mod replace path
         working-directory: plugins/${{ matrix.plugin_id }}/go
         shell: bash
@@ -172,7 +183,7 @@ jobs:
           CGO_ENABLED: "1"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          CC: ${{ (matrix.goos == 'windows' && matrix.goarch == 'arm64') && 'clang' || '' }}
+          CC: ${{ (matrix.goos == 'windows' && matrix.goarch == 'arm64') && 'C:/msys64/clangarm64/bin/clang' || '' }}
         run: |
           PLUGIN_ID="${{ matrix.plugin_id }}"
           VERSION="${{ needs.discover.outputs.version }}"
@@ -184,6 +195,24 @@ jobs:
             go build -buildmode=c-shared -ldflags="${LDFLAGS}" -o "$OUTPUT" .
           fi
           file "$OUTPUT" || true
+
+      - name: Verify exported ABI symbol
+        working-directory: plugins/${{ matrix.plugin_id }}/go
+        shell: bash
+        run: |
+          PLUGIN_ID="${{ matrix.plugin_id }}"
+          VERSION="${{ needs.discover.outputs.version }}"
+          LIB="${PLUGIN_ID}-v${VERSION}.${{ matrix.ext }}"
+          if ! command -v nm &>/dev/null; then
+            echo "nm not available on this runner; skipping symbol check"
+            exit 0
+          fi
+          if nm "$LIB" 2>/dev/null | grep -q 'cliproxyPluginCall'; then
+            echo "OK: cliproxyPluginCall exported by $LIB"
+          else
+            echo "ERROR: cliproxyPluginCall not exported by $LIB" >&2
+            exit 1
+          fi
 
       - name: Package zip
         working-directory: plugins/${{ matrix.plugin_id }}/go
