@@ -24,6 +24,18 @@
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/cpa-manager-plus",
       "license": "MIT",
       "tags": ["management-ui", "monitoring", "usage", "local-runtime"]
+    },
+    {
+      "id": "codex-oauth-base-url",
+      "name": "Codex OAuth Base URL",
+      "description": "Rewrites the upstream base URL of Codex OAuth (ChatGPT subscription) credentials so a Codex account can target a self-hosted or third-party upstream.",
+      "author": "xinghaix",
+      "version": "0.1.0",
+      "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
+      "logo": "",
+      "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/codex-oauth-base-url",
+      "license": "MIT",
+      "tags": ["auth-provider", "codex", "oauth", "base-url", "upstream-routing"]
     }
   ]
 }

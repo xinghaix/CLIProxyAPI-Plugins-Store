@@ -10,6 +10,7 @@
 |------|------|
 | [developer-role-normalizer](plugins/developer-role-normalizer/) | 将不兼容上游里的 `developer` 消息角色转换为 `system`，主要面向 DeepSeek 等 OpenAI-compatible provider。 |
 | [cpa-manager-plus](plugins/cpa-manager-plus/) | 在 CPA 管理端提供 Manager Plus 风格的仪表盘、用量分析、请求监控、账号巡检与配置页，并反向代理到 Manager Server。 |
+| [codex-oauth-base-url](plugins/codex-oauth-base-url/) | 改写 Codex OAuth（ChatGPT 订阅账号）凭据的上游 base URL，让 Codex 账号指向自建或第三方上游，无需修改 CPA 源码。 |
 
 ## 推荐安装入口
 
@@ -199,6 +200,7 @@ PY
 - [Registry / CDN distribution strategy](docs/registry-schema-strategy.en.md)
 - [developer-role-normalizer](plugins/developer-role-normalizer/)
 - [cpa-manager-plus](plugins/cpa-manager-plus/)
+- [codex-oauth-base-url](plugins/codex-oauth-base-url/)
 
 ## License
 
