@@ -23,43 +23,52 @@ jobs:
         with:
           go-version: "1.26"
 
-      - name: Toolchain inventory
+      - name: Update go.mod replace path
         shell: bash
         run: |
-          echo "=== go ==="; go version
-          echo "=== clang ==="; which -a clang || true; clang --version || true
-          echo "=== gcc ==="; which -a gcc || true; gcc --version 2>&1 | head -3 || true
-          echo "=== mingw candidates ==="; ls /c/ 2>/dev/null | head -20 || true
-          find /c -maxdepth 3 -iname '*mingw*' -type d 2>/dev/null | head -10 || true
-          echo "=== clang targets ==="
-          echo 'int main(void){return 0;}' > /tmp/t.c
-          for t in aarch64-pc-windows-msvc aarch64-w64-mingw32 aarch64-w64-windows-gnu; do
-            printf '  %s: ' "$t"
-            clang --target=$t -mthreads -c /tmp/t.c -o /tmp/t.o >/dev/null 2>&1 && echo "accepts -mthreads" || echo "rejects -mthreads"
-          done
-          echo "=== default GOGCCFLAGS (no CC) ==="
-          go env GOGCCFLAGS
-          echo "=== GOGCCFLAGS with CC=clang ==="
-          CC=clang go env GOGCCFLAGS
-          echo "=== GOGCCFLAGS with CC=gcc ==="
-          CC=gcc go env GOGCCFLAGS
+          WORKSPACE="${{ github.workspace }}"
+          WORKSPACE="${WORKSPACE//\\//}"
+          sed -i.bak "s|replace github.com/router-for-me/CLIProxyAPI/v7 => .*|replace github.com/router-for-me/CLIProxyAPI/v7 => ${WORKSPACE}/CLIProxyAPI|" plugins/codex-oauth-base-url/go/go.mod
+          rm -f plugins/codex-oauth-base-url/go/go.mod.bak
 
-      - name: Try build candidates
+      - name: Inventory
+        shell: bash
+        run: |
+          echo "=== msys64 environments ==="
+          ls /c/msys64 2>/dev/null | head -20 || true
+          echo "=== clangarm64 present? ==="
+          ls /c/msys64/clangarm64/bin/clang* 2>/dev/null || echo "no clangarm64"
+          echo "=== aarch64 mingw gcc? ==="
+          ls /c/mingw64/bin/*aarch64* 2>/dev/null || echo "none in mingw64"
+
+      - name: Candidate builds
         shell: bash
         working-directory: plugins/codex-oauth-base-url/go
         run: |
+          set +e
           try() {
             local name="$1"; shift
-            printf '\n===== %s =====\n' "$name"
-            if env CGO_ENABLED=1 GOOS=windows GOARCH=arm64 "$@" go build -buildmode=c-shared -o out.dll . 2>&1 | tail -6; then
-              if [ -f out.dll ]; then echo "RESULT: OK"; rm -f out.dll out.h; else echo "RESULT: FAIL(no output)"; fi
+            rm -f out.dll out.h
+            echo ""
+            echo "===== ${name} ====="
+            ( env CGO_ENABLED=1 GOOS=windows GOARCH=arm64 "$@" go build -buildmode=c-shared -o out.dll . ) > /tmp/log.txt 2>&1
+            local rc=$?
+            if [ $rc -eq 0 ] && [ -f out.dll ]; then
+              echo "RESULT: OK"
+              python3 -c "
+          import struct
+          d = open('out.dll','rb').read(0x400)
+          off = struct.unpack_from('<I', d, 0x3C)[0]
+          m = struct.unpack_from('<H', d, off + 4)[0]
+          print('PE machine:', hex(m), {0x8664:'x86_64', 0xAA64:'arm64'}.get(m,'unknown'))
+          "
             else
-              echo "RESULT: FAIL"
+              echo "RESULT: FAIL rc=$rc"
+              tail -8 /tmp/log.txt
             fi
+            rm -f out.dll out.h
           }
-          try "CC=clang (current workflow)" CC=clang
-          try "CC=gcc" CC=gcc
-          echo '#!/bin/sh' > /tmp/ccwrap.sh
-          echo 'exec clang --target=aarch64-w64-mingw32 "$@"' >> /tmp/ccwrap.sh
-          chmod +x /tmp/ccwrap.sh
-          try "CC=clang --target=aarch64-w64-mingw32" CC=/tmp/ccwrap.sh
+
+          try "CC=clang (current)" CC=clang
+          try "CC=clang --target=aarch64-w64-mingw32" CC="clang --target=aarch64-w64-mingw32"
+          try "CC=/c/msys64/clangarm64/bin/clang" CC=/c/msys64/clangarm64/bin/clang
