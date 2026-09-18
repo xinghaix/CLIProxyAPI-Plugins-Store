@@ -1,0 +1,65 @@
+name: Diag windows/arm64 cgo toolchain
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: windows-11-arm
+    steps:
+      - name: Checkout plugin store
+        uses: actions/checkout@v4
+
+      - name: Checkout CLIProxyAPI for replace directive
+        uses: actions/checkout@v4
+        with:
+          repository: router-for-me/CLIProxyAPI
+          path: CLIProxyAPI
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Toolchain inventory
+        shell: bash
+        run: |
+          echo "=== go ==="; go version
+          echo "=== clang ==="; which -a clang || true; clang --version || true
+          echo "=== gcc ==="; which -a gcc || true; gcc --version 2>&1 | head -3 || true
+          echo "=== mingw candidates ==="; ls /c/ 2>/dev/null | head -20 || true
+          find /c -maxdepth 3 -iname '*mingw*' -type d 2>/dev/null | head -10 || true
+          echo "=== clang targets ==="
+          echo 'int main(void){return 0;}' > /tmp/t.c
+          for t in aarch64-pc-windows-msvc aarch64-w64-mingw32 aarch64-w64-windows-gnu; do
+            printf '  %s: ' "$t"
+            clang --target=$t -mthreads -c /tmp/t.c -o /tmp/t.o >/dev/null 2>&1 && echo "accepts -mthreads" || echo "rejects -mthreads"
+          done
+          echo "=== default GOGCCFLAGS (no CC) ==="
+          go env GOGCCFLAGS
+          echo "=== GOGCCFLAGS with CC=clang ==="
+          CC=clang go env GOGCCFLAGS
+          echo "=== GOGCCFLAGS with CC=gcc ==="
+          CC=gcc go env GOGCCFLAGS
+
+      - name: Try build candidates
+        shell: bash
+        working-directory: plugins/codex-oauth-base-url/go
+        run: |
+          try() {
+            local name="$1"; shift
+            printf '\n===== %s =====\n' "$name"
+            if env CGO_ENABLED=1 GOOS=windows GOARCH=arm64 "$@" go build -buildmode=c-shared -o out.dll . 2>&1 | tail -6; then
+              if [ -f out.dll ]; then echo "RESULT: OK"; rm -f out.dll out.h; else echo "RESULT: FAIL(no output)"; fi
+            else
+              echo "RESULT: FAIL"
+            fi
+          }
+          try "CC=clang (current workflow)" CC=clang
+          try "CC=gcc" CC=gcc
+          echo '#!/bin/sh' > /tmp/ccwrap.sh
+          echo 'exec clang --target=aarch64-w64-mingw32 "$@"' >> /tmp/ccwrap.sh
+          chmod +x /tmp/ccwrap.sh
+          try "CC=clang --target=aarch64-w64-mingw32" CC=/tmp/ccwrap.sh
