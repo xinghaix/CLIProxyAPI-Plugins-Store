@@ -127,6 +127,71 @@
           }
         ]
       }
+    },
+    {
+      "id": "codex-oauth-base-url",
+      "name": "Codex OAuth Base URL",
+      "description": "Rewrites the upstream base URL of Codex OAuth (ChatGPT subscription) credentials so a Codex account can target a self-hosted or third-party upstream.",
+      "author": "xinghaix",
+      "version": "0.5.29",
+      "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
+      "logo": "",
+      "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/codex-oauth-base-url",
+      "license": "MIT",
+      "tags": [
+        "auth-provider",
+        "codex",
+        "oauth",
+        "base-url",
+        "upstream-routing"
+      ],
+      "install": {
+        "type": "direct",
+        "artifacts": [
+          {
+            "goos": "linux",
+            "goarch": "amd64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.29/codex-oauth-base-url_0.5.29_linux_amd64.zip",
+            "sha256": "930e4974d54ff8b2c0c7c9c58e6e75db921967b2b0b2dfd53545d4358e607bf9",
+            "size": 3610695
+          },
+          {
+            "goos": "linux",
+            "goarch": "arm64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.29/codex-oauth-base-url_0.5.29_linux_arm64.zip",
+            "sha256": "8fe693e31dee358176ed7631f202b41cef43de4c7175fbbeb2639c79b01d017e",
+            "size": 3282478
+          },
+          {
+            "goos": "darwin",
+            "goarch": "amd64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.29/codex-oauth-base-url_0.5.29_darwin_amd64.zip",
+            "sha256": "903d792e233258810d2de6329a44d03ba5970b92bea0c175f76b472eb69d69a4",
+            "size": 2008502
+          },
+          {
+            "goos": "darwin",
+            "goarch": "arm64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.29/codex-oauth-base-url_0.5.29_darwin_arm64.zip",
+            "sha256": "b6ad54fa7b07bee4ae42b2db5c36a7f83493d4c642a0cdca1b8c8c5d36c82eec",
+            "size": 1862733
+          },
+          {
+            "goos": "windows",
+            "goarch": "amd64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.29/codex-oauth-base-url_0.5.29_windows_amd64.zip",
+            "sha256": "9f38d0efa6b7c705597ae971a915068f1bb1bfa36f785386dc98e4f8e297664d",
+            "size": 3508987
+          },
+          {
+            "goos": "windows",
+            "goarch": "arm64",
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.29/codex-oauth-base-url_0.5.29_windows_arm64.zip",
+            "sha256": "9fdd024a24413188c32d07a172a823e27d0ff44de1e86a56170b57fdafc6b62a",
+            "size": 3159014
+          }
+        ]
+      }
     }
   ]
 }
