@@ -112,6 +112,8 @@ Config codex-oauth-base-url
 
 Saving writes `plugins.configs.codex-oauth-base-url` to `config.yaml` with comments preserved and reloads the config, so the new upstream takes effect without restarting CPA. The next request uses it.
 
+When writing the config through the Management API, use `PATCH /v0/management/plugins/codex-oauth-base-url/config`. `PUT` **replaces** the whole config node for this plugin, so a payload without `enabled` turns the plugin off.
+
 ### Minimal configuration
 
 ```yaml
@@ -143,7 +145,40 @@ level=warn msg="codex-oauth-base-url: configured base-url looks wrong"
   base_url="codex-relay.example.com" reason="missing an http:// or https:// scheme"
 ```
 
-The configured value is still applied, so the panel and the log never disagree about what is set. Valid values log nothing.
+### Verifying it works
+
+The only reliable evidence that `base-url` is in use is the **actual upstream URL**. Turn on request logging:
+
+```yaml
+request-log: true
+```
+
+Logs are written to `logs/` under the CPA working directory, falling back to `<auth-dir>/logs/` when that is not writable. After one Codex request:
+
+```text
+=== API REQUEST 1 ===
+Timestamp: 2026-09-18T15:28:17.051509+08:00
+Upstream URL: https://your-upstream.example.com/responses
+HTTP Method: POST
+```
+
+Your own host means it works. If it still reads `https://chatgpt.com/backend-api/codex/responses`, the plugin did not handle this request — check `plugins.configs.codex-oauth-base-url.enabled`, and that the auth file has `"type": "codex"` with an `access_token` (API-key-only entries are not handled).
+
+You can also point `base-url` at a local listener for an end-to-end check:
+
+```bash
+python3 -c "
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_POST(self):
+        print('upstream got:', self.path, dict(self.headers).get('Authorization'))
+        self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
+    def log_message(self, *a): pass
+HTTPServer(('127.0.0.1', 9999), H).serve_forever()
+"
+```
+
+With `base-url` set to `http://127.0.0.1:9999` it should print `upstream got: /responses Bearer <access_token>`.
 
 ## Installation
 

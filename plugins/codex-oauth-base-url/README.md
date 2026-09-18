@@ -112,6 +112,8 @@ Codex 执行器 -> strings.TrimSuffix(baseURL, "/") + "/responses"
 
 保存会把 `plugins.configs.codex-oauth-base-url` 写入 `config.yaml`（保留注释）并触发配置热重载，新上游无需重启 CPA 即可生效。下一个请求就会使用它。
 
+通过管理 API 写配置时请用 `PATCH /v0/management/plugins/codex-oauth-base-url/config`。`PUT` 会**整体替换**该插件的配置节点，载荷里没有 `enabled` 时插件会被一并关掉。
+
 ### 最小配置
 
 ```yaml
@@ -143,7 +145,40 @@ level=warn msg="codex-oauth-base-url: configured base-url looks wrong"
   base_url="codex-relay.example.com" reason="missing an http:// or https:// scheme"
 ```
 
-配置值仍会照常生效，避免面板显示与实际生效不一致。合法值不会产生任何日志。
+### 验证生效
+
+`base-url` 是否真的被用上，唯一可靠的证据是**实际上游 URL**。打开请求日志：
+
+```yaml
+request-log: true
+```
+
+日志写在 CPA 工作目录下的 `logs/`；该目录不可写时回落到 `<auth-dir>/logs/`。发起一次 Codex 请求后：
+
+```text
+=== API REQUEST 1 ===
+Timestamp: 2026-09-18T15:28:17.051509+08:00
+Upstream URL: https://your-upstream.example.com/responses
+HTTP Method: POST
+```
+
+`Upstream URL` 是你的域名即为生效；若仍是 `https://chatgpt.com/backend-api/codex/responses`，说明插件没有接管这次请求 —— 检查 `plugins.configs.codex-oauth-base-url.enabled`，以及认证文件的 `"type"` 是否为 `codex` 且带 `access_token`（纯 API Key 条目不接管）。
+
+也可以把 `base-url` 临时指向本机监听来做端到端确认：
+
+```bash
+python3 -c "
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_POST(self):
+        print('upstream got:', self.path, dict(self.headers).get('Authorization'))
+        self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
+    def log_message(self, *a): pass
+HTTPServer(('127.0.0.1', 9999), H).serve_forever()
+"
+```
+
+`base-url` 设为 `http://127.0.0.1:9999` 后发请求，应打印 `upstream got: /responses Bearer <access_token>`。
 
 ## 安装
 
