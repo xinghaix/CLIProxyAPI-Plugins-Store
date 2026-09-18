@@ -224,6 +224,24 @@ plugins/linux/amd64/developer-role-normalizer-v0.3.8.so
 
 Restart CPA after installing or upgrading; already loaded dynamic libraries are not hot-swapped.
 
+## Releasing
+
+The version belongs to this plugin alone: the tag form is `<plugin-id>-v<version>`, and CI builds only this plugin.
+
+1. Synchronize the version in both places:
+   - `go/main.go` -> `var pluginVersion = "X.Y.Z"`
+   - repository `registry.json` -> this plugin's `"version"`
+2. Commit and push to `main`.
+3. Create and push the tag:
+
+```bash
+git tag -a developer-role-normalizer-vX.Y.Z -m "developer-role-normalizer X.Y.Z"
+git push origin developer-role-normalizer-vX.Y.Z
+```
+
+4. The workflow builds only this plugin, publishes the six platform zips, and refreshes `registry-v2.json` on main plus the `cdn` branch.
+
+Historical releases (0.3.8 and earlier) live under the shared `v<version>` tag; their install paths keep working. Every later version uses a plugin-scoped tag.
 ## Compatibility notes
 
 - By default, only `openai` / `codex` target formats and model names containing `deepseek` are normalized.

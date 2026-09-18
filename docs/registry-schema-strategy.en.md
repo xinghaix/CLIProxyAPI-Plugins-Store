@@ -198,7 +198,12 @@ scripts/generate-registry-v2.py \
 4. Commit and push to `main`.
 5. Push a tag. Two forms are supported:
 
-`v<version>` is a release train and builds every plugin on that version; `<plugin-id>-v<version>` is plugin-scoped and builds exactly that plugin, so each plugin can own an independent version line (a new plugin can start at `0.1.0` even when `v0.1.0` already belongs to another plugin):
+| Tag form | Behaviour |
+|----------|-----------|
+| `<plugin-id>-v<version>` | Plugin-scoped (the standard): builds exactly that plugin, at its own version. |
+| `v<version>` | Release train: builds every plugin whose source version equals the tag version. |
+
+A plugin-scoped tag gives each plugin an independent version line: a new plugin can start at `0.1.0` even when `v0.1.0` already belongs to another plugin.
 
 ```bash
 git tag -a <plugin-id>-v0.3.9 -m "<plugin-id> 0.3.9"

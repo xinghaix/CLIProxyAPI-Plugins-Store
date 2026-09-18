@@ -198,7 +198,12 @@ scripts/generate-registry-v2.py \
 4. commit 并 push 到 `main`。
 5. 推送 tag。两种格式：
 
-`v<version>` 是发布列车，会构建所有版本等于该版本的插件；`<plugin-id>-v<version>` 是插件级发布，只构建该插件，因此每个插件可以拥有独立版本线（新插件可以从 `0.1.0` 开始，即使 `v0.1.0` 已被别的插件占用）：
+| tag 格式 | 行为 |
+|----------|------|
+| `<plugin-id>-v<version>` | 插件级发布（标准做法）：只构建该插件，版本号即插件自己的版本。 |
+| `v<version>` | 发布列车：构建所有源码版本等于该 tag 版本的插件。 |
+
+插件级 tag 让每个插件拥有独立版本线：即使某个版本号已被别的插件占用（例如 `v0.1.0` 属于 developer-role-normalizer），新插件仍可以从 `0.1.0` 开始。
 
 ```bash
 git tag -a <plugin-id>-v0.3.9 -m "<plugin-id> 0.3.9"

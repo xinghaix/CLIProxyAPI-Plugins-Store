@@ -224,6 +224,24 @@ plugins/linux/amd64/developer-role-normalizer-v0.3.8.so
 
 安装或升级后需要重启 CPA 进程，已加载的动态库不会热替换。
 
+## 发布
+
+版本号只属于本插件，与其他插件互不影响：tag 形式是 `<plugin-id>-v<version>`，CI 只构建本插件。
+
+1. 同步版本号（两处必须一致）：
+   - `go/main.go` → `var pluginVersion = "X.Y.Z"`
+   - 仓库根 `registry.json` → 本插件的 `"version"`
+2. commit 并 push 到 `main`。
+3. 打 tag 并推送：
+
+```bash
+git tag -a developer-role-normalizer-vX.Y.Z -m "developer-role-normalizer X.Y.Z"
+git push origin developer-role-normalizer-vX.Y.Z
+```
+
+4. workflow 只构建本插件，发布 6 平台 zip，并刷新 `registry-v2.json`（main）与 `cdn` 分支。
+
+历史版本（0.3.8 及更早）发布在全局 `v<version>` tag 下，安装入口保持不变；从下一个版本起使用插件级 tag。
 ## 兼容性说明
 
 - 默认只处理 `openai` / `codex` 目标格式和模型名包含 `deepseek` 的请求。

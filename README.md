@@ -134,7 +134,11 @@ https://purge.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2
 | `v<version>` | 发布列车：构建所有源码版本等于该 tag 版本的插件。 |
 | `<plugin-id>-v<version>` | 插件级发布：只构建该插件，版本号即插件自己的版本。 |
 
-插件级 tag 让每个插件拥有独立的版本线：即使某个版本号已被别的插件占用（例如 `v0.1.0` 属于 developer-role-normalizer），新插件仍可以从 `0.1.0` 开始。不要把插件名放在版本号后面（例如 `v0.3.8-cpa-manager-plus`），那种形式 CI 不会识别。
+**插件级 tag 是本仓库的标准做法**：每个插件都有自己的版本号列表，互不复用。即使某个版本号已被别的插件占用（例如 `v0.1.0` 属于 developer-role-normalizer），新插件仍可以从 `0.1.0` 开始。
+
+发布列车 tag 只在确实需要一次发布多个同版本插件时使用。不要把插件名放在版本号后面（例如 `v0.3.8-cpa-manager-plus`），那种形式 CI 不会识别。
+
+既有插件（cpa-manager-plus、developer-role-normalizer）保留各自当前版本号，历史 release 继续可用，从下一个版本起也改用插件级 tag。
 
 1. 修改插件代码。
 2. 选择新版本号，例如 `0.3.9`。
@@ -145,7 +149,7 @@ https://purge.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2
 4. commit 并 push 到 `main`。
 5. 创建并推送 tag：
 
-插件级 tag（推荐，版本号只属于该插件）：
+插件级 tag（标准做法，版本号只属于该插件）：
 
 ```bash
 git tag -a cpa-manager-plus-v0.3.9 -m "cpa-manager-plus 0.3.9"

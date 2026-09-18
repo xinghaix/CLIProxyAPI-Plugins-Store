@@ -231,6 +231,25 @@ nm -gU codex-oauth-base-url.dylib | grep cliproxy
 
 插件通过 cgo 导出 CPA C ABI，必须使用 `CGO_ENABLED=1` 构建。发布构建通过 `-ldflags "-X main.pluginVersion=<version>"` 注入版本号，`main.go` 中的字面量只是开发默认值。
 
+## 发布
+
+版本号只属于本插件，与其他插件互不影响：tag 形式是 `<plugin-id>-v<version>`，CI 只构建本插件。
+
+1. 同步版本号（两处必须一致）：
+   - `go/main.go` → `var pluginVersion = "X.Y.Z"`
+   - 仓库根 `registry.json` → 本插件的 `"version"`
+2. commit 并 push 到 `main`。
+3. 打 tag 并推送：
+
+```bash
+git tag -a codex-oauth-base-url-vX.Y.Z -m "codex-oauth-base-url X.Y.Z"
+git push origin codex-oauth-base-url-vX.Y.Z
+```
+
+4. workflow 只构建本插件，发布 6 平台 zip，并刷新 `registry-v2.json`（main）与 `cdn` 分支。
+
+当前版本 0.1.0 发布在 `codex-oauth-base-url-v0.1.0` 下，是插件级 tag 的第一个使用示例。
+
 ## 许可证
 
 MIT

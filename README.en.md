@@ -134,7 +134,11 @@ Releases use standard semver tags, in one of two forms:
 | `v<version>` | Release train: builds every plugin whose source version equals the tag version. |
 | `<plugin-id>-v<version>` | Plugin-scoped: builds exactly that plugin, at its own version. |
 
-A plugin-scoped tag gives each plugin its own version line: even when a number is already taken by another plugin in the shared `v<version>` namespace (for example `v0.1.0` belongs to developer-role-normalizer), a new plugin can still start at `0.1.0`. Do not put the plugin name after the version (such as `v0.3.8-cpa-manager-plus`) — CI does not recognise that form.
+**Plugin-scoped tags are the standard here**: every plugin owns its own version list, and numbers are never reused across plugins. Even when a number is already taken in the shared `v<version>` namespace (for example `v0.1.0` belongs to developer-role-normalizer), a new plugin can still start at `0.1.0`.
+
+Use a release-train tag only when several plugins genuinely ship the same version at once. Do not put the plugin name after the version (such as `v0.3.8-cpa-manager-plus`) — CI does not recognise that form.
+
+The existing plugins (cpa-manager-plus, developer-role-normalizer) keep their current version numbers and existing releases stay downloadable; each switches to a plugin-scoped tag with its next version.
 
 1. Change plugin code.
 2. Choose a new version, for example `0.3.9`.
@@ -145,7 +149,7 @@ A plugin-scoped tag gives each plugin its own version line: even when a number i
 4. Commit and push to `main`.
 5. Create and push the tag:
 
-Plugin-scoped tag (preferred: the version belongs to that plugin alone):
+Plugin-scoped tag (the standard: the version belongs to that plugin alone):
 
 ```bash
 git tag -a cpa-manager-plus-v0.3.9 -m "cpa-manager-plus 0.3.9"
