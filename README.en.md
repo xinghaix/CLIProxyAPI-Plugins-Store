@@ -10,7 +10,7 @@ This is a third-party plugin store repository for [CLIProxyAPI](https://github.c
 |--------|-------------|
 | [developer-role-normalizer](plugins/developer-role-normalizer/) | Converts the unsupported `developer` message role to `system` for selected OpenAI-compatible providers such as DeepSeek. |
 | [cpa-manager-plus](plugins/cpa-manager-plus/) | Provides Manager Plus style dashboard, usage analytics, monitoring, account inspection, and settings pages inside CPA, proxied to Manager Server. |
-| [codex-oauth-base-url](plugins/codex-oauth-base-url/) | Rewrites the upstream base URL of Codex OAuth (ChatGPT subscription) credentials so a Codex account can target a self-hosted or third-party upstream without patching CPA. |
+| [codex-oauth-base-url](plugins/codex-oauth-base-url/) | Rewrites the upstream base URL of Codex OAuth (ChatGPT subscription) credentials so a Codex account can target a self-hosted or third-party upstream without patching CPA. Inference requests only; login and token refresh still use the fixed `auth.openai.com` endpoints. |
 
 ## Recommended registry entry points
 

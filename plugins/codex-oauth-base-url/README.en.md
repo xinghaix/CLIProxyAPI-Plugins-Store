@@ -69,11 +69,12 @@ built-in synthesizer, unchanged behaviour
 
 Every Codex upstream URL that flows through `codexCreds` is redirected, including `/responses`, `/responses/compact`, both streaming transports, the WebSocket transport, and the OpenAI image endpoints.
 
-Two Codex URLs do **not** go through `codexCreds` and stay pointed at `chatgpt.com`:
+Two other Codex URLs do **not** go through `codexCreds` and stay pointed at `chatgpt.com`:
 
 - `/v1/alpha/search` — the OAuth branch of that handler uses the hardcoded URL and only the `codex-api-key` branch honours `base_url`. Alpha Search is an API-key feature.
 - Codex Live realtime calls (`internal/client/codex/live/live.go`).
-- Model listing (`/v1/models`) — served from the local model registry with no upstream request, so `base-url` does not apply.
+
+Model listing (`/v1/models`) is served from the local model registry with no upstream request, so `base-url` does not apply.
 
 The full picture, CPA entry point to upstream target:
 

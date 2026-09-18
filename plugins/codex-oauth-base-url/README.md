@@ -69,11 +69,12 @@ Codex 执行器 -> strings.TrimSuffix(baseURL, "/") + "/responses"
 
 所有经过 `codexCreds` 的 Codex 上游地址都会被改写，包括 `/responses`、`/responses/compact`、两种流式传输、WebSocket 传输，以及 OpenAI 图像端点。
 
-有两个 Codex 地址**不**经过 `codexCreds`，仍然指向 `chatgpt.com`：
+另有两个 Codex 地址**不**经过 `codexCreds`，仍然指向 `chatgpt.com`：
 
 - `/v1/alpha/search` —— 该处理器的 OAuth 分支使用硬编码地址，只有 `codex-api-key` 分支才会尊重 `base_url`。Alpha Search 属于 API Key 功能。
 - Codex Live 实时通话（`internal/client/codex/live/live.go`）。
-- 模型列表（`/v1/models`）—— 由本地模型注册表提供，不向上游发起请求，因此与 `base-url` 无关。
+
+模型列表（`/v1/models`）由本地模型注册表提供，不向上游发起请求，因此与 `base-url` 无关。
 
 对应的两级上游地址：
 
