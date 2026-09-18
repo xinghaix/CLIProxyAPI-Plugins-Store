@@ -157,6 +157,8 @@ If the model does not match, for example `gpt-4.1`, the request is returned unch
 
 ## Installation
 
+Requires CPA `v7.2.46+`. Schema v1 is retired; only the v2 entry points below are available.
+
 ### Recommended: CPA v7.2.46+ with CDN v2 registry
 
 ```yaml
@@ -173,15 +175,6 @@ plugins:
   enabled: true
   store-sources:
     - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry-v2.json"
-```
-
-### Older CPA compatibility entry point
-
-```yaml
-plugins:
-  enabled: true
-  store-sources:
-    - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
 ```
 
 Install:
@@ -230,7 +223,7 @@ The version belongs to this plugin alone: the tag form is `<plugin-id>-v<version
 
 1. Synchronize the version in both places:
    - `go/main.go` -> `var pluginVersion = "X.Y.Z"`
-   - repository `registry.json` -> this plugin's `"version"`
+   - repository `plugins.json` -> this plugin's `"version"`
 2. Commit and push to `main`.
 3. Create and push the tag:
 

@@ -185,6 +185,8 @@ plugins:
 
 ## 安装
 
+要求 CPA `v7.2.46+`。本仓库已停止支持 schema v1，只提供下面的 v2 入口。
+
 ### 推荐：CPA v7.2.46+ 使用 CDN v2 registry
 
 > **CPA Manager Plus 运行要求 CPA v7.2.103+。** 此处的 v7.2.46+ 仅表示支持通过 registry-v2 安装；较早 CPA 无法加载本插件。
@@ -203,15 +205,6 @@ plugins:
   enabled: true
   store-sources:
     - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry-v2.json"
-```
-
-### 老 CPA 兼容入口
-
-```yaml
-plugins:
-  enabled: true
-  store-sources:
-    - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
 ```
 
 安装：
@@ -256,7 +249,7 @@ nm ../cpa-manager-plus-v0.4.0.dylib | grep cliproxy_plugin_init
 
 1. 同步版本号（三处必须一致）：
    - `go/main.go` → `var pluginVersion = "X.Y.Z"`
-   - 仓库根 `registry.json` → 本插件的 `"version"`
+   - 仓库根 `plugins.json` → 本插件的 `"version"`
    - `Makefile` → `VERSION := X.Y.Z`（如存在）
 2. commit 并 push 到 `main`。
 3. 打 tag 并推送：

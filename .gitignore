@@ -8,3 +8,4 @@ checksums.txt
 checksums_fragment.txt
 node_modules/
 plugins/*/go/web-dist/
+__pycache__/

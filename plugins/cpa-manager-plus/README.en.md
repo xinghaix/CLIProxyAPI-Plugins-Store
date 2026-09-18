@@ -185,6 +185,8 @@ plugins:
 
 ## Installation
 
+Requires CPA `v7.2.46+`. Schema v1 is retired; only the v2 entry points below are available.
+
 ### Recommended: CPA v7.2.46+ with CDN v2 registry
 
 > **CPA Manager Plus requires CPA v7.2.103+.** v7.2.46+ here only indicates registry-v2 installation support; earlier CPA versions cannot load this plugin.
@@ -203,15 +205,6 @@ plugins:
   enabled: true
   store-sources:
     - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry-v2.json"
-```
-
-### Older CPA compatibility entry point
-
-```yaml
-plugins:
-  enabled: true
-  store-sources:
-    - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
 ```
 
 Install:
@@ -256,7 +249,7 @@ The version belongs to this plugin alone: the tag form is `<plugin-id>-v<version
 
 1. Synchronize the version in all three places:
    - `go/main.go` -> `var pluginVersion = "X.Y.Z"`
-   - repository `registry.json` -> this plugin's `"version"`
+   - repository `plugins.json` -> this plugin's `"version"`
    - `Makefile` -> `VERSION := X.Y.Z` when present
 2. Commit and push to `main`.
 3. Create and push the tag:

@@ -2,7 +2,7 @@
 
 [中文](README.md) | English
 
-This is a third-party plugin store repository for [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI). It maintains both a schema v1 registry for older CPA builds and a schema v2 direct-install registry for current CPA builds, and mirrors registries plus release assets to jsDelivr CDN.
+This is a third-party plugin store repository for [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI), requiring CPA `v7.2.46+`. It publishes only the schema v2 direct-install registry (`registry-v2.json`) and mirrors that registry plus release assets to jsDelivr CDN. **Schema v1 is no longer supported as of 2026-09-18.** Every plugin keeps its own version line and is released with a plugin-scoped tag.
 
 ## Available plugins
 
@@ -41,26 +41,18 @@ plugins:
 
 This is also schema v2 direct install, but artifact URLs point to GitHub Releases. Use it when debugging CDN issues.
 
-### Older CPA builds: schema v1 compatibility
+### Retired: schema v1
 
-```yaml
-plugins:
-  enabled: true
-  store-sources:
-    - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
-```
+The schema v1 entry point (`registry.json`) is gone: this repository neither publishes nor maintains v1 anymore, and the `registry.json` on the `cdn` branch is removed and purged at the next release.
 
-Schema v1 remains available for older CPA builds. Note that v1 uses GitHub `releases/latest`, and `latest` only ever points at the **most recent** release. Because each release contains just the one tagged plugin, installing any other plugin through v1 fails (usually a 502).
-
-In other words the v1 entry point only works when the newest release happens to contain the plugin you want. Older CPA users should upgrade to `v7.2.46+` and switch to the v2 entry point; if that is not possible yet, check whether `latest` contains your plugin before installing.
+A CPA build still on v1 must first upgrade to `v7.2.46+` and then use the v2 entry point above.
 
 ## CPA version recommendation
 
-| CPA version | Recommended registry | Notes |
-|-------------|----------------------|-------|
-| `< v7.2.44` | `registry.json` | These builds predate schema v2 direct install. |
-| `v7.2.44` - `v7.2.45` | `registry.json`, or test `registry-v2.json` carefully | The first direct-install implementation exists, but later download/auth/error handling fixes are missing. |
-| `>= v7.2.46` | `registry-v2.json`, preferably the CDN URL | Recommended path. Includes direct install plus follow-up plugin-store fixes. |
+| CPA version | Supported | Notes |
+|-------------|-----------|-------|
+| `< v7.2.46` | No | Missing direct install or the follow-up plugin-store fixes. Schema v1 is retired, so upgrade CPA first. |
+| `>= v7.2.46` | Yes | Use `registry-v2.json`, preferably the CDN URL. Includes direct install plus follow-up plugin-store fixes. |
 
 Evidence: upstream CPA commit `1f16e87` is included from `v7.2.44`; follow-up plugin-store fixes `3ea7f18`, `8970873`, and `caf7052` are included from `v7.2.46`.
 
@@ -69,16 +61,16 @@ Evidence: upstream CPA commit `1f16e87` is included from `v7.2.44`; follow-up pl
 ```text
 CPA
  └─ plugin store registry
-     ├─ registry.json       schema v1, old CPA compatibility, GitHub Release latest model
-     └─ registry-v2.json    schema v2, recommended for new CPA, direct install model
+     └─ registry-v2.json    schema v2 direct install (the only published registry)
+
+plugins.json               repository source manifest, used only to generate registry-v2.json
 
 GitHub Actions
- ├─ discovers plugins whose source version matches the pushed tag
+ ├─ discovers the plugins targeted by the pushed tag (one plugin per plugin-scoped tag)
  ├─ builds linux/darwin/windows × amd64/arm64 dynamic-library zips
  ├─ publishes GitHub Release
  ├─ refreshes registry-v2.json on main branch (GitHub Release URLs)
  └─ publishes cdn branch
-     ├─ registry.json
      ├─ registry-v2.json (jsDelivr artifact URLs)
      ├─ latest/
      └─ vX.Y.Z/
@@ -116,10 +108,10 @@ The `cdn` branch contains only distribution artifacts and generated registries, 
 - Versioned paths such as `@cdn/v0.3.8/...` should be treated as immutable and production-safe.
 - Mutable paths such as `@cdn/latest/...` and `@cdn/registry-v2.json` may have CDN propagation delay.
 - The workflow automatically purges these mutable paths:
-  - `registry.json`
   - `registry-v2.json`
   - `latest/checksums.txt`
   - `latest/*.zip`
+  - `registry.json` (only to flush the retired v1 file out of the jsDelivr cache)
 
 Manual purge example:
 
@@ -146,7 +138,7 @@ The existing plugins (cpa-manager-plus, developer-role-normalizer) keep their cu
 2. Choose a new version, for example `0.3.9`.
 3. Synchronize versions:
    - `plugins/<plugin-id>/go/main.go` -> `var pluginVersion = "0.3.9"`
-   - `registry.json` -> that plugin's `"version"`
+   - `plugins.json` -> that plugin's `"version"`
    - `plugins/<plugin-id>/Makefile` -> `VERSION := 0.3.9` when present
 4. Commit and push to `main`.
 5. Create and push the tag:
@@ -210,9 +202,10 @@ python3 -m py_compile scripts/generate-registry-v2.py
 scripts/generate-registry-v2.py --check
 python3 - <<'PY'
 import json
-for f in ['registry.json', 'registry-v2.json']:
-    j = json.load(open(f))
-    print(f, j['schema_version'], len(j['plugins']))
+manifest = json.load(open('plugins.json'))
+print('plugins.json', [(p['id'], p['version']) for p in manifest['plugins']])
+registry = json.load(open('registry-v2.json'))
+print('registry-v2.json', registry['schema_version'], len(registry['plugins']))
 PY
 ```
 

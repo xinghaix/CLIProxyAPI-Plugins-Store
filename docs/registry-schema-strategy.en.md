@@ -2,32 +2,30 @@
 
 [中文](registry-schema-strategy.md) | English
 
-This repository publishes two registry entry points and connects them to jsDelivr through the generated `cdn` branch:
+This repository publishes exactly one registry: the schema v2 direct-install `registry-v2.json`, connected to jsDelivr through the generated `cdn` branch. **Schema v1 is no longer supported as of 2026-09-18**: `registry.json` is neither published nor maintained.
 
-- `registry.json` — schema v1, compatible with older CPA builds.
-- `registry-v2.json` — schema v2 direct install, recommended for current CPA builds.
-- `cdn` branch — mirrors registries and release zips for jsDelivr CDN.
+Two JSON files live in the repository, with different roles:
 
-Long-term maintenance strategy: current CPA deployments should use schema v2 direct install through jsDelivr CDN. Schema v1 remains only as a compatibility entry point for older CPA builds.
+- `plugins.json` — the source manifest. Holds plugin metadata and versions only; never distributed.
+- `registry-v2.json` — the only published registry, generated from `plugins.json` by `scripts/generate-registry-v2.py`.
 
-## CPA version recommendation
+## CPA version requirement
 
-| CPA version | Recommended registry | Reason |
-|-------------|----------------------|--------|
-| `< v7.2.44` | `registry.json` | These builds predate schema v2 direct install support. |
-| `v7.2.44` - `v7.2.45` | `registry.json`, or test `registry-v2.json` carefully | The first direct-install implementation exists, but later plugin-store download/auth/error-handling fixes are missing. |
-| `>= v7.2.46` | `registry-v2.json`, preferably the CDN URL | Recommended. Includes direct install plus follow-up plugin-store fixes. |
+| CPA version | Supported | Reason |
+|-------------|-----------|--------|
+| `>= v7.2.46` | Yes | Includes direct install plus the follow-up plugin-store fixes. |
+| `< v7.2.46` | No | Missing direct install or the follow-up plugin-store fixes; schema v1 is retired, so upgrade CPA first. |
 
 Evidence:
 
 - `1f16e87` (`feat(pluginstore): introduce support for direct install type and version management`) is included from `v7.2.44` onward.
 - Follow-up plugin-store fixes `3ea7f18`, `8970873`, and `caf7052` are included from `v7.2.46` onward.
 
-Default user-facing recommendation: **CPA v7.2.46+ should use the CDN version of `registry-v2.json`; older CPA builds should use `registry.json`.**
+The minimum supported version is therefore `v7.2.46`, and the CDN copy of `registry-v2.json` is the recommended entry point.
 
 ## User-facing registry URLs
 
-### Recommended: CPA v7.2.46+ CDN entry point
+### Recommended: CDN entry point
 
 ```yaml
 plugins:
@@ -36,7 +34,7 @@ plugins:
     - "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2.json"
 ```
 
-### Fallback: CPA v7.2.46+ GitHub raw entry point
+### Fallback: GitHub raw entry point
 
 ```yaml
 plugins:
@@ -45,39 +43,34 @@ plugins:
     - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry-v2.json"
 ```
 
-### Compatibility: older CPA schema v1 entry point
+## Why direct install + CDN
 
-```yaml
-plugins:
-  enabled: true
-  store-sources:
-    - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
-```
-
-## Why v2 + CDN is needed
-
-Schema v1 uses the GitHub Release `latest` model:
-
-1. CPA reads the plugin from `registry.json`.
-2. CPA calls GitHub `GET /repos/{owner}/{repo}/releases/latest` using the plugin `repository`.
-3. CPA derives the plugin version from the latest release tag.
-4. CPA downloads `{plugin-id}_{version}_{goos}_{goarch}.zip` and `checksums.txt` from that single latest release.
-
-This is weak for a multi-plugin repository. If latest contains only plugin A, older CPA installs for plugin B can fail because plugin B's zip is missing. Perfect v1 compatibility would require rebuilding all plugins for every latest release.
-
-Schema v2 direct install fixes this:
+Schema v2 direct install works like this:
 
 1. Each plugin declares its own `version`.
 2. Each plugin declares artifact URLs per platform.
 3. Each artifact has inline `sha256` and `size`.
-4. CPA downloads the exact platform artifact and verifies sha256.
+4. CPA downloads only the artifact matching the current platform and verifies its sha256.
 
-Plugin A can advance to `1.2.0` while plugin B remains pinned to `1.1.0` in the same store.
+Every plugin therefore owns an independent version line: plugin A can advance to `1.2.0` while plugin B stays pinned to `1.1.0@.
 
-CDN adds two benefits:
+The retired schema v1 relied on GitHub `releases/latest`, and `latest` only ever points at the most recent release. Because each release here contains just the one tagged plugin, installing any other plugin through v1 was guaranteed to fail. That is why v1 was removed.
+
+The CDN adds two more benefits:
 
 - Registries and plugin zips are served by jsDelivr, reducing GitHub raw/release download failures.
-- The `cdn` branch provides a clean, stable, distribution-only file tree.
+- The `cdn` branch is a clean, stable, distribution-only file tree.
+
+## Plugin version lines
+
+Every plugin owns its own version sequence; numbers are never shared across plugins. Releases use a plugin-scoped tag:
+
+| Tag form | Behaviour |
+|----------|-----------|
+| `<plugin-id>-v<version>` | Plugin-scoped (the standard): builds exactly that plugin, at its own version. |
+| `v<version>` | Release train: builds every plugin whose source version equals the tag version. |
+
+Even when a number is already taken by another plugin (for example `v0.1.0` belongs to developer-role-normalizer), a new plugin can still start at `0.1.0`.
 
 ## CDN branch layout
 
@@ -86,15 +79,14 @@ The `cdn` branch is generated by GitHub Actions and must not be edited manually:
 ```text
 cdn branch
 ├── README.md
-├── registry.json
 ├── registry-v2.json
 ├── latest/
 │   ├── checksums.txt
-│   ├── cpa-manager-plus_0.3.8_linux_amd64.zip
+│   ├── codex-oauth-base-url_0.1.0_linux_amd64.zip
 │   └── ...
-└── v0.3.8/
+└── codex-oauth-base-url-v0.1.0/
     ├── checksums.txt
-    ├── cpa-manager-plus_0.3.8_linux_amd64.zip
+    ├── codex-oauth-base-url_0.1.0_linux_amd64.zip
     └── ...
 ```
 
@@ -104,21 +96,15 @@ CDN registry:
 https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2.json
 ```
 
-Version-pinned asset:
+Version-pinned asset (immutable):
 
 ```text
-https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/cpa-manager-plus_0.3.8_linux_amd64.zip
-```
-
-Latest asset:
-
-```text
-https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/latest/checksums.txt
+https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_linux_amd64.zip
 ```
 
 ## CDN cache policy
 
-- `@cdn/vX.Y.Z/...`: versioned paths, should be immutable, suitable for production and reproducibility.
+- `@cdn/<plugin-id>-vX.Y.Z/...`: versioned paths, should be immutable, suitable for production and reproducibility.
 - `@cdn/latest/...`: mutable convenience paths, may have cache propagation delay.
 - `@cdn/registry-v2.json`: mutable registry, automatically purged by the workflow.
 
@@ -130,26 +116,22 @@ https://purge.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2
 
 The workflow purges:
 
-- `registry.json`
 - `registry-v2.json`
 - `latest/checksums.txt`
 - `latest/*.zip`
+- `registry.json` (only to flush the retired v1 file out of the jsDelivr cache; it is no longer an artifact)
 
-## Registry file roles
+## File roles
 
-### `registry.json`
+### `plugins.json` (source manifest)
 
 Purpose:
 
-- Compatibility for older CPA builds.
-- Schema v1.
-- Keeps the GitHub `repository` field.
+- Maintain plugin metadata (id, name, description, author, logo, homepage, license, tags).
+- Maintain each plugin's current `version`.
+- Serve as the sole generation input for `registry-v2.json`.
 
-Limits:
-
-- Multiple plugins sharing one GitHub repository also share one `releases/latest`.
-- Install can fail when latest does not include the requested plugin zip.
-- Full old-CPA compatibility requires latest releases to contain all plugin zips.
+It is never distributed and CPA never reads it.
 
 ### main branch `registry-v2.json`
 
@@ -177,7 +159,7 @@ Purpose:
 
 - Schema v2 direct install.
 - Artifact URLs point to jsDelivr CDN.
-- Recommended registry for CPA v7.2.46+.
+- The entry point CPA should use.
 
 Generation example:
 
@@ -193,17 +175,10 @@ scripts/generate-registry-v2.py \
 2. Choose a version, for example `0.3.9`.
 3. Synchronize versions:
    - `plugins/<id>/go/main.go` -> `var pluginVersion = "0.3.9"`
-   - `registry.json` -> `"version": "0.3.9"`
+   - `plugins.json` -> that plugin's `"version"`
    - `plugins/<id>/Makefile` -> `VERSION := 0.3.9` when present
 4. Commit and push to `main`.
-5. Push a tag. Two forms are supported:
-
-| Tag form | Behaviour |
-|----------|-----------|
-| `<plugin-id>-v<version>` | Plugin-scoped (the standard): builds exactly that plugin, at its own version. |
-| `v<version>` | Release train: builds every plugin whose source version equals the tag version. |
-
-A plugin-scoped tag gives each plugin an independent version line: a new plugin can start at `0.1.0` even when `v0.1.0` already belongs to another plugin.
+5. Push the plugin-scoped tag:
 
 ```bash
 git tag -a <plugin-id>-v0.3.9 -m "<plugin-id> 0.3.9"
@@ -211,11 +186,11 @@ git push origin <plugin-id>-v0.3.9
 ```
 
 6. The workflow automatically:
-   - Discovers the plugins matching the tag (one plugin for a plugin-scoped tag, every plugin on that version for a release train).
+   - Discovers the plugin that tag targets (a plugin-scoped tag maps to one plugin).
    - Builds six platform zips.
    - Publishes GitHub Release.
    - Refreshes main branch `registry-v2.json`.
-   - Publishes/refreshes the `cdn` branch.
+   - Publishes/refreshes the `cdn` branch (and removes any leftover `registry.json`).
    - Purges mutable jsDelivr paths.
 
 ## Artifact requirements
@@ -244,8 +219,8 @@ Dynamic library name at zip root:
 ## Adding a new plugin
 
 1. Add plugin source under `plugins/<plugin-id>/go/`.
-2. Add metadata and version to `registry.json`.
-3. Push a plugin-scoped tag such as `<plugin-id>-v0.1.0` so the new plugin owns its own version line.
+2. Add metadata and version to `plugins.json`.
+3. Push a plugin-scoped tag such as `<plugin-id>-v0.1.0` so the new plugin starts its own version line at `0.1.0`.
 4. Wait for CI to publish the release and cdn branch.
 5. Verify that the CDN registry contains the new plugin's `install.artifacts`.
 
@@ -253,8 +228,7 @@ Dynamic library name at zip root:
 
 If plugin installation returns 502:
 
-1. CPA `>= v7.2.46`: switch to the CDN `registry-v2.json` first.
-2. CPA `< v7.2.44`: upgrade CPA or keep using `registry.json`.
-3. Schema v1: check whether current latest release contains the requested plugin zip.
-4. Schema v2: check whether the artifact URL is reachable from the CPA runtime environment; verify separately inside Docker.
-5. Restart CPA after installing/upgrading dynamic libraries because already loaded dylib/so files are not hot-swapped.
+1. Confirm CPA is `>= v7.2.46`; older builds are unsupported, so upgrade first.
+2. Switch to the CDN `registry-v2.json` first.
+3. Check whether the artifact URL is reachable from the CPA runtime environment; verify separately inside Docker.
+4. Restart CPA after installing/upgrading dynamic libraries because already loaded dylib/so files are not hot-swapped.

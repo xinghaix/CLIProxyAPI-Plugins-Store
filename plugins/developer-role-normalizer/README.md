@@ -157,6 +157,8 @@ model_match:
 
 ## 安装
 
+要求 CPA `v7.2.46+`。本仓库已停止支持 schema v1，只提供下面的 v2 入口。
+
 ### 推荐：CPA v7.2.46+ 使用 CDN v2 registry
 
 ```yaml
@@ -173,15 +175,6 @@ plugins:
   enabled: true
   store-sources:
     - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry-v2.json"
-```
-
-### 老 CPA 兼容入口
-
-```yaml
-plugins:
-  enabled: true
-  store-sources:
-    - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
 ```
 
 安装：
@@ -230,7 +223,7 @@ plugins/linux/amd64/developer-role-normalizer-v0.3.8.so
 
 1. 同步版本号（两处必须一致）：
    - `go/main.go` → `var pluginVersion = "X.Y.Z"`
-   - 仓库根 `registry.json` → 本插件的 `"version"`
+   - 仓库根 `plugins.json` → 本插件的 `"version"`
 2. commit 并 push 到 `main`。
 3. 打 tag 并推送：
 

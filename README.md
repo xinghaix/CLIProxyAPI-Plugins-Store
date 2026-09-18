@@ -2,7 +2,7 @@
 
 中文 | [English](README.en.md)
 
-这是给 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 使用的第三方插件商店仓库。仓库同时维护兼容老版本 CPA 的 schema v1 registry，以及推荐给新版 CPA 的 schema v2 direct-install registry，并把 registry 与 release 资产镜像到 jsDelivr CDN。
+这是给 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 使用的第三方插件商店仓库，要求 CPA `v7.2.46+`。仓库只发布 schema v2 direct-install registry（`registry-v2.json`），并把 registry 与 release 资产镜像到 jsDelivr CDN。**从 2026-09-18 起不再兼容 schema v1。** 每个插件拥有独立的版本线，使用插件级 tag 发布。
 
 ## 可用插件
 
@@ -41,26 +41,18 @@ plugins:
 
 这个入口同样是 schema v2 direct install，但 artifact URL 指向 GitHub Release。适合排查 CDN 问题。
 
-### 老版本 CPA：schema v1 兼容入口
+### 已停止支持：schema v1
 
-```yaml
-plugins:
-  enabled: true
-  store-sources:
-    - "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/main/registry.json"
-```
+schema v1 入口（`registry.json`）已下线：本仓库既不发布也不再维护 v1，`cdn` 分支上的 `registry.json` 会在下一次发布时移除并 purge。
 
-schema v1 仍然保留给老 CPA 使用。注意：v1 使用 GitHub `releases/latest` 模型，`latest` 只指向**最近一次**发布的 release；由于每次发布只包含被 tag 的那一个插件，其余插件经 v1 安装会失败（通常表现为 502）。
-
-也就是说，v1 入口只在「最新 release 恰好包含你要装的插件」时才可用。老 CPA 用户建议升级到 `v7.2.46+` 改用 v2 入口；暂时无法升级时，请确认 `latest` 是否包含目标插件再安装。
+仍在使用 v1 的 CPA 必须先升级到 `v7.2.46+`，然后改用上面的 v2 入口。
 
 ## CPA 版本建议
 
-| CPA 版本 | 推荐 registry | 说明 |
-|----------|---------------|------|
-| `< v7.2.44` | `registry.json` | 这些版本早于 schema v2 direct install。 |
-| `v7.2.44` - `v7.2.45` | `registry.json`，或谨慎测试 `registry-v2.json` | 已有 direct install 初版，但缺少后续下载/auth/错误处理修复。 |
-| `>= v7.2.46` | `registry-v2.json`，优先 CDN URL | 推荐路径。包含 direct install 及后续 plugin-store 修复。 |
+| CPA 版本 | 支持 | 说明 |
+|----------|------|------|
+| `< v7.2.46` | 不支持 | 缺少 direct install 或后续 plugin-store 修复。schema v1 已下线，请先升级 CPA。 |
+| `>= v7.2.46` | 支持 | 使用 `registry-v2.json`，优先 CDN URL。包含 direct install 及后续 plugin-store 修复。 |
 
 证据：CPA upstream commit `1f16e87` 从 `v7.2.44` 起包含 direct install；`3ea7f18`、`8970873`、`caf7052` 从 `v7.2.46` 起包含后续 plugin-store 修复。
 
@@ -69,16 +61,16 @@ schema v1 仍然保留给老 CPA 使用。注意：v1 使用 GitHub `releases/la
 ```text
 CPA
  └─ plugin store registry
-     ├─ registry.json       schema v1，兼容老 CPA，GitHub Release latest 模型
-     └─ registry-v2.json    schema v2，新 CPA 推荐，direct install 模型
+     └─ registry-v2.json    schema v2 direct install（唯一发布的 registry）
+
+plugins.json               仓库源清单，仅用于生成 registry-v2.json
 
 GitHub Actions
- ├─ 按 tag 发现版本匹配的插件
+ ├─ 按 tag 发现目标插件（插件级 tag 对应单个插件）
  ├─ 构建 linux/darwin/windows × amd64/arm64 动态库 zip
  ├─ 发布 GitHub Release
  ├─ 刷新 main 分支 registry-v2.json（GitHub Release URL）
  └─ 发布 cdn 分支
-     ├─ registry.json
      ├─ registry-v2.json（jsDelivr artifact URL）
      ├─ latest/
      └─ vX.Y.Z/
@@ -116,10 +108,10 @@ https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/latest/checks
 - 版本路径如 `@cdn/v0.3.8/...` 应视为不可变路径，适合生产使用。
 - `@cdn/latest/...` 和 `@cdn/registry-v2.json` 是可变路径，可能存在 CDN 缓存传播延迟。
 - workflow 会自动 purge 这些可变路径：
-  - `registry.json`
   - `registry-v2.json`
   - `latest/checksums.txt`
   - `latest/*.zip`
+  - `registry.json`（仅用于把已下线的 v1 文件清出 jsDelivr 缓存）
 
 手动刷新示例：
 
@@ -146,7 +138,7 @@ https://purge.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/registry-v2
 2. 选择新版本号，例如 `0.3.9`。
 3. 同步版本号：
    - `plugins/<plugin-id>/go/main.go` → `var pluginVersion = "0.3.9"`
-   - `registry.json` → 对应插件的 `"version"`
+   - `plugins.json` → 对应插件的 `"version"`
    - `plugins/<plugin-id>/Makefile` → `VERSION := 0.3.9`（如存在）
 4. commit 并 push 到 `main`。
 5. 创建并推送 tag：
@@ -210,9 +202,10 @@ python3 -m py_compile scripts/generate-registry-v2.py
 scripts/generate-registry-v2.py --check
 python3 - <<'PY'
 import json
-for f in ['registry.json', 'registry-v2.json']:
-    j = json.load(open(f))
-    print(f, j['schema_version'], len(j['plugins']))
+manifest = json.load(open('plugins.json'))
+print('plugins.json', [(p['id'], p['version']) for p in manifest['plugins']])
+registry = json.load(open('registry-v2.json'))
+print('registry-v2.json', registry['schema_version'], len(registry['plugins']))
 PY
 ```
 

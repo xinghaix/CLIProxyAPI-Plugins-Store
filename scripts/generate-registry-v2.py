@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Generate schema_version=2 direct-install registry from registry.json.
+"""Generate the schema_version=2 direct-install registry from plugins.json.
 
-The v1 registry keeps CPA's legacy GitHub release model. This script builds the
-v2 registry that pins each plugin to its own versioned release assets so plugins
-can be released independently in a shared store repository.
+plugins.json is this repository's source manifest. The generated registry is the
+only one published: it pins each plugin to its own versioned release assets so
+every plugin keeps an independent version line in a shared store repository.
 """
 
 from __future__ import annotations
@@ -295,7 +295,7 @@ def generate(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate schema_version=2 direct-install registry.")
-    parser.add_argument("--source", default="registry.json", help="source v1 registry path")
+    parser.add_argument("--source", default="plugins.json", help="source plugin manifest path")
     parser.add_argument("--output", default="registry-v2.json", help="output v2 registry path")
     parser.add_argument(
         "--artifact-url-template",
