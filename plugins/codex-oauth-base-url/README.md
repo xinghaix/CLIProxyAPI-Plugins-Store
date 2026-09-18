@@ -200,7 +200,7 @@ plugins:
 把动态库放入 CPA 插件目录，例如：
 
 ```text
-plugins/darwin/arm64/codex-oauth-base-url-v0.1.0.dylib
+plugins/darwin/arm64/codex-oauth-base-url-v0.5.29.dylib
 ```
 
 ## 兼容性说明
