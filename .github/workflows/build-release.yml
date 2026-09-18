@@ -203,14 +203,22 @@ jobs:
           PLUGIN_ID="${{ matrix.plugin_id }}"
           VERSION="${{ needs.discover.outputs.version }}"
           LIB="${PLUGIN_ID}-v${VERSION}.${{ matrix.ext }}"
-          if ! command -v nm &>/dev/null; then
-            echo "nm not available on this runner; skipping symbol check"
+          # go tool nm reads Mach-O, PE, and ELF, so it works on every runner.
+          SYMS=""
+          if go tool nm "$LIB" > /tmp/syms.txt 2>/dev/null; then
+            SYMS="$(cat /tmp/syms.txt)"
+          elif nm "$LIB" > /tmp/syms.txt 2>/dev/null; then
+            SYMS="$(cat /tmp/syms.txt)"
+          fi
+          if [ -z "$SYMS" ]; then
+            echo "WARNING: no symbol reader could parse $LIB; skipping export check"
             exit 0
           fi
-          if nm "$LIB" 2>/dev/null | grep -q 'cliproxyPluginCall'; then
+          if printf '%s\n' "$SYMS" | grep -Eq '^[[:space:]]*[0-9a-fA-F]+[[:space:]]+[TD][[:space:]]+_?cliproxyPluginCall$'; then
             echo "OK: cliproxyPluginCall exported by $LIB"
           else
             echo "ERROR: cliproxyPluginCall not exported by $LIB" >&2
+            printf '%s\n' "$SYMS" | grep -i cliproxy >&2 || true
             exit 1
           fi
 
