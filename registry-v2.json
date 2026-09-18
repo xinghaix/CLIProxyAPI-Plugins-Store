@@ -133,7 +133,7 @@
       "name": "Codex OAuth Base URL",
       "description": "Rewrites the upstream base URL of Codex OAuth (ChatGPT subscription) credentials so a Codex account can target a self-hosted or third-party upstream.",
       "author": "xinghaix",
-      "version": "0.5.29",
+      "version": "0.1.0",
       "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
       "logo": "",
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/codex-oauth-base-url",
@@ -151,44 +151,44 @@
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.29/codex-oauth-base-url_0.5.29_linux_amd64.zip",
-            "sha256": "930e4974d54ff8b2c0c7c9c58e6e75db921967b2b0b2dfd53545d4358e607bf9",
-            "size": 3610695
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_linux_amd64.zip",
+            "sha256": "c2821cf0fe3c10069d42e65ab2332ada03023259a06c2a8cf8c0fd5301e726f8",
+            "size": 3610654
           },
           {
             "goos": "linux",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.29/codex-oauth-base-url_0.5.29_linux_arm64.zip",
-            "sha256": "8fe693e31dee358176ed7631f202b41cef43de4c7175fbbeb2639c79b01d017e",
-            "size": 3282478
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_linux_arm64.zip",
+            "sha256": "e875e790e0c30ce3641bae763c6d1a1cf20a6464ab6b30bc097188c06c6951b8",
+            "size": 3282476
           },
           {
             "goos": "darwin",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.29/codex-oauth-base-url_0.5.29_darwin_amd64.zip",
-            "sha256": "903d792e233258810d2de6329a44d03ba5970b92bea0c175f76b472eb69d69a4",
-            "size": 2008502
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_darwin_amd64.zip",
+            "sha256": "f5e638a2134c1ece39e86cf435a42936f26544dc2fe338e859f441b7b606ba7e",
+            "size": 2008464
           },
           {
             "goos": "darwin",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.29/codex-oauth-base-url_0.5.29_darwin_arm64.zip",
-            "sha256": "b6ad54fa7b07bee4ae42b2db5c36a7f83493d4c642a0cdca1b8c8c5d36c82eec",
-            "size": 1862733
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_darwin_arm64.zip",
+            "sha256": "bb9b3c29d5be74233fc6975db85943347f492caef1aae3029f38310a5555b2b7",
+            "size": 1862799
           },
           {
             "goos": "windows",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.29/codex-oauth-base-url_0.5.29_windows_amd64.zip",
-            "sha256": "9f38d0efa6b7c705597ae971a915068f1bb1bfa36f785386dc98e4f8e297664d",
-            "size": 3508987
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_windows_amd64.zip",
+            "sha256": "2cb83aa87f1b53aa3dffa9fa28d1b7583c56d4f5be9143de748227586b7c17dc",
+            "size": 3508991
           },
           {
             "goos": "windows",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.29/codex-oauth-base-url_0.5.29_windows_arm64.zip",
-            "sha256": "9fdd024a24413188c32d07a172a823e27d0ff44de1e86a56170b57fdafc6b62a",
-            "size": 3159014
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_windows_arm64.zip",
+            "sha256": "02886478a73e79d2fe1e4ab0ca40ce4e1431e2a48b645500309c9ac58184651e",
+            "size": 3158312
           }
         ]
       }
