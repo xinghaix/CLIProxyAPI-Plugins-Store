@@ -73,6 +73,22 @@ Codex 执行器 -> strings.TrimSuffix(baseURL, "/") + "/responses"
 
 - `/v1/alpha/search` —— 该处理器的 OAuth 分支使用硬编码地址，只有 `codex-api-key` 分支才会尊重 `base_url`。Alpha Search 属于 API Key 功能。
 - Codex Live 实时通话（`internal/client/codex/live/live.go`）。
+- 模型列表（`/v1/models`）—— 由本地模型注册表提供，不向上游发起请求，因此与 `base-url` 无关。
+
+对应的两级上游地址：
+
+| CPA 入口 | 上游目标 | 受 `base-url` 影响 |
+|----------|----------|--------------------|
+| `POST /v1/responses`（含流式、WebSocket） | `{base-url}/responses` | 是 |
+| `/responses/compact` | `{base-url}/responses/compact` | 是 |
+| `/v1/images/generations`、`/v1/images/edits`（直连） | `{base-url}/images/generations`、`{base-url}/images/edits` | 是 |
+| `/v1/models` | 本地注册表 | 否（不出网） |
+| `/v1/alpha/search`（OAuth） | `chatgpt.com/backend-api/codex/alpha/search` | 否 |
+| Codex Live 实时通话 | `chatgpt.com/backend-api/codex/realtime/calls` | 否 |
+| 登录授权（`/codex-auth-url`） | `auth.openai.com/oauth/authorize` | 否 |
+| Token 刷新 | `auth.openai.com/oauth/token` | 否 |
+
+WebSocket 传输会按 `base-url` 的 scheme 推导：`https` → `wss`，`http` → `ws`。
 
 ## 无损改写
 

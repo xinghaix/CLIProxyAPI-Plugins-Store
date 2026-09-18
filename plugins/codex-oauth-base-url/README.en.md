@@ -73,6 +73,22 @@ Two Codex URLs do **not** go through `codexCreds` and stay pointed at `chatgpt.c
 
 - `/v1/alpha/search` — the OAuth branch of that handler uses the hardcoded URL and only the `codex-api-key` branch honours `base_url`. Alpha Search is an API-key feature.
 - Codex Live realtime calls (`internal/client/codex/live/live.go`).
+- Model listing (`/v1/models`) — served from the local model registry with no upstream request, so `base-url` does not apply.
+
+The full picture, CPA entry point to upstream target:
+
+| CPA entry | Upstream target | Affected by `base-url` |
+|-----------|-----------------|------------------------|
+| `POST /v1/responses` (incl. streaming, WebSocket) | `{base-url}/responses` | yes |
+| `/responses/compact` | `{base-url}/responses/compact` | yes |
+| `/v1/images/generations`, `/v1/images/edits` (direct) | `{base-url}/images/generations`, `{base-url}/images/edits` | yes |
+| `/v1/models` | local registry | no (no upstream call) |
+| `/v1/alpha/search` (OAuth) | `chatgpt.com/backend-api/codex/alpha/search` | no |
+| Codex Live realtime calls | `chatgpt.com/backend-api/codex/realtime/calls` | no |
+| Login authorization (`/codex-auth-url`) | `auth.openai.com/oauth/authorize` | no |
+| Token refresh | `auth.openai.com/oauth/token` | no |
+
+The WebSocket transport derives its scheme from `base-url`: `https` becomes `wss`, `http` becomes `ws`.
 
 ## Lossless by construction
 
