@@ -204,21 +204,18 @@ jobs:
           VERSION="${{ needs.discover.outputs.version }}"
           LIB="${PLUGIN_ID}-v${VERSION}.${{ matrix.ext }}"
           # go tool nm reads Mach-O, PE, and ELF, so it works on every runner.
-          SYMS=""
-          if go tool nm "$LIB" > /tmp/syms.txt 2>/dev/null; then
-            SYMS="$(cat /tmp/syms.txt)"
-          elif nm "$LIB" > /tmp/syms.txt 2>/dev/null; then
-            SYMS="$(cat /tmp/syms.txt)"
-          fi
-          if [ -z "$SYMS" ]; then
+          SYMS=/tmp/plugin-symbols.txt
+          if ! go tool nm "$LIB" > "$SYMS" 2>/dev/null && ! nm "$LIB" > "$SYMS" 2>/dev/null; then
             echo "WARNING: no symbol reader could parse $LIB; skipping export check"
             exit 0
           fi
-          if printf '%s\n' "$SYMS" | grep -Eq '^[[:space:]]*[0-9a-fA-F]+[[:space:]]+[TD][[:space:]]+_?cliproxyPluginCall$'; then
+          # grep a file rather than a pipe: grep -q closes early and the
+          # resulting SIGPIPE would fail the step under pipefail.
+          if grep -Eq '^[[:space:]]*[0-9a-fA-F]+[[:space:]]+[TD][[:space:]]+_?cliproxyPluginCall$' "$SYMS"; then
             echo "OK: cliproxyPluginCall exported by $LIB"
           else
             echo "ERROR: cliproxyPluginCall not exported by $LIB" >&2
-            printf '%s\n' "$SYMS" | grep -i cliproxy >&2 || true
+            grep -i cliproxy "$SYMS" >&2 || true
             exit 1
           fi
 
