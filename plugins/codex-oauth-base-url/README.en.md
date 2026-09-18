@@ -233,6 +233,30 @@ plugins/darwin/arm64/codex-oauth-base-url-v0.1.0.dylib
 
 ## Compatibility notes
 
+### Credential refresh and login do not use base-url
+
+`base-url` **only affects inference requests**. OAuth login and token refresh go to their own fixed endpoints and are untouched by this plugin:
+
+| Flow | Target | Affected by base-url |
+|------|--------|----------------------|
+| Inference (`/responses`, ...) | your configured `base-url` | yes |
+| Login authorization (`/codex-auth-url`) | `https://auth.openai.com/oauth/authorize` | no |
+| Token refresh | `https://auth.openai.com/oauth/token` | no |
+
+Both addresses are hardcoded constants in CPA, and the refresh function takes only a `refresh_token` with no URL argument. The plugin `auth.refresh` hook is never called either: CPA wraps the plugin refresh adapter around `openai-compatibility` executors only, while Codex uses its native executor.
+
+**Checking it yourself**: point `base-url` at a local listener and trigger a refresh (`POST /v0/management/auth-files/refresh`). The listener sees nothing, and the CPA log shows:
+
+```text
+Token refresh attempt 1 failed: token refresh request failed: Post "https://auth.openai.com/oauth/token": EOF
+```
+
+**Practical impact**: a `refresh_token` is only valid against OpenAI. If your third-party upstream only serves inference, the `access_token` cannot be renewed once it expires and that account stops working — regardless of whether the base URL is configured correctly.
+
+Refresh needs `auth.openai.com` to be reachable. When it is blocked, refresh retries three times and then fails (CPA retries automatically every 15 minutes by default). Use `proxy-url` to route refresh through a proxy: the per-account `proxy-url` wins, falling back to the global `proxy-url`.
+
+If your upstream issues API keys, use `codex-api-key` with `base-url` instead: that path needs no refresh and has no such problem.
+
 ### Authentication headers are unchanged
 
 The plugin only rewrites the URL. Codex OAuth requests keep their ChatGPT-style authentication: `Authorization: Bearer <access_token>`, `chatgpt-account-id`, and the forced `Originator`/`User-Agent` headers applied by the Codex executor (disable with `codex.disable-codex-cloaking: true`).

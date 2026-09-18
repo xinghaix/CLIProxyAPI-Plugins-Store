@@ -233,6 +233,30 @@ plugins/darwin/arm64/codex-oauth-base-url-v0.1.0.dylib
 
 ## 兼容性说明
 
+### 凭据刷新与登录不走 base-url
+
+`base-url` **只影响推理请求**。OAuth 登录与 token 刷新发送到各自固定地址，不受本插件影响：
+
+| 流程 | 目标地址 | 受 base-url 影响 |
+|------|----------|------------------|
+| 推理请求（`/responses` 等） | 你配置的 `base-url` | 是 |
+| 登录授权（`/codex-auth-url`） | `https://auth.openai.com/oauth/authorize` | 否 |
+| Token 刷新 | `https://auth.openai.com/oauth/token` | 否 |
+
+这两处地址在 CPA 里是硬编码常量，刷新函数只接收 `refresh_token`，没有 URL 参数。插件的 `auth.refresh` 钩子也不会被调用：CPA 只在 `openai-compatibility` 执行器上包装插件刷新适配器，Codex 走原生执行器。
+
+**如何自查**：把 `base-url` 指向本机监听，触发一次刷新（`POST /v0/management/auth-files/refresh`）—— 监听端收不到请求，而 CPA 日志会出现：
+
+```text
+Token refresh attempt 1 failed: token refresh request failed: Post "https://auth.openai.com/oauth/token": EOF
+```
+
+**实际影响**：`refresh_token` 只对 OpenAI 有效。若你的第三方上游仅提供推理能力，`access_token` 过期后将无法自动续期，该账号会失效 —— 这与 base URL 配置正确与否无关。
+
+刷新需要 `auth.openai.com` 可达。该地址被阻断时刷新会重试 3 次后失败（默认每 15 分钟自动重试一次）。可用 `proxy-url` 让刷新走代理：按账号 `proxy-url` 优先，未设置时回落到全局 `proxy-url`。
+
+若目标上游发放 API Key，请改用 `codex-api-key` 配合 `base-url`：那种方式不需要刷新，也就没有这个问题。
+
 ### 认证头保持不变
 
 插件只改写 URL。Codex OAuth 请求仍携带 ChatGPT 风格认证：`Authorization: Bearer <access_token>`、`chatgpt-account-id`，以及 Codex 执行器强制添加的 `Originator`/`User-Agent`（可用 `codex.disable-codex-cloaking: true` 关闭）。
