@@ -198,9 +198,9 @@
       "name": "Cursor OAuth",
       "description": "Cursor OAuth credentials provider and executor plugin for CLIProxyAPI with thinking stream, constraint injection, and official brand assets.",
       "author": "kilolonion",
-      "version": "0.6.2",
+      "version": "0.6.3",
       "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
-      "logo": "https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/brand/brand-logo-5.svg",
+      "logo": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@main/plugins/cursor-oauth/assets/logo.svg",
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/cursor-oauth",
       "license": "MIT",
       "tags": [
@@ -216,44 +216,44 @@
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/cursor-oauth-v0.6.2/cursor-oauth_0.6.2_linux_amd64.zip",
-            "sha256": "0041e3022e1a8c4ad946106ea21b51c4239c7a7bb788d1b7e87ea1778125b39e",
-            "size": 8168312
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/cursor-oauth-v0.6.3/cursor-oauth_0.6.3_linux_amd64.zip",
+            "sha256": "8f7980abc458347781a6419ad5348ce155b3f82daaa4aa9ebfd08ecbf3056798",
+            "size": 8168163
           },
           {
             "goos": "linux",
             "goarch": "arm64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/cursor-oauth-v0.6.2/cursor-oauth_0.6.2_linux_arm64.zip",
-            "sha256": "206774227b57fced57df351f973c66f841e1a6acd95c8de7fd70dba5c1d6e7d6",
-            "size": 7417476
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/cursor-oauth-v0.6.3/cursor-oauth_0.6.3_linux_arm64.zip",
+            "sha256": "e27bd14e883058f6639b032be64022c3ccf725376e619d02bd981fa04136ee00",
+            "size": 7417780
           },
           {
             "goos": "darwin",
             "goarch": "amd64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/cursor-oauth-v0.6.2/cursor-oauth_0.6.2_darwin_amd64.zip",
-            "sha256": "f6e2876c3a3cbb0bc29100b17b3f2f48a157bdd190ff8bb01e23c6a69a37aee9",
-            "size": 4490030
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/cursor-oauth-v0.6.3/cursor-oauth_0.6.3_darwin_amd64.zip",
+            "sha256": "b3ffa7652dace198d9f25cb7d7dfcae41106ea48d0a9e26d875f101a39f11edf",
+            "size": 4489703
           },
           {
             "goos": "darwin",
             "goarch": "arm64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/cursor-oauth-v0.6.2/cursor-oauth_0.6.2_darwin_arm64.zip",
-            "sha256": "fcc3a83d0f900e342311f201d588306ce1cfea5260efe7ec50af95b93a359e94",
-            "size": 4139930
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/cursor-oauth-v0.6.3/cursor-oauth_0.6.3_darwin_arm64.zip",
+            "sha256": "fb8ea724ee48c7a2415038134deef6537ac3ffd646950ef83980ff96829d2f87",
+            "size": 4140034
           },
           {
             "goos": "windows",
             "goarch": "amd64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/cursor-oauth-v0.6.2/cursor-oauth_0.6.2_windows_amd64.zip",
-            "sha256": "f9778e363feae82232f8f565a0e19d054e2c496468c436a3543a453704a1f310",
-            "size": 7955669
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/cursor-oauth-v0.6.3/cursor-oauth_0.6.3_windows_amd64.zip",
+            "sha256": "5874a1a8bf626d145ec8d91dffe8a80ae18b0200b61d1a1e38c301c216bfc84c",
+            "size": 7954548
           },
           {
             "goos": "windows",
             "goarch": "arm64",
-            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/cursor-oauth-v0.6.2/cursor-oauth_0.6.2_windows_arm64.zip",
-            "sha256": "e299ad1644fcf12c15f57852b14b4e0d040bcb2dc5263adccfb8809adda8f01b",
-            "size": 7171410
+            "url": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases/download/cursor-oauth-v0.6.3/cursor-oauth_0.6.3_windows_arm64.zip",
+            "sha256": "3aa02cf89a0ae43e056dcf1f1396682553e30ea9265d14ff65028f392a9f3cbe",
+            "size": 7172055
           }
         ]
       }
