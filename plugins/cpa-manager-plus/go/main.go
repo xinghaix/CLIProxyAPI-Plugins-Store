@@ -41,13 +41,13 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 )
 
-var pluginVersion = "0.5.30"
+var pluginVersion = "0.5.31"
 
 const (
 	// supportedPluginSchemaVersion 保持为 1，确保插件可加载于 schema 1 和 schema 2 host。
 	supportedPluginSchemaVersion uint32 = 1
 
-	pluginLogoURL           = "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@main/plugins/cpa-manager-plus/assets/logo.png"
+	pluginLogoURL           = "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@main/plugins/cpa-manager-plus/assets/logo.svg"
 	managementHealthPathRel = "/cpa-manager-plus/health"
 	managementAPIPathRel    = "/cpa-manager-plus/api"
 	managementHealthPathAbs = "/v0/management/cpa-manager-plus/health"
