@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Cursor 插件状态、本地估算用量与模型禁用管理。">
+  <title>Cursor 管理</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --canvas: #f5f7fa;
+      --surface: #ffffff;
+      --surface-muted: #f0f3f7;
+      --text: #17202a;
+      --muted: #657080;
+      --border: #d8dee8;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-contrast: #ffffff;
+      --success: #18794e;
+      --warning: #9a6700;
+      --warning-surface: #fff8db;
+      --danger: #b42318;
+      --focus: #1d4ed8;
+      --shadow: 0 8px 24px rgba(23, 32, 42, .08);
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-16: 64px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-pill: 999px;
+      --border-width: 1px;
+      --control-size: 44px;
+      --font-xs: 13px;
+      --font-lg: 18px;
+      --font-section: 20px;
+      --font-title-min: 28px;
+      --font-title-max: 40px;
+      --weight-label: 650;
+      --weight-action: 700;
+      --content-width: 960px;
+      --model-cell-width: 220px;
+      --model-list-height: 360px;
+      --focus-width: 3px;
+      --focus-offset: 2px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --canvas: #0f141b;
+        --surface: #171e27;
+        --surface-muted: #202936;
+        --text: #edf2f7;
+        --muted: #a9b4c2;
+        --border: #344150;
+        --accent: #6ea8fe;
+        --accent-hover: #8abbff;
+        --accent-contrast: #08111f;
+        --success: #63d6a2;
+        --warning: #f5c451;
+        --warning-surface: #302813;
+        --danger: #ff8a80;
+        --focus: #93c5fd;
+        --shadow: 0 8px 24px rgba(0, 0, 0, .28);
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--canvas); color: var(--text); line-height: 1.55; }
+    main { width: min(var(--content-width), calc(100% - var(--space-8))); margin: 0 auto; padding: var(--space-8) 0 var(--space-16); }
+    h1, h2, h3 { margin: 0; letter-spacing: -.02em; }
+    h1 { font-size: clamp(var(--font-title-min), 5vw, var(--font-title-max)); line-height: 1.15; }
+    h2 { font-size: var(--font-section); }
+    h3 { font-size: var(--font-lg); }
+    p { margin: var(--space-2) 0 0; }
+    .muted { color: var(--muted); }
+    .stack { display: grid; gap: var(--space-4); }
+    .header { margin-bottom: var(--space-6); }
+    .header-row { display: flex; justify-content: space-between; gap: var(--space-4); align-items: start; }
+    .language-field { display: grid; gap: var(--space-1); min-width: 132px; }
+    .language-field label { color: var(--muted); font-size: var(--font-xs); }
+    .panel { padding: var(--space-6); border: var(--border-width) solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+    .warning { background: var(--warning-surface); border-color: color-mix(in srgb, var(--warning) 35%, var(--border)); }
+    .credential-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: start; }
+    .load-action { padding-top: var(--space-8); }
+    .nowrap { white-space: nowrap; }
+    label, legend { font-weight: var(--weight-label); }
+    select { min-height: var(--control-size); padding: var(--space-2) var(--space-3); color: var(--text); background: var(--surface); border: var(--border-width) solid var(--border); border-radius: var(--radius-sm); font: inherit; }
+    input[type="password"] { width: 100%; min-height: var(--control-size); margin-top: var(--space-2); padding: var(--space-2) var(--space-3); color: var(--text); background: var(--surface-muted); border: var(--border-width) solid var(--border); border-radius: var(--radius-sm); font: inherit; }
+    button { min-height: var(--control-size); padding: var(--space-2) var(--space-4); border: var(--border-width) solid transparent; border-radius: var(--radius-sm); font: inherit; font-weight: var(--weight-action); cursor: pointer; }
+    button.primary { color: var(--accent-contrast); background: var(--accent); }
+    button.primary:hover { background: var(--accent-hover); }
+    button.secondary { color: var(--text); background: var(--surface-muted); border-color: var(--border); }
+    button:disabled { cursor: wait; opacity: .62; }
+    button:focus-visible, input:focus-visible, select:focus-visible, .model:focus-within { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+    .notice { min-height: var(--space-6); margin-top: var(--space-3); color: var(--muted); }
+    .notice.error { color: var(--danger); }
+    .notice.success { color: var(--success); }
+    .account { box-shadow: var(--shadow); }
+    .account-head { display: flex; justify-content: space-between; gap: var(--space-3); align-items: start; }
+    .pill { display: inline-flex; align-self: start; width: max-content; padding: var(--space-1) var(--space-2); color: var(--success); background: var(--surface-muted); border-radius: var(--radius-pill); font-size: var(--font-xs); font-weight: var(--weight-action); }
+    .pill[data-status="error"], .pill[data-status="unavailable"] { color: var(--danger); }
+    .pill[data-status="disabled"], .pill[data-status="inactive"] { color: var(--muted); }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); margin-top: var(--space-4); }
+
+    .metric-section { margin-top: var(--space-6); }
+    .metric { padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface-muted); }
+    .metric span { display: block; color: var(--muted); font-size: var(--font-xs); }
+    .metric strong { display: block; margin-top: var(--space-1); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--font-lg); }
+    fieldset { min-width: 0; margin: var(--space-6) 0 0; padding: 0; border: 0; }
+    .models { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(var(--model-cell-width), 100%), 1fr)); gap: var(--space-2); margin-top: var(--space-3); max-height: var(--model-list-height); overflow: auto; }
+    .model { display: flex; gap: var(--space-3); align-items: start; min-height: var(--control-size); padding: var(--space-3); border: var(--border-width) solid var(--border); border-radius: var(--radius-sm); background: var(--surface-muted); }
+    .model input { margin-top: var(--space-1); }
+    .model code { min-width: 0; overflow-wrap: normal; word-break: normal; font-size: var(--font-xs); }
+    .account-notice { margin-bottom: 0; text-align: right; }
+    .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
+    .empty { padding: var(--space-6); text-align: center; color: var(--muted); }
+    @media (max-width: 720px) {
+      main { width: min(100% - var(--space-6), var(--content-width)); padding-top: var(--space-6); }
+      .credential-grid, .metrics { grid-template-columns: 1fr; }
+      .load-action { padding-top: 0; }
+      .credential-grid button { width: 100%; }
+      .header-row, .account-head { display: grid; }
+      .language-field { width: 100%; }
+      .models { max-height: none; overflow: visible; }
+      .account-notice { text-align: left; }
+      .actions button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="header">
+      <div class="header-row">
+        <h1 data-i18n="pageTitle">Cursor 管理</h1>
+        <div class="language-field">
+          <label for="language" data-i18n="languageLabel">语言</label>
+          <select id="language">
+            <option value="zh-CN">中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+      </div>
+      <p class="muted"><span data-i18n="headerPrefix">由 Cursor 插件直接提供，不依赖</span> <span class="nowrap">CPA Manager Plus</span> <span data-i18n="headerJoin">或</span> <span class="nowrap">CLIProxyAPI</span> <span data-i18n="headerSuffix">前端改造。</span></p>
+    </header>
+    <section class="panel warning" aria-labelledby="quota-title">
+      <h2 id="quota-title" data-i18n="quotaTitle">订阅额度说明</h2>
+      <p><span data-i18n="quotaBodyPrefix">Cursor 未公开稳定的 OAuth </span><span class="nowrap" data-i18n="quotaBodyTerm">订阅剩余额度接口</span><span data-i18n="quotaAccuracyPrefix">。这里不会伪造</span><span class="nowrap" data-i18n="quotaAccuracyTerm">百分比</span><span data-i18n="quotaUsagePrefix">；仅显示插件进程启动后的</span><span class="nowrap" data-i18n="quotaUsageTerm">本地估算用量</span><span data-i18n="quotaUsageJoin">与</span><span class="nowrap" data-i18n="quotaStatusTerm">请求状态</span><span data-i18n="quotaBodySuffixPrefix">。缓存 Token 未知时会明确显示</span><span class="nowrap" data-i18n="quotaUnknownTerm">“未知”</span><span class="nowrap" data-i18n="quotaBodySuffixSuffix">。</span></p>
+    </section>
+    <section class="panel" aria-labelledby="credential-title">
+      <div class="credential-grid">
+        <div>
+          <label id="credential-title" for="management-key"><span class="nowrap">CLIProxyAPI</span> <span data-i18n="managementKeyLabel">管理密钥</span></label>
+          <input id="management-key" type="password" autocomplete="off" spellcheck="false" aria-describedby="key-help">
+          <p id="key-help" class="muted" data-i18n="keyHelp">只保留在当前页面内存中，不写入浏览器存储。</p>
+        </div>
+        <div class="load-action"><button id="load" class="primary" type="button" data-i18n="loadStatus">加载状态</button></div>
+      </div>
+      <div id="notice" class="notice" role="status" aria-live="polite"></div>
+    </section>
+    <div id="accounts" class="stack" aria-live="polite"></div>
+  </main>
+  <script>
+    (() => {
+      "use strict";
+      const statusPath = "/v0/management/plugins/cursor/status";
+      const disabledPath = "/v0/management/plugins/cursor/disabled-models";
+      const languageStorageKey = "cursor-plugin-language";
+      const translations = {
+        "zh-CN": {
+          documentTitle: "Cursor 管理",
+          metaDescription: "Cursor 插件状态、本地估算用量与模型禁用管理。",
+          pageTitle: "Cursor 管理",
+          languageLabel: "语言",
+          headerPrefix: "由 Cursor 插件直接提供，不依赖",
+          headerJoin: "或",
+          headerSuffix: "前端改造。",
+          quotaTitle: "订阅额度说明",
+          quotaBodyPrefix: "Cursor 未公开稳定的 OAuth ",
+          quotaBodyTerm: "订阅剩余额度接口",
+          quotaAccuracyPrefix: "。这里不会伪造",
+          quotaAccuracyTerm: "百分比",
+          quotaUsagePrefix: "；仅显示插件进程启动后的",
+          quotaUsageTerm: "本地估算用量",
+          quotaUsageJoin: "与",
+          quotaStatusTerm: "请求状态",
+          quotaBodySuffixPrefix: "。缓\u2060存 Token 未\u2060知时会明确显\u2060示",
+          quotaUnknownTerm: "“未知”",
+          quotaBodySuffixSuffix: "。",
+          managementKeyLabel: "管理密钥",
+          keyHelp: "只保留在当前页面内存中，不写入浏览器存储。",
+          loadStatus: "加载状态",
+          missingKey: "请输入 CLIProxyAPI 管理密钥。",
+          authenticationFailed: "管理密钥无效或无权访问。",
+          requestFailed: "请求失败：HTTP {status}",
+          unexpectedError: "发生了未预期的错误。",
+          quotaBalance: "订阅余额",
+          unavailable: "不可用",
+          unknown: "未知",
+          localEstimatedTokens: "本地估算上游 Token",
+          pluginExecutorRuns: "插件执行次数",
+          cachedTokens: "缓存 Token",
+          successfulRequests: "成功请求（最终）",
+          failedRequests: "失败请求（最终）",
+          logicalRequestsHelp: "每\u2060次用\u2060户\u2060调\u2060用最多计一个最\u2060终\u2060结\u2060果；检\u2060查\u2060点回\u2060退和宿\u2060主\u2060重\u2060试不会重\u2060复\u2060计\u2060入请\u2060求。近\u2060期\u2060请\u2060求 ID 使用 16 MiB 固\u2060定\u2060内\u2060存去\u2060重；在每 15 分钟不超过 100 万个完\u2060成\u2060事\u2060件的设\u2060计\u2060负\u2060载内，误\u2060判\u2060概\u2060率低于亿\u2060分\u2060之\u2060六。误\u2060判会跳过一条本\u2060地\u2060终\u2060态\u2060样\u2060本，使计\u2060数少\u2060计并保\u2060留此\u2060前的最\u2060近\u2060结\u2060果。Token 按插\u2060件实\u2060际\u2060执\u2060行\u2060次\u2060数估\u2060算。",
+          hostSchedulerMetrics: "宿主调度指标",
+          hostSchedulerMetricsHelp: "由 CLIProxyAPI 汇总认证调度尝试；重试和回\u2060退会分别计数，因此不能与用户请求一一对应。",
+          hostSchedulerStatus: "宿主状态",
+          hostSuccessfulAttempts: "成功尝试",
+          hostFailedAttempts: "失败尝试",
+          checkpointMetrics: "检查点指标",
+          checkpointMetricsHelp: "仅汇总本插件进程内的命中、失效、回\u2060退、字节数和首 Token 延迟；不保存或显\u2060示会话标识、检查点或 Token 内容。",
+          checkpointHits: "检查点命中",
+          checkpointMisses: "检查点未命中",
+          checkpointInvalidations: "检查点失效",
+          checkpointFallbacks: "完整重放回退",
+          fullReplayBytes: "完整重放字节",
+          suffixBytes: "续传字节",
+          averageTTFT: "平均首 Token 延迟",
+          savingSettings: "正在保存设置…",
+          savedSettingsOne: "设置已保存，当前禁用 {count} 个模型。",
+          savedSettingsMany: "设置已保存，当前禁用 {count} 个模型。",
+          modelLegendOne: "OAuth 模型禁用（{count} 个可用模型）",
+          modelLegendMany: "OAuth 模型禁用（{count} 个可用模型）",
+          disableAll: "全部禁用",
+          allModelsSelectedOne: "已选择全部 {count} 个模型，请保存更改后生效。",
+          allModelsSelectedMany: "已选择全部 {count} 个模型，请保存更改后生效。",
+          saveSettings: "保存设置",
+          readingStatus: "正在读取 Cursor 插件状态…",
+          noAuthFiles: "未发现 Cursor OAuth 认证文件。",
+          loadedAccountsOne: "已加载 {count} 个 Cursor 账户。",
+          loadedAccountsMany: "已加载 {count} 个 Cursor 账户。",
+          status_active: "活跃",
+          status_inactive: "未激活",
+          status_disabled: "已禁用",
+          status_unavailable: "不可用",
+          status_error: "错误",
+          status_cooldown: "冷却中",
+          status_unknown: "未知"
+        },
+        en: {
+          documentTitle: "Cursor Management",
+          metaDescription: "Manage Cursor plugin status, local estimated usage, and disabled models.",
+          pageTitle: "Cursor Management",
+          languageLabel: "Language",
+          headerPrefix: "Served directly by the Cursor plugin. No frontend changes to",
+          headerJoin: "or",
+          headerSuffix: "are required.",
+          quotaTitle: "Subscription quota",
+          quotaBodyPrefix: "Cursor does not publish a stable OAuth API for ",
+          quotaBodyTerm: "remaining subscription quota",
+          quotaAccuracyPrefix: ". This page never invents ",
+          quotaAccuracyTerm: "a percentage",
+          quotaUsagePrefix: ". It shows only ",
+          quotaUsageTerm: "local estimated usage",
+          quotaUsageJoin: " and ",
+          quotaStatusTerm: "request status",
+          quotaBodySuffixPrefix: " since the plugin process started. Cached tokens are shown as ",
+          quotaUnknownTerm: "Unknown",
+          quotaBodySuffixSuffix: " when unavailable.",
+          managementKeyLabel: "management key",
+          keyHelp: "Kept only in this page's memory and never written to browser storage.",
+          loadStatus: "Load status",
+          missingKey: "Enter the CLIProxyAPI management key.",
+          authenticationFailed: "The management key is invalid or is not authorized.",
+          requestFailed: "Request failed: HTTP {status}",
+          unexpectedError: "An unexpected error occurred.",
+          quotaBalance: "Subscription balance",
+          unavailable: "Unavailable",
+          unknown: "Unknown",
+          localEstimatedTokens: "Local estimated upstream tokens",
+          pluginExecutorRuns: "Plugin executor runs",
+          cachedTokens: "Cached tokens",
+          successfulRequests: "Successful requests (terminal)",
+          failedRequests: "Failed requests (terminal)",
+          logicalRequestsHelp: "At most one terminal outcome is recorded per user call; checkpoint fallbacks and host retries are not double-counted as requests. Recent request IDs use 16 MiB fixed-memory deduplication. Within its design load of up to 1,000,000 completions per 15-minute window, the false-positive probability is below 6e-8. A false positive skips one local terminal sample, undercounting it and retaining the previous latest outcome. Tokens are estimated per plugin executor run.",
+          hostSchedulerMetrics: "Host scheduler metrics",
+          hostSchedulerMetricsHelp: "CLIProxyAPI scheduler attempts are shown separately. Retries and fallbacks each count as attempts, so they do not map one\u2011to\u2011one to user requests.",
+          hostSchedulerStatus: "Host status",
+          hostSuccessfulAttempts: "Successful attempts",
+          hostFailedAttempts: "Failed attempts",
+          checkpointMetrics: "Checkpoint metrics",
+          checkpointMetricsHelp: "Aggregated in this plugin process only: hits, invalidations, fallbacks, bytes, and time to first token. It never stores or shows session IDs, checkpoints, or token content.",
+          checkpointHits: "Checkpoint hits",
+          checkpointMisses: "Checkpoint misses",
+          checkpointInvalidations: "Checkpoint invalidations",
+          checkpointFallbacks: "Full replay fallbacks",
+          fullReplayBytes: "Full replay bytes",
+          suffixBytes: "Suffix bytes",
+          averageTTFT: "Average time to first token",
+          savingSettings: "Saving settings…",
+          savedSettingsOne: "Settings saved. {count} model is disabled.",
+          savedSettingsMany: "Settings saved. {count} models are disabled.",
+          modelLegendOne: "OAuth models to disable ({count} available model)",
+          modelLegendMany: "OAuth models to disable ({count} available models)",
+          disableAll: "Disable all",
+          allModelsSelectedOne: "Selected all {count} model. Save changes to apply.",
+          allModelsSelectedMany: "Selected all {count} models. Save changes to apply.",
+          saveSettings: "Save settings",
+          readingStatus: "Reading Cursor plugin status…",
+          noAuthFiles: "No Cursor OAuth credential files were found.",
+          loadedAccountsOne: "Loaded {count} Cursor account.",
+          loadedAccountsMany: "Loaded {count} Cursor accounts.",
+          status_active: "Active",
+          status_inactive: "Inactive",
+          status_disabled: "Disabled",
+          status_unavailable: "Unavailable",
+          status_error: "Error",
+          status_cooldown: "Cooling down",
+          status_unknown: "Unknown"
+        }
+      };
+      const metaDescription = document.querySelector('meta[name="description"]');
+      const languageSelect = document.querySelector("#language");
+      const keyInput = document.querySelector("#management-key");
+      const loadButton = document.querySelector("#load");
+      const notice = document.querySelector("#notice");
+      const accounts = document.querySelector("#accounts");
+      let loadedAccounts = null;
+      let noticeState = null;
+      let currentLanguage = initialLanguage();
+
+      function normalizeLanguage(language) {
+        return String(language || "").toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+      }
+
+      function initialLanguage() {
+        try {
+          const saved = localStorage.getItem(languageStorageKey);
+          if (saved === "zh-CN" || saved === "en") return saved;
+        } catch (_) {
+          // Browser privacy settings may disable storage; language detection still works.
+        }
+        const browserLanguages = navigator.languages?.length ? navigator.languages : [navigator.language];
+        return browserLanguages.some((language) => String(language).toLowerCase().startsWith("zh")) ? "zh-CN" : "en";
+      }
+
+      function translate(key, values = {}) {
+        let message = translations[currentLanguage][key];
+        for (const [name, value] of Object.entries(values)) {
+          message = message.replace(`{${name}}`, String(value));
+        }
+        return message;
+      }
+
+      function countKey(one, many, count) {
+        return count === 1 ? one : many;
+      }
+
+      function preserveModelSelections() {
+        if (!loadedAccounts) return;
+        const selections = new Map();
+        for (const form of accounts.querySelectorAll("form[data-auth-index]")) {
+          selections.set(form.dataset.authIndex, new Set(
+            [...form.querySelectorAll("input[type=checkbox]:checked")].map((input) => input.value)
+          ));
+        }
+        for (const account of loadedAccounts) {
+          const selected = selections.get(account.auth_index);
+          if (!selected) continue;
+          for (const model of account.models) model.disabled = selected.has(model.id);
+        }
+      }
+
+      function applyLanguage(language, persist) {
+        preserveModelSelections();
+        currentLanguage = normalizeLanguage(language);
+        document.documentElement.lang = currentLanguage;
+        languageSelect.value = currentLanguage;
+        document.title = translate("documentTitle");
+        metaDescription.setAttribute("content", translate("metaDescription"));
+        for (const element of document.querySelectorAll("[data-i18n]")) {
+          element.textContent = translate(element.dataset.i18n);
+        }
+        if (persist) {
+          try {
+            localStorage.setItem(languageStorageKey, currentLanguage);
+          } catch (_) {
+            // The selected language still applies for the current page session.
+          }
+        }
+        renderAccounts();
+        renderNotice();
+      }
+
+      function renderNotice() {
+        const message = noticeState
+          ? noticeState.literal || translate(noticeState.key, noticeState.values)
+          : "";
+        const kind = noticeState?.kind || "";
+        notice.textContent = message;
+        notice.className = `notice ${kind}`.trim();
+        notice.setAttribute("role", kind === "error" ? "alert" : "status");
+      }
+
+      function setNoticeKey(key, values = {}, kind = "") {
+        noticeState = { key, values, kind };
+        renderNotice();
+      }
+
+      function setNoticeLiteral(message, kind = "") {
+        noticeState = { literal: message, kind };
+        renderNotice();
+      }
+
+      async function api(path, options = {}) {
+        const key = keyInput.value.trim();
+        if (!key) throw new Error(translate("missingKey"));
+        const headers = { Authorization: `Bearer ${key}`, ...(options.headers || {}) };
+        const response = await fetch(path, { ...options, headers, cache: "no-store" });
+        const payload = await response.json().catch(() => ({}));
+        if (response.status === 401 || response.status === 403) throw new Error(translate("authenticationFailed"));
+        if (!response.ok) throw new Error(translate("requestFailed", { status: response.status }));
+        return payload;
+      }
+
+      function metric(label, value) {
+        const item = document.createElement("div");
+        item.className = "metric";
+        const name = document.createElement("span");
+        name.textContent = label;
+        const number = document.createElement("strong");
+        number.textContent = String(value);
+        item.append(name, number);
+        return item;
+      }
+
+      function modelID(id) {
+        const code = document.createElement("code");
+        for (const part of id.split(/([/_-])/)) {
+          if (!part) continue;
+          code.append(document.createTextNode(part));
+          if (/^[/_-]$/.test(part)) code.append(document.createElement("wbr"));
+        }
+        return code;
+      }
+
+      function normalizedStatus(status) {
+        const rawStatus = String(status || "unknown").toLowerCase();
+        return rawStatus.startsWith("unavailable") ? "unavailable" : rawStatus;
+      }
+
+      function statusLabel(status) {
+        const normalized = normalizedStatus(status);
+        return translations[currentLanguage][`status_${normalized}`] || status || translate("status_unknown");
+      }
+
+      function renderAccount(account) {
+        const card = document.createElement("section");
+        card.className = "panel account";
+        const head = document.createElement("div");
+        head.className = "account-head";
+        const titleWrap = document.createElement("div");
+        const title = document.createElement("h2");
+        title.textContent = account.label || account.name;
+        const subtitle = document.createElement("p");
+        subtitle.className = "muted";
+        subtitle.textContent = account.name;
+        titleWrap.append(title, subtitle);
+        const pill = document.createElement("span");
+        pill.className = "pill";
+        pill.dataset.status = normalizedStatus(account.status);
+        pill.textContent = statusLabel(account.status);
+        head.append(titleWrap, pill);
+
+        const metrics = document.createElement("div");
+        metrics.className = "metrics";
+        metrics.append(
+          metric(translate("quotaBalance"), translate("unavailable")),
+          metric(translate("localEstimatedTokens"), account.local_usage?.total_tokens || 0),
+          metric(translate("pluginExecutorRuns"), account.local_usage?.executor_runs || 0),
+          metric(translate("cachedTokens"), translate("unknown")),
+          metric(translate("successfulRequests"), account.local_usage?.succeeded || 0),
+          metric(translate("failedRequests"), account.local_usage?.failed || 0)
+        );
+        const logicalHelp = document.createElement("p");
+        logicalHelp.className = "muted";
+        logicalHelp.textContent = translate("logicalRequestsHelp");
+
+        const runtime = account.host_runtime || {};
+        const hostMetrics = document.createElement("section");
+        hostMetrics.className = "metric-section";
+        const hostTitle = document.createElement("h3");
+        hostTitle.textContent = translate("hostSchedulerMetrics");
+        const hostHelp = document.createElement("p");
+        hostHelp.className = "muted";
+        hostHelp.textContent = translate("hostSchedulerMetricsHelp");
+        const hostGrid = document.createElement("div");
+        hostGrid.className = "metrics";
+        hostGrid.append(
+          metric(translate("hostSchedulerStatus"), statusLabel(runtime.status)),
+          metric(translate("hostSuccessfulAttempts"), account.host_runtime?.success_attempts || 0),
+          metric(translate("hostFailedAttempts"), account.host_runtime?.failed_attempts || 0)
+        );
+        hostMetrics.append(hostTitle, hostHelp, hostGrid);
+
+        const checkpoint = account.checkpoint_metrics || {};
+        const checkpointMetrics = document.createElement("section");
+        checkpointMetrics.className = "metric-section";
+        const checkpointTitle = document.createElement("h3");
+        checkpointTitle.textContent = translate("checkpointMetrics");
+        const checkpointHelp = document.createElement("p");
+        checkpointHelp.className = "muted";
+        checkpointHelp.textContent = translate("checkpointMetricsHelp");
+        const checkpointGrid = document.createElement("div");
+        checkpointGrid.className = "metrics";
+        checkpointGrid.append(
+          metric(translate("checkpointHits"), checkpoint.hits || 0),
+          metric(translate("checkpointMisses"), checkpoint.misses || 0),
+          metric(translate("checkpointInvalidations"), checkpoint.invalidations || 0),
+          metric(translate("checkpointFallbacks"), checkpoint.fallbacks || 0),
+          metric(translate("fullReplayBytes"), checkpoint.full_replay_bytes || 0),
+          metric(translate("suffixBytes"), checkpoint.suffix_bytes || 0),
+          metric(translate("averageTTFT"), checkpoint.ttft_average_ms == null ? translate("unknown") : `${checkpoint.ttft_average_ms} ms`)
+        );
+        checkpointMetrics.append(checkpointTitle, checkpointHelp, checkpointGrid);
+
+        const form = document.createElement("form");
+        form.dataset.authIndex = account.auth_index;
+        const accountNotice = document.createElement("div");
+        accountNotice.className = "notice account-notice";
+        accountNotice.setAttribute("role", "status");
+        accountNotice.setAttribute("aria-live", "polite");
+        function setAccountNoticeKey(key, values = {}, kind = "") {
+          accountNotice.textContent = translate(key, values);
+          accountNotice.className = `notice account-notice ${kind}`.trim();
+          accountNotice.setAttribute("role", kind === "error" ? "alert" : "status");
+        }
+        function setAccountNoticeLiteral(message, kind = "") {
+          accountNotice.textContent = message;
+          accountNotice.className = `notice account-notice ${kind}`.trim();
+          accountNotice.setAttribute("role", kind === "error" ? "alert" : "status");
+        }
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const button = form.querySelector('button[type="submit"]');
+          button.disabled = true;
+          setAccountNoticeKey("savingSettings");
+          const selected = [...form.querySelectorAll("input[type=checkbox]:checked")].map((input) => input.value);
+          try {
+            await api(disabledPath, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ auth_index: account.auth_index, disabled_models: selected })
+            });
+            const noticeKey = countKey("savedSettingsOne", "savedSettingsMany", selected.length);
+            setAccountNoticeKey(noticeKey, { count: selected.length }, "success");
+          } catch (error) {
+            setAccountNoticeLiteral(error instanceof Error ? error.message : translate("unexpectedError"), "error");
+          } finally {
+            button.disabled = false;
+          }
+        });
+        const fieldset = document.createElement("fieldset");
+        const legend = document.createElement("legend");
+        const legendKey = countKey("modelLegendOne", "modelLegendMany", account.models.length);
+        legend.textContent = translate(legendKey, { count: account.models.length });
+        const modelGrid = document.createElement("div");
+        modelGrid.className = "models";
+        for (const model of account.models) {
+          const label = document.createElement("label");
+          label.className = "model";
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.value = model.id;
+          checkbox.checked = Boolean(model.disabled);
+          label.append(checkbox, modelID(model.id));
+          modelGrid.append(label);
+        }
+        const actions = document.createElement("div");
+        actions.className = "actions";
+        const disableAll = document.createElement("button");
+        disableAll.className = "secondary";
+        disableAll.type = "button";
+        disableAll.dataset.action = "disable-all";
+        disableAll.textContent = translate("disableAll");
+        disableAll.disabled = account.models.length === 0;
+        disableAll.addEventListener("click", () => {
+          for (const checkbox of modelGrid.querySelectorAll('input[type="checkbox"]')) {
+            checkbox.checked = true;
+          }
+          const noticeKey = countKey("allModelsSelectedOne", "allModelsSelectedMany", account.models.length);
+          setAccountNoticeKey(noticeKey, { count: account.models.length });
+        });
+        const save = document.createElement("button");
+        save.className = "primary";
+        save.type = "submit";
+        save.dataset.action = "save-settings";
+        save.textContent = translate("saveSettings");
+        actions.append(save, disableAll);
+        fieldset.append(legend, modelGrid);
+        form.append(fieldset, accountNotice, actions);
+        card.append(head, metrics, logicalHelp, hostMetrics, checkpointMetrics, form);
+        return card;
+      }
+
+      function renderAccounts() {
+        accounts.replaceChildren();
+        if (loadedAccounts === null) return;
+        if (!loadedAccounts.length) {
+          const empty = document.createElement("section");
+          empty.className = "panel empty";
+          empty.textContent = translate("noAuthFiles");
+          accounts.append(empty);
+          return;
+        }
+        accounts.append(...loadedAccounts.map(renderAccount));
+      }
+
+      async function loadStatus() {
+        loadButton.disabled = true;
+        setNoticeKey("readingStatus");
+        accounts.replaceChildren();
+        try {
+          const status = await api(statusPath);
+          loadedAccounts = status.accounts;
+          renderAccounts();
+          const noticeKey = countKey("loadedAccountsOne", "loadedAccountsMany", status.accounts.length);
+          setNoticeKey(noticeKey, { count: status.accounts.length }, "success");
+        } catch (error) {
+          setNoticeLiteral(error instanceof Error ? error.message : translate("unexpectedError"), "error");
+        } finally {
+          loadButton.disabled = false;
+        }
+      }
+
+      languageSelect.addEventListener("change", () => applyLanguage(languageSelect.value, true));
+      loadButton.addEventListener("click", loadStatus);
+      keyInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") loadStatus();
+      });
+      applyLanguage(currentLanguage, false);
+    })();
+  </script>
+</body>
+</html>

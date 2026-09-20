@@ -35,6 +35,18 @@
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/codex-oauth-base-url",
       "license": "MIT",
       "tags": ["auth-provider", "codex", "oauth", "base-url", "upstream-routing"]
+    },
+    {
+      "id": "cursor-oauth",
+      "name": "Cursor OAuth",
+      "description": "Cursor OAuth credentials provider and executor plugin for CLIProxyAPI with thinking stream, constraint injection, and official brand assets.",
+      "author": "kilolonion",
+      "version": "0.6.1",
+      "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
+      "logo": "https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/brand/brand-logo-5.svg",
+      "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/cursor-oauth",
+      "license": "MIT",
+      "tags": ["auth-provider", "executor", "cursor", "oauth", "thinking-stream"]
     }
   ]
 }
