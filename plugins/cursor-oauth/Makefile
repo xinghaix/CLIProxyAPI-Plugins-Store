@@ -1,5 +1,5 @@
 PLUGIN_ID := cursor-oauth
-VERSION := 0.6.2
+VERSION := 0.6.3
 
 .PHONY: build test tidy package-all clean
 

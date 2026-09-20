@@ -70,7 +70,7 @@ const abiVersion uint32 = 1
 // pluginVersion is the released plugin version. The build sets it with
 // -ldflags "-X main.pluginVersion=<version>" so a tag and the shipped library
 // can never disagree; the literal here is the development default.
-var pluginVersion = "0.6.2"
+var pluginVersion = "0.6.3"
 
 var handler = plugin.NewHandler(plugin.Dependencies{Emitter: cStreamEmitter{}, Host: cHostCaller{}})
 

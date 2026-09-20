@@ -111,16 +111,16 @@ func (handler *Handler) dispatch(ctx context.Context, method string, request []b
 }
 
 // pluginLogoURL is the display icon shown by management clients (CPA Manager Plus).
-const pluginLogoURL = "https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/brand/brand-logo-5.svg"
+const pluginLogoURL = "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@main/plugins/cursor-oauth/assets/logo.svg"
 
 // PluginVersion is the released plugin version. It can be overridden at runtime by main.
-var PluginVersion = "0.6.2"
+var PluginVersion = "0.6.3"
 
 func registration() map[string]any {
 	return map[string]any{
 		"schema_version": 3,
 		"metadata": map[string]any{
-			"Name":             "cursor-oauth",
+			"Name":             "Cursor",
 			"Version":          PluginVersion,
 			"Author":           "kilolonion",
 			"GitHubRepository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",

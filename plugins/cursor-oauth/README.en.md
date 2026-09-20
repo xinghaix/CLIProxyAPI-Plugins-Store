@@ -67,7 +67,7 @@ Install `cursor-oauth` directly from the CPA management interface.
 
 ### Method 2: Manual Dynamic Library Installation
 
-Download the platform zip archive from [GitHub Releases](https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases) (e.g. `cursor-oauth_0.6.2_darwin_arm64.zip` or `cursor-oauth_0.6.2_linux_amd64.zip`).
+Download the platform zip archive from [GitHub Releases](https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases) (e.g. `cursor-oauth_0.6.3_darwin_arm64.zip` or `cursor-oauth_0.6.3_linux_amd64.zip`).
 
 Extract the library into your CPA plugins directory:
 
@@ -75,7 +75,7 @@ Extract the library into your CPA plugins directory:
 plugins/
 └── <os>/
     └── <arch>/
-        └── cursor-oauth-v0.6.2.{so|dylib|dll}
+        └── cursor-oauth-v0.6.3.{so|dylib|dll}
 ```
 
 Enable in `config.yaml`:
