@@ -67,7 +67,7 @@ plugins:
 
 ### 方式二：手动安装动态库
 
-从 [GitHub Releases](https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases) 下载对应平台的 ZIP 压缩包（例如 `cursor-oauth_0.6.1_darwin_arm64.zip` 或 `cursor-oauth_0.6.1_linux_amd64.zip`）。
+从 [GitHub Releases](https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/releases) 下载对应平台的 ZIP 压缩包（例如 `cursor-oauth_0.6.2_darwin_arm64.zip` 或 `cursor-oauth_0.6.2_linux_amd64.zip`）。
 
 解压后将动态库放入 CPA 插件目录：
 
@@ -75,7 +75,7 @@ plugins:
 plugins/
 └── <os>/
     └── <arch>/
-        └── cursor-oauth-v0.6.1.{so|dylib|dll}
+        └── cursor-oauth-v0.6.2.{so|dylib|dll}
 ```
 
 在 `config.yaml` 中启用：

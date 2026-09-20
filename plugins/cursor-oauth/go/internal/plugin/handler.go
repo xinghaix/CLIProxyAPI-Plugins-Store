@@ -114,7 +114,7 @@ func (handler *Handler) dispatch(ctx context.Context, method string, request []b
 const pluginLogoURL = "https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/brand/brand-logo-5.svg"
 
 // PluginVersion is the released plugin version. It can be overridden at runtime by main.
-var PluginVersion = "0.6.1"
+var PluginVersion = "0.6.2"
 
 func registration() map[string]any {
 	return map[string]any{

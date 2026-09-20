@@ -41,7 +41,7 @@
       "name": "Cursor OAuth",
       "description": "Cursor OAuth credentials provider and executor plugin for CLIProxyAPI with thinking stream, constraint injection, and official brand assets.",
       "author": "kilolonion",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
       "logo": "https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/brand/brand-logo-5.svg",
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/cursor-oauth",

@@ -3,7 +3,7 @@ set -eu
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 project_dir=$(CDPATH='' cd -- "$script_dir/.." && pwd)
-version=${1:-0.6.1}
+version=${1:-0.6.2}
 output_dir=${2:-"$project_dir/release"}
 binary=${CURSOR_PLUGIN_BINARY:-"$project_dir/cursor.so"}
 
