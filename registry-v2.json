@@ -6,7 +6,7 @@
       "name": "Developer Role Normalizer",
       "description": "Converts developer message roles to system for OpenAI-compatible providers (e.g. DeepSeek) that do not recognize the developer role.",
       "author": "xinghaix",
-      "version": "0.3.8",
+      "version": "0.3.9",
       "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
       "logo": "",
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/developer-role-normalizer",
@@ -22,44 +22,44 @@
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/developer-role-normalizer_0.3.8_linux_amd64.zip",
-            "sha256": "f8837c93e97b718a9dde2b98b0420579633d2767696380384bec76d17ab62959",
-            "size": 3713743
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/developer-role-normalizer-v0.3.9/developer-role-normalizer_0.3.9_linux_amd64.zip",
+            "sha256": "9be8feaf6e11892d3571ea5fe5c1c606daad44bf0557ad24349606076d52158e",
+            "size": 4229636
           },
           {
             "goos": "linux",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/developer-role-normalizer_0.3.8_linux_arm64.zip",
-            "sha256": "edbfd3c85ce901096dcd7146a755e2740a952854cf624c3e6f96250058f63b73",
-            "size": 3372131
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/developer-role-normalizer-v0.3.9/developer-role-normalizer_0.3.9_linux_arm64.zip",
+            "sha256": "85101feaaaffc562c653a828f3683110a142e466ec77f5e802bda33483a1dd71",
+            "size": 3828743
           },
           {
             "goos": "darwin",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/developer-role-normalizer_0.3.8_darwin_amd64.zip",
-            "sha256": "e1ba6e5ebc6dbfb221bedeef92fcf4a2f873a6551941666a5e4d62359e67d6b2",
-            "size": 2070897
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/developer-role-normalizer-v0.3.9/developer-role-normalizer_0.3.9_darwin_amd64.zip",
+            "sha256": "6f3004a359bc87fabd78571ffb2e5c607f116551cf40c8d6ce234aa8d3e46f79",
+            "size": 2320058
           },
           {
             "goos": "darwin",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/developer-role-normalizer_0.3.8_darwin_arm64.zip",
-            "sha256": "f78cafc5aa0eff0e238835c38ca4fcaa6e0ba659b689cf5cc0576f138c1f102a",
-            "size": 1913880
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/developer-role-normalizer-v0.3.9/developer-role-normalizer_0.3.9_darwin_arm64.zip",
+            "sha256": "e2502cb40c5e1b4ac21427cb4e86c75e320b0eb9b14bce42ed05d393847eefd3",
+            "size": 2142593
           },
           {
             "goos": "windows",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/developer-role-normalizer_0.3.8_windows_amd64.zip",
-            "sha256": "e19ced45cf263ab1dd63c5fed8799cd8ee87c0104f15d6bc3d5f62f6415896d0",
-            "size": 3611531
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/developer-role-normalizer-v0.3.9/developer-role-normalizer_0.3.9_windows_amd64.zip",
+            "sha256": "b2de4ceffa1eaf853db67b408931375da6a5f68d8eb480a58a0359367d3f3c5a",
+            "size": 4105640
           },
           {
             "goos": "windows",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.3.8/developer-role-normalizer_0.3.8_windows_arm64.zip",
-            "sha256": "4ec00019cc95582e5d7641902c063302590f82275b8a42a28528063365cf5210",
-            "size": 3231116
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/developer-role-normalizer-v0.3.9/developer-role-normalizer_0.3.9_windows_arm64.zip",
+            "sha256": "0d00dc49cacaaabe910c933e21c579074c8dbed631a75fcedd21bfe4e6697cde",
+            "size": 3681054
           }
         ]
       }
@@ -69,7 +69,7 @@
       "name": "CPA Manager Plus",
       "description": "In-process local Runtime for Manager Plus dashboard, usage, monitoring, and real Codex/xAI credential health inspection in CPA (local SQLite; no external Manager Server).",
       "author": "xinghaix",
-      "version": "0.5.28",
+      "version": "0.5.29",
       "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
       "logo": "https://raw.githubusercontent.com/xinghaix/CLIProxyAPI-Plugins-Store/refs/heads/main/plugins/cpa-manager-plus/assets/logo.png",
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/cpa-manager-plus",
@@ -86,44 +86,44 @@
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.28/cpa-manager-plus_0.5.28_linux_amd64.zip",
-            "sha256": "850f52b5666f954dd5c66270920a4eb644967d82f6ec172d842fe1abaafdff26",
-            "size": 7518952
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/cpa-manager-plus-v0.5.29/cpa-manager-plus_0.5.29_linux_amd64.zip",
+            "sha256": "8928fde5b7f775a15a6a0be9705980ac8e9c7e4bf981aa971740e2f2076ce62c",
+            "size": 8101121
           },
           {
             "goos": "linux",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.28/cpa-manager-plus_0.5.28_linux_arm64.zip",
-            "sha256": "8613d6900870602026297de9d4a0b978b85f73f0e7ce3e7d41b468df66946537",
-            "size": 6909905
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/cpa-manager-plus-v0.5.29/cpa-manager-plus_0.5.29_linux_arm64.zip",
+            "sha256": "8f44684100fe203605e8e2a13074d79a5e7ab6ab8cd3c1fbc91ec2b60d1b77c7",
+            "size": 7426037
           },
           {
             "goos": "darwin",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.28/cpa-manager-plus_0.5.28_darwin_amd64.zip",
-            "sha256": "6c4dceff84787009dfd7be77a2e562ab2a60a8e1fed5a1086078e8d1f1768fc4",
-            "size": 4197051
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/cpa-manager-plus-v0.5.29/cpa-manager-plus_0.5.29_darwin_amd64.zip",
+            "sha256": "b3989678514093cf5331f88f14be2c602e814d7695b68a3a485775bef6bee07e",
+            "size": 4490110
           },
           {
             "goos": "darwin",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.28/cpa-manager-plus_0.5.28_darwin_arm64.zip",
-            "sha256": "65f13d6bea25950e0703e6524a6f8b3e4855657c8b75480a823f9efc3cd93592",
-            "size": 3953558
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/cpa-manager-plus-v0.5.29/cpa-manager-plus_0.5.29_darwin_arm64.zip",
+            "sha256": "418731b0c6014cf19642a6eafb5e860512c9fd5f2cd0c22d2cadca5351b13765",
+            "size": 4216452
           },
           {
             "goos": "windows",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.28/cpa-manager-plus_0.5.28_windows_amd64.zip",
-            "sha256": "e3efe749766ac233e37a8d8bd77b1e516ad6cb611b1bb0042f5753d86496b2c9",
-            "size": 7401025
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/cpa-manager-plus-v0.5.29/cpa-manager-plus_0.5.29_windows_amd64.zip",
+            "sha256": "a99e3a55b678b6fb9d99d6cdfbdf783133f47f5599fc6091d6dab858000eb49b",
+            "size": 7956540
           },
           {
             "goos": "windows",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/v0.5.28/cpa-manager-plus_0.5.28_windows_arm64.zip",
-            "sha256": "2d7722e7c7d54c9c98fa9f7483868aa9d4b8965645b204b5a1cd38eaee082050",
-            "size": 6628565
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/cpa-manager-plus-v0.5.29/cpa-manager-plus_0.5.29_windows_arm64.zip",
+            "sha256": "1becd7b325f28a315cc323158ada1ba625ff2b8d07051cc63a2db00699cb6de9",
+            "size": 7276000
           }
         ]
       }
@@ -133,7 +133,7 @@
       "name": "Codex OAuth Base URL",
       "description": "Rewrites the upstream base URL of Codex OAuth (ChatGPT subscription) credentials so a Codex account can target a self-hosted or third-party upstream.",
       "author": "xinghaix",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
       "logo": "",
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/codex-oauth-base-url",
@@ -151,44 +151,44 @@
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_linux_amd64.zip",
-            "sha256": "c2821cf0fe3c10069d42e65ab2332ada03023259a06c2a8cf8c0fd5301e726f8",
-            "size": 3610654
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.1/codex-oauth-base-url_0.1.1_linux_amd64.zip",
+            "sha256": "25ebb66c7805829ccbd79237b5e03f7a4cd9d3e5324ceddc1b1f1b0389bea8d3",
+            "size": 4122962
           },
           {
             "goos": "linux",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_linux_arm64.zip",
-            "sha256": "e875e790e0c30ce3641bae763c6d1a1cf20a6464ab6b30bc097188c06c6951b8",
-            "size": 3282476
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.1/codex-oauth-base-url_0.1.1_linux_arm64.zip",
+            "sha256": "10fa1a110a2b25b0dbdad3f375d6b0f59d56f9509b6d5bbba85f67aaca09a815",
+            "size": 3733938
           },
           {
             "goos": "darwin",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_darwin_amd64.zip",
-            "sha256": "f5e638a2134c1ece39e86cf435a42936f26544dc2fe338e859f441b7b606ba7e",
-            "size": 2008464
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.1/codex-oauth-base-url_0.1.1_darwin_amd64.zip",
+            "sha256": "c2ae5dc3578fac0eec4d52470053b33f091887f26dc6085d483b6edc0457dde7",
+            "size": 2261067
           },
           {
             "goos": "darwin",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_darwin_arm64.zip",
-            "sha256": "bb9b3c29d5be74233fc6975db85943347f492caef1aae3029f38310a5555b2b7",
-            "size": 1862799
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.1/codex-oauth-base-url_0.1.1_darwin_arm64.zip",
+            "sha256": "6f8c8c444b444ec3014a9c23e971d35b0e12b65b8013ad0926dffc3f60e93a42",
+            "size": 2086314
           },
           {
             "goos": "windows",
             "goarch": "amd64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_windows_amd64.zip",
-            "sha256": "2cb83aa87f1b53aa3dffa9fa28d1b7583c56d4f5be9143de748227586b7c17dc",
-            "size": 3508991
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.1/codex-oauth-base-url_0.1.1_windows_amd64.zip",
+            "sha256": "8d8505d646c2b4dcde8a393924f014c97a20d241c4753078f6f59a553cb07ed1",
+            "size": 4003905
           },
           {
             "goos": "windows",
             "goarch": "arm64",
-            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.0/codex-oauth-base-url_0.1.0_windows_arm64.zip",
-            "sha256": "02886478a73e79d2fe1e4ab0ca40ce4e1431e2a48b645500309c9ac58184651e",
-            "size": 3158312
+            "url": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@cdn/codex-oauth-base-url-v0.1.1/codex-oauth-base-url_0.1.1_windows_arm64.zip",
+            "sha256": "9fc7f32eaade7de55fc0e84e51da0cf6ee5b493948257afc786ea0421c92918d",
+            "size": 3588021
           }
         ]
       }
