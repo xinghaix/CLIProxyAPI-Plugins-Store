@@ -41,12 +41,13 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 )
 
-var pluginVersion = "0.5.29"
+var pluginVersion = "0.5.30"
 
 const (
 	// supportedPluginSchemaVersion 保持为 1，确保插件可加载于 schema 1 和 schema 2 host。
 	supportedPluginSchemaVersion uint32 = 1
 
+	pluginLogoURL           = "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@main/plugins/cpa-manager-plus/assets/logo.png"
 	managementHealthPathRel = "/cpa-manager-plus/health"
 	managementAPIPathRel    = "/cpa-manager-plus/api"
 	managementHealthPathAbs = "/v0/management/cpa-manager-plus/health"
@@ -218,7 +219,7 @@ func currentRuntime() *app.Runtime {
 }
 
 func pluginRegistration() registration {
-	return registration{SchemaVersion: supportedPluginSchemaVersion, Metadata: pluginapi.Metadata{Name: "CPA Manager Plus", Version: pluginVersion, Author: "xinghaix", GitHubRepository: "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store", ConfigFields: []pluginapi.ConfigField{
+	return registration{SchemaVersion: supportedPluginSchemaVersion, Metadata: pluginapi.Metadata{Name: "CPA Manager Plus", Version: pluginVersion, Author: "xinghaix", GitHubRepository: "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store", Logo: pluginLogoURL, ConfigFields: []pluginapi.ConfigField{
 		{Name: "data_dir", Type: pluginapi.ConfigFieldTypeString, Description: "本地 SQLite 数据目录；为空时使用 data/cpa-manager-plus"},
 		{Name: "queue_capacity", Type: pluginapi.ConfigFieldTypeInteger, Description: "异步用量写入队列容量（1-65536）"},
 		{Name: "batch_size", Type: pluginapi.ConfigFieldTypeInteger, Description: "SQLite 批量写入大小（1-1024）"},
