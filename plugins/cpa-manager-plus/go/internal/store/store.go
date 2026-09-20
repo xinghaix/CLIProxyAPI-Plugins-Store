@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -14,9 +15,10 @@ import (
 
 // Store serializes SQLite access for the local plugin runtime.
 type Store struct {
-	db   *sql.DB
-	path string
-	dsn  string
+	responseObservationsSuppressed atomic.Bool
+	db                             *sql.DB
+	path                           string
+	dsn                            string
 }
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
@@ -93,6 +95,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			executor_type text,
 			model text not null,
 			alias text,
+			response_model text,
 			api_key_hash text,
 			auth_id text,
 			auth_index text,
@@ -208,6 +211,9 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.ensureUsageEventColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureResponseObservationSchema(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureInspectionColumns(ctx); err != nil {
 		return err
 	}
@@ -218,7 +224,7 @@ func (s *Store) migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `insert or ignore into schema_migrations(version, applied_at_ms) values(3, ?)`, now); err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, `insert or ignore into schema_migrations(version, applied_at_ms) values(4, ?)`, now); err != nil {
+	if _, err := s.db.ExecContext(ctx, `insert or ignore into schema_migrations(version, applied_at_ms) values(4, ?), (5, ?)`, now, now); err != nil {
 		return err
 	}
 	return nil
@@ -278,11 +284,13 @@ func (s *Store) ensureUsageEventColumns(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if existing["alias"] {
-		return nil
-	}
-	if _, err := s.db.ExecContext(ctx, `alter table usage_events add column alias text`); err != nil {
-		return err
+	for _, column := range []string{"alias", "response_model", "response_correlation_key"} {
+		if existing[column] {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, `alter table usage_events add column `+column+` text`); err != nil {
+			return err
+		}
 	}
 	return nil
 }

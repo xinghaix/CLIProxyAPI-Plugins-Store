@@ -117,10 +117,14 @@
             </td>
             <td class="event-model-cell">
               <button
-                v-if="row.hasMapping"
+                v-if="row.hasModelDetails"
                 type="button"
                 class="event-model-route"
+                :class="{ 'has-response-mismatch': row.showResponseModel }"
                 :aria-label="row.hints.model"
+                :aria-expanded="modelRouteTooltip.visible && modelRouteTooltip.row?.id === row.id"
+                :aria-describedby="modelRouteTooltip.visible && modelRouteTooltip.row?.id === row.id ? 'event-model-tooltip' : undefined"
+                @keydown.esc.stop="hideModelRouteTooltip(true)"
                 @click.stop="toggleModelRouteTooltip($event, row)"
                 @mouseenter="showModelRouteTooltip($event, row)"
                 @mouseleave="hideModelRouteTooltip"
@@ -210,7 +214,7 @@
             {{ decodeHtmlEntities(failureTooltip.row.failSummary) }}
           </div>
         </div>
-        <div v-if="modelRouteTooltip.visible" class="event-model-tooltip" :style="modelRouteTooltip.style"
+        <div v-if="modelRouteTooltip.visible" id="event-model-tooltip" role="tooltip" class="event-model-tooltip" :style="modelRouteTooltip.style"
              @mouseenter="keepModelRouteTooltip" @mouseleave="hideModelRouteTooltip">
           <div class="event-model-tooltip-row">
             <span>{{ t('monitoring.eventMeta.requestedModel') }}</span>
@@ -219,6 +223,20 @@
           <div class="event-model-tooltip-row">
             <span>{{ t('monitoring.eventMeta.billedModel') }}</span>
             <strong class="event-model-tip-chip is-actual">{{ modelRouteTooltip.row?.mappedModel }}</strong>
+          </div>
+          <div v-if="modelRouteTooltip.row?.showResponseModel" class="event-model-tooltip-row">
+            <span>{{ t('monitoring.eventMeta.responseModel') }}</span>
+            <strong class="event-model-tip-chip is-response" :title="modelRouteTooltip.row.responseModel">{{ modelRouteTooltip.row.responseModel }}</strong>
+          </div>
+          <div v-if="modelRouteTooltip.row?.showResponseModel && modelRouteTooltip.row.responseModelSource" class="muted small-text">
+            {{ t('monitoring.eventMeta.responseModelSource') }}: {{ t('monitoring.eventMeta.responseModelSources.' + modelRouteTooltip.row.responseModelSource) }}
+          </div>
+          <div v-if="modelRouteTooltip.row?.responseModelConflict" class="event-model-conflict">
+            <div>{{ t('monitoring.eventMeta.responseModelConflict') }}</div>
+            <div v-if="modelRouteTooltip.row.observedResponseModel" class="event-model-tooltip-row">
+              <span>{{ t('monitoring.eventMeta.observedResponseModel') }}</span>
+              <strong class="event-model-tip-chip" :title="modelRouteTooltip.row.observedResponseModel">{{ modelRouteTooltip.row.observedResponseModel }}</strong>
+            </div>
           </div>
         </div>
       </Teleport>
@@ -438,7 +456,7 @@ import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.j
 import { requestProtocol, requestProtocolLabel } from '../utils/requestProtocol.js';
 import { buildUsageIOC } from '../utils/usageBreakdown.js';
 import { canApplySelectedFilter, rowIdentity } from '../utils/rowFilter.js';
-import { buildEventHints, buildModelMeta, formatCacheSub, formatCallsSub, formatTpsSub, hasModelMapping, mappedModelName, requestedModelName } from '../utils/eventStreamDisplay.js';
+import { buildEventHints, buildModelMeta, formatCacheSub, formatCallsSub, formatTpsSub, hasModelRouteDetails, hasResponseModelConflict, hasResponseModelDifference, mappedModelName, requestedModelName, responseModelName, responseModelSource } from '../utils/eventStreamDisplay.js';
 import {
   formatQuotaResetRelative as formatQuotaResetRelativeValue,
   formatQuotaStatusMessage,
@@ -570,7 +588,7 @@ const eventDetailCards = computed(() => selectedEvent.value ? [
   {label: t('monitoring.labels.latency'), value: fmtMs(selectedEvent.value.latency_ms)},
   {label: t('monitoring.labels.cost'), value: fmtMoney(calculateEventCost(selectedEvent.value, modelPrices.value))},
 ] : []);
-const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'alias', 'requested_model', 'resolved_model', 'endpoint', 'method', 'path', 'protocol', 'executor_type', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'cache_input_mode', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
+const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'alias', 'requested_model', 'resolved_model', 'response_model', 'host_response_model', 'observed_response_model', 'response_model_source', 'response_model_conflict', 'endpoint', 'method', 'path', 'protocol', 'executor_type', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'cache_input_mode', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
 const eventHeaderDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['header_quota_recover_at_ms', 'header_quota_used_percent', 'header_quota_plan_type', 'header_error_kind', 'header_error_code', 'header_trace_id'])) : {});
 
 watch(timeRange, () => {
@@ -581,6 +599,28 @@ watch(filters, () => {
   eventPage.value = 1;
   refresh(true);
 }, {deep: true});
+// Auto-refresh replaces normalized rows; keep open popups bound to live metadata.
+// Do not cancel a pending pointer-leave timer just because new data arrived.
+watch(pagedEvents, (rows) => {
+  if (modelRouteTooltip.value.visible) {
+    const row = rows.find(row => row.id === modelRouteTooltip.value.row?.id);
+    if (row?.hasModelDetails) modelRouteTooltip.value.row = row;
+    else hideModelRouteTooltip(true);
+  }
+  if (failureTooltip.value.visible) {
+    const row = rows.find(row => row.id === failureTooltip.value.row?.id);
+    if (row?.failed) failureTooltip.value.row = row;
+    else {
+      keepFailureTooltip();
+      failureTooltip.value.visible = false;
+    }
+  }
+});
+watch([activeDataTab, eventPage, eventPageSize], () => {
+  hideModelRouteTooltip(true);
+  keepFailureTooltip();
+  failureTooltip.value.visible = false;
+});
 watch(autoRefreshMs, setupTimer);
 watch(() => props.ready, (ready) => {
   if (!ready) {
@@ -1185,7 +1225,7 @@ function showFailureTooltip(event, row) {
     clearTimeout(failureHideTimer);
     failureHideTimer = null;
   }
-  modelRouteTooltip.value.visible = false;
+  hideModelRouteTooltip(true);
   const el = event.currentTarget;
   const rect = el.getBoundingClientRect();
   const left = Math.max(12, Math.min(rect.left, window.innerWidth - 440 - 12));
@@ -1227,12 +1267,14 @@ function showModelRouteTooltip(event, row) {
     clearTimeout(modelRouteHideTimer);
     modelRouteHideTimer = null;
   }
+  keepFailureTooltip();
   failureTooltip.value.visible = false;
   const el = event.currentTarget;
   const rect = el.getBoundingClientRect();
   const left = Math.max(12, Math.min(rect.left, window.innerWidth - 420 - 12));
   const spaceBelow = window.innerHeight - rect.bottom - 12;
-  const placement = spaceBelow >= 120 || spaceBelow >= rect.top ? 'below' : 'above';
+  const estimatedHeight = 120 + (row.showResponseModel ? 70 : 0) + (row.responseModelConflict ? 130 : 0);
+  const placement = spaceBelow >= estimatedHeight || spaceBelow >= rect.top ? 'below' : 'above';
   modelRouteTooltip.value = {
     visible: true,
     row,
@@ -1376,7 +1418,13 @@ function buildEventTableRow(row, groupMap) {
     alias: String(row.alias || '').trim(),
     mappedModel: mappedModelName(row),
     resolvedModel: mappedModelName(row),
-    hasMapping: hasModelMapping(row),
+    responseModel: responseModelName(row),
+    hostResponseModel: String(row.host_response_model || '').trim(),
+    observedResponseModel: String(row.observed_response_model || '').trim(),
+    responseModelSource: responseModelSource(row),
+    responseModelConflict: hasResponseModelConflict(row),
+    showResponseModel: hasResponseModelDifference(row),
+    hasModelDetails: hasModelRouteDetails(row),
     intensity: row.reasoning_effort || row.service_tier || '-',
     intensityDisplay: String(row.reasoning_effort || '').trim() || EMPTY_VALUE,
     tier: row.service_tier || (row.reasoning_effort && row.reasoning_effort !== '-' ? 'priority' : 'default'),

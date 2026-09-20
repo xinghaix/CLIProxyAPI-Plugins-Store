@@ -8,32 +8,35 @@ import (
 )
 
 type Event struct {
-	Hash                string
-	TimestampMS         int64
-	Provider            string
-	ExecutorType        string
-	Model               string
-	Alias               string
-	APIKeyHash          string
-	AuthID              string
-	AuthIndex           string
-	AuthType            string
-	Source              string
-	ReasoningEffort     string
-	ServiceTier         string
-	InputTokens         int64
-	OutputTokens        int64
-	ReasoningTokens     int64
-	CachedTokens        int64
-	CacheReadTokens     int64
-	CacheCreationTokens int64
-	TotalTokens         int64
-	LatencyMS           int64
-	TTFTMS              int64
-	Failed              bool
-	FailStatusCode      int
-	FailSummary         string
-	ResponseHeadersJSON string
+	Hash         string
+	TimestampMS  int64
+	Provider     string
+	ExecutorType string
+	Model        string
+	Alias        string
+	// ResponseModel is upstream-reported metadata, never the billing model.
+	ResponseModel          string
+	ResponseCorrelationKey string
+	APIKeyHash             string
+	AuthID                 string
+	AuthIndex              string
+	AuthType               string
+	Source                 string
+	ReasoningEffort        string
+	ServiceTier            string
+	InputTokens            int64
+	OutputTokens           int64
+	ReasoningTokens        int64
+	CachedTokens           int64
+	CacheReadTokens        int64
+	CacheCreationTokens    int64
+	TotalTokens            int64
+	LatencyMS              int64
+	TTFTMS                 int64
+	Failed                 bool
+	FailStatusCode         int
+	FailSummary            string
+	ResponseHeadersJSON    string
 }
 
 func (s *Store) InsertEvents(ctx context.Context, events []Event) (int, error) {
@@ -68,8 +71,8 @@ func (s *Store) insertEventsCommitted(ctx context.Context, events []Event) (int,
 		event_hash, timestamp_ms, provider, executor_type, model, alias, api_key_hash, auth_id, auth_index, auth_type, source,
 		reasoning_effort, service_tier, input_tokens, output_tokens, reasoning_tokens, cached_tokens, cache_read_tokens,
 		cache_creation_tokens, total_tokens, latency_ms, ttft_ms, failed, fail_status_code, fail_summary,
-		response_headers_json, created_at_ms
-	) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		response_headers_json, created_at_ms, response_model, response_correlation_key
+	) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -83,7 +86,7 @@ func (s *Store) insertEventsCommitted(ctx context.Context, events []Event) (int,
 			event.AuthIndex, event.AuthType, event.Source, event.ReasoningEffort, event.ServiceTier, event.InputTokens,
 			event.OutputTokens, event.ReasoningTokens, event.CachedTokens, event.CacheReadTokens, event.CacheCreationTokens,
 			event.TotalTokens, event.LatencyMS, event.TTFTMS, boolInt(event.Failed), nullableInt(event.FailStatusCode),
-			nullableString(event.FailSummary), nullableString(event.ResponseHeadersJSON), now,
+			nullableString(event.FailSummary), nullableString(event.ResponseHeadersJSON), now, nullableString(event.ResponseModel), nullableString(event.ResponseCorrelationKey),
 		)
 		if err != nil {
 			return 0, nil, fmt.Errorf("insert usage event: %w", err)
@@ -91,6 +94,11 @@ func (s *Store) insertEventsCommitted(ctx context.Context, events []Event) (int,
 		if rows, _ := result.RowsAffected(); rows > 0 {
 			inserted += int(rows)
 			committed = append(committed, event)
+			if event.ResponseCorrelationKey != "" {
+				if _, err := tx.ExecContext(ctx, `update response_observations set referenced=1 where correlation_key=? and referenced=0`, event.ResponseCorrelationKey); err != nil {
+					return 0, nil, err
+				}
+			}
 			if event.Failed && event.AuthID != "" {
 				if err := upsertFailureCandidateTx(ctx, tx, event, now); err != nil {
 					return 0, nil, err

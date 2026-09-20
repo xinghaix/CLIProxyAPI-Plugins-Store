@@ -75,8 +75,11 @@ type registration struct {
 	Capabilities  registrationCapabilities `json:"capabilities"`
 }
 type registrationCapabilities struct {
-	ManagementAPI bool `json:"management_api"`
-	UsagePlugin   bool `json:"usage_plugin"`
+	ManagementAPI            bool `json:"management_api"`
+	UsagePlugin              bool `json:"usage_plugin"`
+	ResponseBeforeTranslator bool `json:"response_before_translator"`
+	ResponseInterceptor      bool `json:"response_interceptor"`
+	StreamChunkInterceptor   bool `json:"response_stream_interceptor"`
 }
 type managementRegistrationResponse struct {
 	Routes    []pluginapi.ManagementRoute `json:"routes,omitempty"`
@@ -165,12 +168,14 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 		}
 		return okEnvelope(pluginRegistration())
 	case pluginabi.MethodUsageHandle:
-		var record pluginapi.UsageRecord
-		_ = json.Unmarshal(request, &record)
 		if runtime := currentRuntime(); runtime != nil {
-			runtime.HandleUsage(record)
+			if err := runtime.HandleUsagePayload(request); err != nil {
+				return nil, err
+			}
 		}
 		return okEnvelope(map[string]any{})
+	case pluginabi.MethodResponseNormalizeBefore, pluginabi.MethodResponseInterceptAfter, pluginabi.MethodResponseInterceptStreamChunk:
+		return handleResponseObservation(method, request)
 	case pluginabi.MethodManagementRegister:
 		return okEnvelope(managementRegistration())
 	case pluginabi.MethodManagementHandle:
@@ -217,7 +222,7 @@ func pluginRegistration() registration {
 		{Name: "data_dir", Type: pluginapi.ConfigFieldTypeString, Description: "本地 SQLite 数据目录；为空时使用 data/cpa-manager-plus"},
 		{Name: "queue_capacity", Type: pluginapi.ConfigFieldTypeInteger, Description: "异步用量写入队列容量（1-65536）"},
 		{Name: "batch_size", Type: pluginapi.ConfigFieldTypeInteger, Description: "SQLite 批量写入大小（1-1024）"},
-	}}, Capabilities: registrationCapabilities{ManagementAPI: true, UsagePlugin: true}}
+	}}, Capabilities: registrationCapabilities{ManagementAPI: true, UsagePlugin: true, ResponseBeforeTranslator: true, ResponseInterceptor: true, StreamChunkInterceptor: true}}
 }
 
 func managementRegistration() managementRegistrationResponse {

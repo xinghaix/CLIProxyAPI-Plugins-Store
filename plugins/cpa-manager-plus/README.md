@@ -78,6 +78,27 @@ cd go && go mod tidy
 cd go && CGO_ENABLED=1 go build -buildmode=c-shared -o ../cpa-manager-plus-v<version>.dylib .
 ```
 
+## 事件流：上游响应模型
+
+事件模型弹框区分请求模型、实际并计费模型和上游响应模型。仅当上游响应模型非空且与计费模型不同（去除首尾空白后精确比较）时显示第三行；即使请求模型等于计费模型，此时也会出现弹框入口。旧事件或三者相同不会增加多余提示，已有请求映射仍按原规则展示。上游响应模型不参与价格查找、费用计算、模型筛选或统计分组。
+
+### 双链路来源与合并
+
+- **宿主上报**：原始 `usage.handle` 可选字段 `ResponseModel`（兼容 `response_model`）。当前本地 SDK 没有此字段，支持上报的宿主可直接提供；缺失时不推断。
+- **插件观察**：只读注册 `response_before_translator`、`response_interceptor`、`response_stream_interceptor`。先读取翻译前原始模型，再用保留的响应 ID 连接到下游钩子的原生请求 ID 响应头，最后与同一凭据的 usage 精确关联。不读取 Usage queue、不抓取请求日志、不改写响应。
+- 宿主有值时优先采用；仅观察有可靠值时补充；两路相同标记“双路确认”；不同或关联有歧义时显示采集冲突。冲突本身不等同于模型降级，也不单独触发红色模型差异高亮。
+- API 返回 `response_model`（选定值）、`host_response_model`、`observed_response_model`、`response_model_source`（空／`host`／`observer`／`confirmed`）和 `response_model_conflict`。宿主原值与观察证据独立保存；晚到观察只补充监控信息，不重复入账。
+
+### 当前覆盖与保守边界
+
+- 主动观察仅覆盖已核实的 **Antigravity/Gemini → OpenAI Chat、OpenAI Responses、Claude、Gemini** HTTP 非流式和完整 SSE 事件路径；排除宿主合成模型的 Imagen，暂不接入 WebSocket 观察。宿主显式上报链路不受此协议白名单限制。
+- 必须同时具有真实响应 `responseId`、可核对的原始请求指纹、钩子中的 `selected_auth_id`，以及同一凭据在 usage 和响应钩子共同携带的原生单请求标识头（依次识别 `X-Request-ID`、`Request-ID`、`X-Goog-Request-ID`）。请求指纹只是附加范围，绝不单独用于匹配；响应体 ID 也不被假定等于响应头 ID。
+- 上游未提供标识、ID 被转换后无法对应、缺少模型、多值/冲突标识或同一标识对应多条 usage（含分拆计费）时，不给用量事件填入不确定的观察模型。原生 ID 是否存在、是否保证单请求唯一仍取决于供应商；不承诺所有真实流量都能采到。
+- 关联缓存有容量限制，每类缓存最多 4096 条；活跃流刷新关联，闲置关联窗口为 10 分钟，每个响应最多保留 16 个关联键。仅保留哈希、模型和必要状态，不持久化请求/响应正文或凭据原文。
+- 只解析完整且受限的 JSON/SSE：单次正文不超过 1 MiB、最多 64 个事件、嵌套深度 32；不拼接跨回调的碎片 SSE。已关联范围发生解析缺口时撤销该范围的观察可信状态。
+- ABI 信封超过 8 MiB、信封损坏、1024 条观察队列溢出或观察写入失败时，立即隐藏派生观察结果，后台持久化隔离，并停用观察直到插件运行时重启；宿主显式字段、业务响应与计费照常。健康接口 `response_observer` 提供 enabled、disabled_until_restart、callbacks、persisted、queue_depth、dropped、last_error。
+- SQLite 自动迁移；观察和 usage 可任意先后到达。冲突隔离持久化，查询时动态判断，避免迟到冲突仍被显示为可信模型。无 usage 引用的观察保留最多 7 天／10000 条；有引用的证据和隔离状态不随缓存过期丢失。
+
 ## URL 结构
 
 | 功能 | 路径 | 说明 |

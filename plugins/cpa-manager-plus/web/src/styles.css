@@ -706,6 +706,8 @@ pre {
   vertical-align: -0.18em;
   color: var(--cpa-text-tertiary);
 }
+.event-model-route.has-response-mismatch { color: var(--cpa-error); }
+.event-model-route.has-response-mismatch .event-model-route-icon { color: inherit; }
 .event-model-route-icon svg {
   display: block;
   width: 1em;
@@ -726,6 +728,13 @@ pre {
   font-size: 12px;
   line-height: 1.45;
   color: var(--cpa-text-primary);
+}
+.event-model-conflict {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cpa-rule);
+  color: var(--cpa-warning, #a36a16);
 }
 .event-model-tooltip-row {
   display: flex;
@@ -748,6 +757,7 @@ pre {
 }
 .event-model-tip-chip.is-requested { background: #f8d7d4; color: #7a1c16; }
 .event-model-tip-chip.is-actual { background: #f6e7c8; color: #6b4b12; }
+.event-model-tip-chip.is-response { background: #dcebea; color: #205d58; }
 .event-effort-cell {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1531,7 +1541,7 @@ pre {
   .config-overview-chip:hover, .run-history-card:hover { color: var(--cpa-ink); background: transparent; border-color: var(--cpa-rule); }
   .sensitive-value-toggle:hover { color: var(--cpa-ink); text-decoration: underline; }
   .failure-tooltip-copy:hover { border-color: var(--cpa-ink); color: var(--cpa-ink); }
-  .event-model-route:hover .event-model-route-icon { color: var(--cpa-ink); }
+  .event-model-route:not(.has-response-mismatch):hover .event-model-route-icon { color: var(--cpa-ink); }
 }
 
 @media (max-width: 1280px) {

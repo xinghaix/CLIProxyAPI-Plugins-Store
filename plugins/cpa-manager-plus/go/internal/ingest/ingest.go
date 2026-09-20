@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/responsemodel"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/store"
 )
 
@@ -30,7 +31,10 @@ func NewWriter(database *store.Store, capacity, batchSize int, onCommitted func(
 }
 
 func (w *Writer) Enqueue(record pluginapi.UsageRecord) {
-	event := ToEvent(record)
+	w.EnqueueEvent(ToEvent(record))
+}
+
+func (w *Writer) EnqueueEvent(event store.Event) {
 	select {
 	case w.queue <- event:
 	default:
@@ -89,6 +93,31 @@ func (w *Writer) LastError() string {
 	return value
 }
 
+// DecodeEvent accepts the SDK usage payload plus an optional plugin extension.
+// The current host SDK does not emit a response model. A supporting producer must
+// capture it from the upstream response before any client-facing model rewrite.
+// ResponseModel takes precedence over response_model when non-null; neither is
+// inferred from Model, Alias, or headers. Metadata does not change event identity.
+func DecodeEvent(raw []byte) (store.Event, error) {
+	var payload struct {
+		pluginapi.UsageRecord
+		ResponseModel      *string
+		ResponseModelSnake *string `json:"response_model"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return store.Event{}, err
+	}
+	event := ToEvent(payload.UsageRecord)
+	responseModel := payload.ResponseModel
+	if responseModel == nil {
+		responseModel = payload.ResponseModelSnake
+	}
+	if responseModel != nil {
+		event.ResponseModel = strings.TrimSpace(*responseModel)
+	}
+	return event, nil
+}
+
 func ToEvent(record pluginapi.UsageRecord) store.Event {
 	at := record.RequestedAt
 	if at.IsZero() || at.UnixMilli() <= 0 {
@@ -101,31 +130,32 @@ func ToEvent(record pluginapi.UsageRecord) store.Event {
 		model = "unknown"
 	}
 	event := store.Event{
-		TimestampMS:         at.UnixMilli(),
-		Provider:            strings.TrimSpace(record.Provider),
-		ExecutorType:        strings.TrimSpace(record.ExecutorType),
-		Model:               model,
-		Alias:               strings.TrimSpace(record.Alias),
-		APIKeyHash:          digest(record.APIKey),
-		AuthID:              strings.TrimSpace(record.AuthID),
-		AuthIndex:           strings.TrimSpace(record.AuthIndex),
-		AuthType:            strings.TrimSpace(record.AuthType),
-		Source:              strings.TrimSpace(record.Source),
-		ReasoningEffort:     strings.TrimSpace(record.ReasoningEffort),
-		ServiceTier:         strings.TrimSpace(record.ServiceTier),
-		InputTokens:         record.Detail.InputTokens,
-		OutputTokens:        record.Detail.OutputTokens,
-		ReasoningTokens:     record.Detail.ReasoningTokens,
-		CachedTokens:        record.Detail.CachedTokens,
-		CacheReadTokens:     record.Detail.CacheReadTokens,
-		CacheCreationTokens: record.Detail.CacheCreationTokens,
-		TotalTokens:         record.Detail.TotalTokens,
-		LatencyMS:           record.Latency.Milliseconds(),
-		TTFTMS:              record.TTFT.Milliseconds(),
-		Failed:              record.Failed,
-		FailStatusCode:      record.Failure.StatusCode,
-		FailSummary:         failure,
-		ResponseHeadersJSON: string(headers),
+		TimestampMS:            at.UnixMilli(),
+		Provider:               strings.TrimSpace(record.Provider),
+		ExecutorType:           strings.TrimSpace(record.ExecutorType),
+		Model:                  model,
+		Alias:                  strings.TrimSpace(record.Alias),
+		APIKeyHash:             digest(record.APIKey),
+		AuthID:                 strings.TrimSpace(record.AuthID),
+		AuthIndex:              strings.TrimSpace(record.AuthIndex),
+		AuthType:               strings.TrimSpace(record.AuthType),
+		Source:                 strings.TrimSpace(record.Source),
+		ReasoningEffort:        strings.TrimSpace(record.ReasoningEffort),
+		ServiceTier:            strings.TrimSpace(record.ServiceTier),
+		InputTokens:            record.Detail.InputTokens,
+		OutputTokens:           record.Detail.OutputTokens,
+		ReasoningTokens:        record.Detail.ReasoningTokens,
+		CachedTokens:           record.Detail.CachedTokens,
+		CacheReadTokens:        record.Detail.CacheReadTokens,
+		CacheCreationTokens:    record.Detail.CacheCreationTokens,
+		TotalTokens:            record.Detail.TotalTokens,
+		LatencyMS:              record.Latency.Milliseconds(),
+		TTFTMS:                 record.TTFT.Milliseconds(),
+		Failed:                 record.Failed,
+		FailStatusCode:         record.Failure.StatusCode,
+		FailSummary:            failure,
+		ResponseHeadersJSON:    string(headers),
+		ResponseCorrelationKey: responsemodel.CorrelationKey(record.AuthID, record.ResponseHeaders),
 	}
 	if event.TotalTokens == 0 {
 		event.TotalTokens = event.InputTokens + event.OutputTokens + event.ReasoningTokens

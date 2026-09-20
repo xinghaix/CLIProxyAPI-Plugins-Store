@@ -21,6 +21,30 @@ export function hasModelMapping(row = {}) {
   return Boolean(requested && mapped && requested !== mapped);
 }
 
+// Keep the observed response identity separate from routing and billing.
+export function responseModelName(row = {}) {
+  return String(row.responseModel || row.response_model || '').trim();
+}
+
+export function hasResponseModelDifference(row = {}) {
+  const response = responseModelName(row);
+  const billed = mappedModelName(row);
+  return Boolean(response && billed && response !== billed);
+}
+
+export function hasResponseModelConflict(row = {}) {
+  return (row.responseModelConflict ?? row.response_model_conflict) === true;
+}
+
+export function responseModelSource(row = {}) {
+  const source = String(row.responseModelSource ?? row.response_model_source ?? '').trim();
+  return ['host', 'observer', 'confirmed'].includes(source) ? source : '';
+}
+
+export function hasModelRouteDetails(row = {}) {
+  return hasModelMapping(row) || hasResponseModelDifference(row) || hasResponseModelConflict(row);
+}
+
 export function buildModelMeta({ intensity, tier } = {}, t) {
   const parts = [];
   if (intensity && intensity !== '-') {
@@ -54,7 +78,9 @@ export function buildEventHints(row, t) {
     ? t('monitoring.eventHints.modelMapped', { model: requested, mapped, intensity, tier })
     : t('monitoring.eventHints.model', { model: requested, intensity, tier });
   return {
-    model: modelHint,
+    model: hasResponseModelDifference(row)
+      ? `${modelHint} · ${t('monitoring.eventMeta.responseModel')}: ${responseModelName(row)}`
+      : modelHint,
     status: t('monitoring.eventHints.status', {
       status: row.failed ? t('monitoring.labels.failed') : t('monitoring.labels.success'),
       protocol: row.protocolLabel,

@@ -6,6 +6,11 @@ import {
   formatCallsSub,
   formatTpsSub,
   hasModelMapping,
+  hasModelRouteDetails,
+  hasResponseModelDifference,
+  hasResponseModelConflict,
+  responseModelSource,
+  responseModelName,
   mappedModelName,
   recentPatternSummary,
   requestedModelName,
@@ -19,6 +24,7 @@ function t(key, params = {}) {
     'monitoring.eventMeta.tps': 'TPS {value}',
     'monitoring.eventMeta.cache': '缓存 {value}',
     'monitoring.eventMeta.none': '—',
+    'monitoring.eventMeta.responseModel': '上游响应模型',
     'monitoring.labels.level': '等级: {value}',
     'monitoring.labels.failed': '失败',
     'monitoring.labels.success': '成功',
@@ -32,6 +38,73 @@ function t(key, params = {}) {
   };
   return (dict[key] || key).replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ''));
 }
+
+describe('dual-source response metadata', () => {
+  it.each(['', 'host', 'observer', 'confirmed'])('keeps source %s independent of difference and conflict', (source) => {
+    for (const response of ['', 'billed', 'upstream']) {
+      for (const conflict of [false, true]) {
+        const raw = { model: 'billed', response_model: response, response_model_source: source, response_model_conflict: conflict };
+        const normalized = { model: 'billed', responseModel: response, responseModelSource: source, responseModelConflict: conflict };
+        for (const row of [raw, normalized]) {
+          expect(responseModelSource(row)).toBe(source);
+          expect(hasResponseModelConflict(row)).toBe(conflict);
+          expect(hasResponseModelDifference(row)).toBe(response === 'upstream');
+          expect(hasModelRouteDetails(row)).toBe(conflict || response === 'upstream');
+          expect(mappedModelName(row)).toBe('billed');
+        }
+      }
+    }
+  });
+
+  it('does not infer missing legacy metadata or pick a winner from source fields', () => {
+    expect(responseModelSource({})).toBe('');
+    expect(responseModelSource({ response_model_source: 'future-source' })).toBe('');
+    expect(hasResponseModelConflict({})).toBe(false);
+    expect(responseModelName({ host_response_model: 'host', observed_response_model: 'observer' })).toBe('');
+    expect(hasModelRouteDetails({ model: 'billed' })).toBe(false);
+  });
+});
+
+describe('event stream response model visibility', () => {
+  it.each([
+    // requested, billed, response, popup, response row
+    ['same', 'same', undefined, false, false],
+    ['same', 'same', '', false, false],
+    ['same', 'same', '   ', false, false],
+    ['same', 'same', 'same', false, false],
+    ['alias', 'billed', undefined, true, false],
+    ['alias', 'billed', 'billed', true, false],
+    ['alias', 'billed', ' billed ', true, false],
+    ['same', 'same', 'upstream', true, true],
+    ['alias', 'billed', 'upstream', true, true],
+    ['alias', 'billed', 'alias', true, true],
+  ])('requested=%s billed=%s response=%s', (requested, billed, response, popup, visible) => {
+    const raw = { alias: requested, model: billed, response_model: response };
+    const normalized = { model: requested, mappedModel: billed, responseModel: response };
+    for (const row of [raw, normalized]) {
+      expect(hasResponseModelDifference(row)).toBe(visible);
+      expect(hasModelRouteDetails(row)).toBe(popup);
+      expect(buildEventHints(row, t).model.includes('上游响应模型')).toBe(visible);
+      expect(mappedModelName(row)).toBe(billed);
+      expect(requestedModelName(row)).toBe(requested);
+    }
+  });
+
+  it('does not invent a response identity or compare against an unknown billed model', () => {
+    expect(responseModelName({ model: 'billed', alias: 'requested' })).toBe('');
+    expect(responseModelName({ response_model: ' upstream ' })).toBe('upstream');
+    expect(hasResponseModelDifference({ response_model: 'upstream' })).toBe(false);
+    expect(hasModelRouteDetails({})).toBe(false);
+  });
+
+  it('compares with resolved billing model rather than requested model', () => {
+    const row = { requested_model: 'alias', model: 'alias', resolved_model: 'billed', response_model: 'billed' };
+    expect(hasModelRouteDetails(row)).toBe(true);
+    expect(hasResponseModelDifference(row)).toBe(false);
+    row.response_model = 'upstream';
+    expect(buildEventHints(row, t).model).toContain('上游响应模型: upstream');
+  });
+});
 
 describe('event stream merged labels', () => {
   it('uses the requested alias when it differs from the mapped model', () => {

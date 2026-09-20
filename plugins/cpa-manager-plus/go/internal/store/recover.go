@@ -105,7 +105,16 @@ func (s *Store) rebuildUsageEvents(ctx context.Context) error {
 	_ = s.copyTableBestEffort(ctx, "usage_events", "usage_events_corrupt_src")
 	_, _ = s.db.ExecContext(ctx, `drop table if exists usage_events_corrupt_src`)
 	s.syncAutoIncrement(ctx, "usage_events")
-	return nil
+	// Renaming keeps index names attached to the old table until it is dropped.
+	// Re-run migration now to restore indexes on the recovered usage table.
+	if err := s.migrate(ctx); err != nil {
+		return err
+	}
+	// Best-effort recovery may lose usage rows; make their metadata eligible for
+	// normal orphan cleanup without discarding any surviving quarantine.
+	_, err := s.db.ExecContext(ctx, `update response_observations set referenced=exists(
+	 select 1 from usage_events where response_correlation_key=response_observations.correlation_key)`)
+	return err
 }
 
 func (s *Store) copyTableBestEffort(ctx context.Context, dest, src string) error {

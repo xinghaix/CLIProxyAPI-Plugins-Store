@@ -37,6 +37,7 @@ type Runtime struct {
 	config             config.Config
 	store              *store.Store
 	writer             *ingest.Writer
+	responseObserver   *responseObserver
 	cancel             context.CancelFunc
 	wait               sync.WaitGroup
 	closed             atomic.Bool
@@ -95,6 +96,7 @@ func New(rawConfig []byte) (*Runtime, error) {
 		_ = database.Close()
 		return nil, err
 	}
+	runtime.startResponseObserver(ctx)
 	runtime.writer = ingest.NewWriter(database, cfg.QueueCapacity, cfg.BatchSize, runtime.handleCommittedUsageEvents)
 	runtime.wait.Add(1)
 	go func() { defer runtime.wait.Done(); runtime.writer.Run(ctx) }()
@@ -136,7 +138,21 @@ func (r *Runtime) Reconfigure(rawConfig []byte) error {
 	return nil
 }
 
+// HandleUsagePayload preserves optional metadata outside the current SDK contract.
+func (r *Runtime) HandleUsagePayload(raw []byte) error {
+	event, err := ingest.DecodeEvent(raw)
+	if err != nil {
+		return err
+	}
+	r.handleUsageEvent(event)
+	return nil
+}
+
 func (r *Runtime) HandleUsage(record pluginapi.UsageRecord) {
+	r.handleUsageEvent(ingest.ToEvent(record))
+}
+
+func (r *Runtime) handleUsageEvent(event store.Event) {
 	if r == nil {
 		return
 	}
@@ -149,7 +165,7 @@ func (r *Runtime) HandleUsage(record pluginapi.UsageRecord) {
 	enabled := r.config.Collector.Enabled
 	r.mu.Unlock()
 	if enabled {
-		r.writer.Enqueue(record)
+		r.writer.EnqueueEvent(event)
 	}
 }
 
@@ -266,6 +282,7 @@ func (r *Runtime) Health(ctx context.Context) map[string]any {
 		"usage_handle_calls":      r.usageSeen.Load(),
 		"last_usage_handle_at_ms": r.lastUsageMS.Load(),
 		"last_write_error":        r.writer.LastError(),
+		"response_observer":       r.responseObserverHealth(),
 	}
 	if err := r.store.PingWrite(ctx); err != nil {
 		result["write_probe_error"] = err.Error()
@@ -373,6 +390,11 @@ func firstNonEmpty(values ...string) string {
 func (r *Runtime) Close() error {
 	if r == nil || !r.closed.CompareAndSwap(false, true) {
 		return nil
+	}
+	// Wait for an in-flight observation callback to finish enqueueing before drain.
+	if r.responseObserver != nil {
+		r.responseObserver.mu.Lock()
+		r.responseObserver.mu.Unlock()
 	}
 	r.CancelInspection()
 	r.cancel()

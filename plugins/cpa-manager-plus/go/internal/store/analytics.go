@@ -37,14 +37,17 @@ type AnalyticsRequest struct {
 }
 
 type eventRow struct {
-	ID                                                                                                                  int64
-	TimestampMS                                                                                                         int64
-	Provider, ExecutorType, Model, Alias, APIKeyHash, AuthID, AuthIndex, AuthType, Source, ReasoningEffort, ServiceTier string
-	InputTokens, OutputTokens, ReasoningTokens, CachedTokens, CacheReadTokens, CacheCreationTokens, TotalTokens         int64
-	LatencyMS, TTFTMS                                                                                                   sql.NullInt64
-	Failed                                                                                                              int
-	FailStatus                                                                                                          sql.NullInt64
-	FailSummary                                                                                                         sql.NullString
+	ObservedResponseModel                                                                                                              string
+	ResponseObservationPresent, ResponseObservationAmbiguous                                                                           bool
+	ResponseUsageCount                                                                                                                 int64
+	ID                                                                                                                                 int64
+	TimestampMS                                                                                                                        int64
+	Provider, ExecutorType, Model, Alias, ResponseModel, APIKeyHash, AuthID, AuthIndex, AuthType, Source, ReasoningEffort, ServiceTier string
+	InputTokens, OutputTokens, ReasoningTokens, CachedTokens, CacheReadTokens, CacheCreationTokens, TotalTokens                        int64
+	LatencyMS, TTFTMS                                                                                                                  sql.NullInt64
+	Failed                                                                                                                             int
+	FailStatus                                                                                                                         sql.NullInt64
+	FailSummary                                                                                                                        sql.NullString
 }
 
 func (s *Store) Prices(ctx context.Context) (map[string]Price, error) {
@@ -155,7 +158,7 @@ func (s *Store) Analytics(ctx context.Context, request AnalyticsRequest) (map[st
 }
 
 func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRow, error) {
-	query := `select id,timestamp_ms,coalesce(provider,''),coalesce(executor_type,''),model,coalesce(alias,''),coalesce(api_key_hash,''),coalesce(auth_id,''),coalesce(auth_index,''),coalesce(auth_type,''),coalesce(source,''),coalesce(reasoning_effort,''),coalesce(service_tier,''),input_tokens,output_tokens,reasoning_tokens,cached_tokens,cache_read_tokens,cache_creation_tokens,total_tokens,latency_ms,ttft_ms,failed,fail_status_code,fail_summary from usage_events where timestamp_ms >= ? and timestamp_ms <= ?`
+	query := `select response_correlation_key,id,timestamp_ms,coalesce(provider,''),coalesce(executor_type,''),model,coalesce(alias,''),coalesce(response_model,''),coalesce(api_key_hash,''),coalesce(auth_id,''),coalesce(auth_index,''),coalesce(auth_type,''),coalesce(source,''),coalesce(reasoning_effort,''),coalesce(service_tier,''),input_tokens,output_tokens,reasoning_tokens,cached_tokens,cache_read_tokens,cache_creation_tokens,total_tokens,latency_ms,ttft_ms,failed,fail_status_code,fail_summary from usage_events where timestamp_ms >= ? and timestamp_ms <= ?`
 	args := []any{request.FromMS, request.ToMS}
 	if request.FailedOnly {
 		query += ` and failed = 1`
@@ -165,6 +168,17 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 	search := strings.TrimSpace(request.Search)
 	query += ` order by timestamp_ms desc limit ?`
 	args = append(args, 10_000)
+	// Count matches globally, not only inside the selected time/filter window.
+	// The correlation index restricts grouping to keys in this bounded candidate set.
+	query = `with selected as (` + query + `), usage_matches as (
+	 select response_correlation_key, count(*) as usage_count from usage_events
+	 where response_correlation_key in (select response_correlation_key from selected)
+	 group by response_correlation_key
+	) select selected.*, coalesce(o.model,''), o.correlation_key is not null,
+	 coalesce(o.ambiguous,0), coalesce(m.usage_count,0)
+	 from selected left join response_observations o on o.correlation_key=selected.response_correlation_key
+	 left join usage_matches m on m.response_correlation_key=selected.response_correlation_key
+	 order by selected.timestamp_ms desc`
 	dbRows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -173,7 +187,8 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 	var candidates []eventRow
 	for dbRows.Next() {
 		var row eventRow
-		if err := dbRows.Scan(&row.ID, &row.TimestampMS, &row.Provider, &row.ExecutorType, &row.Model, &row.Alias, &row.APIKeyHash, &row.AuthID, &row.AuthIndex, &row.AuthType, &row.Source, &row.ReasoningEffort, &row.ServiceTier, &row.InputTokens, &row.OutputTokens, &row.ReasoningTokens, &row.CachedTokens, &row.CacheReadTokens, &row.CacheCreationTokens, &row.TotalTokens, &row.LatencyMS, &row.TTFTMS, &row.Failed, &row.FailStatus, &row.FailSummary); err != nil {
+		var correlationKey sql.NullString
+		if err := dbRows.Scan(&correlationKey, &row.ID, &row.TimestampMS, &row.Provider, &row.ExecutorType, &row.Model, &row.Alias, &row.ResponseModel, &row.APIKeyHash, &row.AuthID, &row.AuthIndex, &row.AuthType, &row.Source, &row.ReasoningEffort, &row.ServiceTier, &row.InputTokens, &row.OutputTokens, &row.ReasoningTokens, &row.CachedTokens, &row.CacheReadTokens, &row.CacheCreationTokens, &row.TotalTokens, &row.LatencyMS, &row.TTFTMS, &row.Failed, &row.FailStatus, &row.FailSummary, &row.ObservedResponseModel, &row.ResponseObservationPresent, &row.ResponseObservationAmbiguous, &row.ResponseUsageCount); err != nil {
 			return nil, err
 		}
 		candidates = append(candidates, row)
@@ -184,6 +199,9 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 	providerLookup := providerSnapshots(candidates)
 	results := make([]eventRow, 0, len(candidates))
 	for _, row := range candidates {
+		if s.responseObservationsSuppressed.Load() {
+			row.ResponseObservationAmbiguous = true
+		}
 		row.Provider = resolvedProvider(row, providerLookup)
 		if matches(row, request) && matchesSearch(row, search) {
 			results = append(results, row)
@@ -625,42 +643,48 @@ func requestProtocol(executorType string) string {
 
 func eventJSON(row eventRow, price Price) map[string]any {
 	hitTokens, inputTokens := cacheHitTotals(row)
+	response := resolveResponseModel(row.ResponseModel, row.ObservedResponseModel, row.ResponseObservationPresent, row.ResponseObservationAmbiguous, row.ResponseUsageCount, row.Failed != 0)
 	return map[string]any{
-		"id":                     row.ID,
-		"timestamp_ms":           row.TimestampMS,
-		"event_hash":             fmt.Sprint(row.ID),
-		"provider":               row.Provider,
-		"auth_provider_snapshot": row.Provider,
-		"auth_type":              row.AuthType,
-		"executor_type":          row.ExecutorType,
-		"protocol":               requestProtocol(row.ExecutorType),
-		"model":                  row.Model,
-		"alias":                  strings.TrimSpace(row.Alias),
-		"requested_model":        requestedModel(row),
-		"resolved_model":         row.Model,
-		"api_key_hash":           row.APIKeyHash,
-		"account_snapshot":       accountSnapshot(row),
-		"auth_index":             row.AuthIndex,
-		"auth_file_snapshot":     row.AuthID,
-		"source":                 sourceSnapshot(row),
-		"reasoning_effort":       row.ReasoningEffort,
-		"service_tier":           row.ServiceTier,
-		"input_tokens":           row.InputTokens,
-		"output_tokens":          row.OutputTokens,
-		"reasoning_tokens":       row.ReasoningTokens,
-		"cached_tokens":          row.CachedTokens,
-		"cache_read_tokens":      row.CacheReadTokens,
-		"cache_creation_tokens":  row.CacheCreationTokens,
-		"cache_hit_tokens":       hitTokens,
-		"cache_hit_input_tokens": inputTokens,
-		"cache_hit_rate":         cacheHitRate(hitTokens, inputTokens),
-		"total_tokens":           row.TotalTokens,
-		"latency_ms":             row.LatencyMS.Int64,
-		"ttft_ms":                row.TTFTMS.Int64,
-		"failed":                 row.Failed != 0,
-		"fail_status_code":       row.FailStatus.Int64,
-		"fail_summary":           row.FailSummary.String,
-		"cost":                   cost(row, price),
+		"id":                      row.ID,
+		"timestamp_ms":            row.TimestampMS,
+		"event_hash":              fmt.Sprint(row.ID),
+		"provider":                row.Provider,
+		"auth_provider_snapshot":  row.Provider,
+		"auth_type":               row.AuthType,
+		"executor_type":           row.ExecutorType,
+		"protocol":                requestProtocol(row.ExecutorType),
+		"model":                   row.Model,
+		"alias":                   strings.TrimSpace(row.Alias),
+		"requested_model":         requestedModel(row),
+		"resolved_model":          row.Model,
+		"response_model":          response.Model,
+		"host_response_model":     response.Host,
+		"observed_response_model": response.Observed,
+		"response_model_source":   response.Source,
+		"response_model_conflict": response.Conflict,
+		"api_key_hash":            row.APIKeyHash,
+		"account_snapshot":        accountSnapshot(row),
+		"auth_index":              row.AuthIndex,
+		"auth_file_snapshot":      row.AuthID,
+		"source":                  sourceSnapshot(row),
+		"reasoning_effort":        row.ReasoningEffort,
+		"service_tier":            row.ServiceTier,
+		"input_tokens":            row.InputTokens,
+		"output_tokens":           row.OutputTokens,
+		"reasoning_tokens":        row.ReasoningTokens,
+		"cached_tokens":           row.CachedTokens,
+		"cache_read_tokens":       row.CacheReadTokens,
+		"cache_creation_tokens":   row.CacheCreationTokens,
+		"cache_hit_tokens":        hitTokens,
+		"cache_hit_input_tokens":  inputTokens,
+		"cache_hit_rate":          cacheHitRate(hitTokens, inputTokens),
+		"total_tokens":            row.TotalTokens,
+		"latency_ms":              row.LatencyMS.Int64,
+		"ttft_ms":                 row.TTFTMS.Int64,
+		"failed":                  row.Failed != 0,
+		"fail_status_code":        row.FailStatus.Int64,
+		"fail_summary":            row.FailSummary.String,
+		"cost":                    cost(row, price),
 	}
 }
 func failureRows(rows []eventRow, prices map[string]Price) []map[string]any {

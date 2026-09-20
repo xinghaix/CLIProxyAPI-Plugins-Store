@@ -78,6 +78,27 @@ cd go && go mod tidy
 cd go && CGO_ENABLED=1 go build -buildmode=c-shared -o ../cpa-manager-plus-v<version>.dylib .
 ```
 
+## Event stream: upstream response model
+
+The model popup distinguishes the requested, actual billed, and upstream response models. The third row appears only when the response model is non-empty and differs from the billed model (exact comparison after trimming). This also enables the popup when requested and billed models are identical. Legacy events and identical models do not gain redundant hints; existing request mappings keep their behavior. Response identity does not affect pricing, cost calculation, model filters, or aggregation.
+
+### Dual sources and resolution
+
+- **Host report:** optional `ResponseModel` / `response_model` in raw `usage.handle`. The current local SDK lacks this field; capable hosts can provide it directly. Missing values are never inferred.
+- **Plugin observation:** read-only `response_before_translator`, `response_interceptor`, and `response_stream_interceptor` hooks. Capture the pre-translation model, bridge a preserved response-body ID to native request-ID response headers, then associate usage by credential plus exact native header identity. No queue consumption, request-log scraping, or response rewriting.
+- Explicit host values win. A reliable observation fills a missing host value; matching values are confirmed; disagreeing or ambiguous evidence is flagged. A conflict alone is neither a downgrade verdict nor a reason for red model-mismatch highlighting.
+- Event API fields: `response_model` (selected), `host_response_model`, `observed_response_model`, `response_model_source` (empty / `host` / `observer` / `confirmed`), and `response_model_conflict`. Both sources remain independently stored. Late observations enrich metadata without creating usage rows.
+
+### Coverage and conservative limits
+
+- Active observation currently covers verified **Antigravity/Gemini → OpenAI Chat, OpenAI Responses, Claude, Gemini** non-streaming HTTP and complete SSE paths. Synthetic Imagen identities are excluded; WebSocket observation is not enabled. Explicit host reports are not restricted to this allowlist.
+- Requires a native response `responseId`, matching original-request fingerprint, callback `selected_auth_id`, and a native per-attempt response header shared by usage and hooks (priority: `X-Request-ID`, `Request-ID`, `X-Goog-Request-ID`). The fingerprint only scopes an exact ID; it is never sufficient on its own. Body IDs are never assumed to equal header IDs.
+- Missing identifiers/models, unpreserved IDs, conflicting/multivalued headers, or multiple usage rows for one identity (including split billing) yield no uncertain observer attribution. Header presence and per-request uniqueness depend on the provider; not all live traffic is guaranteed to be collectable.
+- Caches are bounded to 4096 entries each, with a ten-minute inactivity window refreshed by active streams and at most 16 keys per response. Only hashes, model names and necessary state are retained; request/response bodies and plaintext credentials are not persisted.
+- Complete bounded JSON/SSE only: at most 1 MiB per body, 64 documents, depth 32; fragmented SSE is not reconstructed across callbacks. Parsing gaps revoke evidence for affected tracked scopes.
+- An ABI envelope above 8 MiB, malformed envelope, overflow of the 1024-observation queue, or persistence failure immediately suppresses derived metadata, quarantines it in the background and disables observation until runtime restart. Explicit host metadata, business responses, and billing remain unaffected. Health field `response_observer` exposes enabled, disabled_until_restart, callbacks, persisted, queue_depth, dropped, and last_error.
+- SQLite migrates automatically and tolerates either arrival order. Conflicts are durable and resolved dynamically at read time. Orphan observations retain at most seven days / 10000 entries; event-referenced evidence and quarantine survive cache expiry.
+
 ## URL structure
 
 | Feature | Path | Notes |
