@@ -489,5 +489,15 @@ jobs:
           for path in "${paths[@]}"; do
             url="https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@cdn/${path}"
             echo "purge $url"
-            curl -fsS "$url" || true
+            for attempt in 1 2 3; do
+              resp=$(curl -fsS "$url" || echo "")
+              echo "$resp"
+              if echo "$resp" | grep -Eq '"throttled"[[:space:]]*:[[:space:]]*true'; then
+                reset=$(echo "$resp" | grep -oE '"throttlingReset"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' || echo "75")
+                echo "purge throttled by jsDelivr; sleeping ${reset}s before retry (attempt ${attempt})..."
+                sleep "$reset"
+              else
+                break
+              fi
+            done
           done

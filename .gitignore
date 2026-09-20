@@ -1,4 +1,5 @@
 .idea/
+.claude/
 *.dylib
 *.so
 *.dll
