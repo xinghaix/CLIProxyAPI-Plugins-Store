@@ -98,7 +98,7 @@ const (
 // pluginVersion is the released plugin version. The build sets it with
 // -ldflags "-X main.pluginVersion=<version>" so a tag and the shipped library
 // can never disagree; the literal here is the development default.
-var pluginVersion = "0.1.0"
+var pluginVersion = "0.1.1"
 
 // pluginConfig is the plugins.configs.<pluginName> subtree owned by this plugin.
 type pluginConfig struct {

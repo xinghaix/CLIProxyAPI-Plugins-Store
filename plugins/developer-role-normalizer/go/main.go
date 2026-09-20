@@ -50,7 +50,7 @@ const (
 	defaultStrategy  = "role_to_system"
 )
 
-var pluginVersion = "0.3.8"
+var pluginVersion = "0.3.9"
 
 var activeConfig atomic.Value
 
