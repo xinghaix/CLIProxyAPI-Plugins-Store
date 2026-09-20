@@ -1,9 +1,9 @@
 module github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go
 
-go 1.26.0
+go 1.27.1
 
 require (
-	github.com/router-for-me/CLIProxyAPI/v7 v7.2.103
+	github.com/router-for-me/CLIProxyAPI/v7 v7.3.9
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.34.5
 )
@@ -19,5 +19,3 @@ require (
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.8.0 // indirect
 )
-
-replace github.com/router-for-me/CLIProxyAPI/v7 => ../../../../CLIProxyAPI

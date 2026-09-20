@@ -32,7 +32,7 @@ permissions:
   pull-requests: write
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27.1"
   NODE_VERSION: "22"
 
 jobs:
@@ -147,13 +147,6 @@ jobs:
       - name: Checkout plugin store
         uses: actions/checkout@v4
 
-      - name: Checkout CLIProxyAPI for replace directive
-        uses: actions/checkout@v4
-        with:
-          repository: router-for-me/CLIProxyAPI
-          path: CLIProxyAPI
-          ref: main
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -175,15 +168,10 @@ jobs:
           /c/msys64/usr/bin/pacman.exe -S --noconfirm --needed mingw-w64-clang-aarch64-toolchain
           echo "C:/msys64/clangarm64/bin" >> "$GITHUB_PATH"
 
-      - name: Update go.mod replace path
+      - name: Download pinned Go dependencies
         working-directory: plugins/${{ matrix.plugin_id }}/go
         shell: bash
-        run: |
-          WORKSPACE="${{ github.workspace }}"
-          WORKSPACE="${WORKSPACE//\\//}"
-          sed -i.bak "s|replace github.com/router-for-me/CLIProxyAPI/v7 => .*|replace github.com/router-for-me/CLIProxyAPI/v7 => ${WORKSPACE}/CLIProxyAPI|" go.mod
-          rm -f go.mod.bak
-          go mod tidy
+        run: go mod download
 
       - name: Build plugin web assets
         working-directory: plugins/${{ matrix.plugin_id }}
