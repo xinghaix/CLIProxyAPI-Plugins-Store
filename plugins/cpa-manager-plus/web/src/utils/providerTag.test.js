@@ -10,7 +10,19 @@ describe('providerChip', () => {
     expect(providerChip('antigravity', 'oauth')).toMatchObject({ tag: 'ANTIGRAVITY', chip: 'is-antigravity' });
     expect(providerChip('xai', 'oauth')).toMatchObject({ tag: 'XAI', chip: 'is-xai' });
     expect(providerChip('vertex', 'oauth')).toMatchObject({ tag: 'VERTEX', chip: 'is-vertex' });
+    expect(providerChip('devin', 'oauth')).toMatchObject({ tag: 'DEVIN', chip: 'is-devin' });
+    expect(providerChip('cursor', 'oauth')).toMatchObject({ tag: 'CURSOR', chip: 'is-cursor' });
+    expect(providerChip('kimi-code', 'oauth')).toMatchObject({ tag: 'KIMI-CODE', chip: 'is-kimi-code' });
+    expect(providerChip('kimi.ai', 'oauth')).toMatchObject({ tag: 'KIMI-CODE', chip: 'is-kimi-code' });
+    expect(providerChip('cursor-oauth', 'oauth')).toMatchObject({ tag: 'CURSOR', chip: 'is-cursor' });
+    expect(providerChip('meta', 'oauth')).toMatchObject({ tag: 'META', chip: 'is-meta' });
     expect(providerChip('gemini-cli', 'oauth')).toMatchObject({ tag: 'GEMINI', chip: 'is-gemini' });
+  });
+
+  it('keeps known OAuth providers on distinct capsule classes', () => {
+    const providers = ['xai', 'devin', 'cursor', 'kimi', 'kimi-code', 'meta', 'codex', 'claude', 'antigravity', 'vertex', 'gemini', 'gemini-interactions'];
+    const chips = providers.map(provider => providerChip(provider, 'oauth').chip);
+    expect(new Set(chips).size).toBe(providers.length);
   });
 
   it('maps official API providers without inventing a host name', () => {

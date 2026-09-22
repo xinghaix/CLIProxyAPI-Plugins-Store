@@ -5,10 +5,14 @@ const PROVIDERS = [
   { keys: ['antigravity'], kind: 'antigravity', tag: 'ANTIGRAVITY', chip: 'is-antigravity' },
   { keys: ['anthropic', 'claude'], kind: 'claude', tag: 'CLAUDE', chip: 'is-claude' },
   { keys: ['chatgpt', 'codex'], kind: 'codex', tag: 'CODEX', chip: 'is-codex' },
+  { keys: ['devin', 'devin-oauth'], kind: 'devin', tag: 'DEVIN', chip: 'is-devin' },
+  { keys: ['cursor', 'cursor-oauth'], kind: 'cursor', tag: 'CURSOR', chip: 'is-cursor' },
   { keys: ['vertex'], kind: 'vertex', tag: 'VERTEX', chip: 'is-vertex' },
-  { keys: ['kimi'], kind: 'kimi', tag: 'KIMI', chip: 'is-kimi' },
+  { keys: ['kimi-code', 'kimi-ai', 'kimi.ai', 'kimi-international'], kind: 'kimi-code', tag: 'KIMI-CODE', chip: 'is-kimi-code' },
+  { keys: ['kimi', 'kimi.com'], kind: 'kimi', tag: 'KIMI', chip: 'is-kimi' },
+  { keys: ['meta', 'muse', 'meta-oauth', 'muse-meta'], kind: 'meta', tag: 'META', chip: 'is-meta' },
   { keys: ['xai', 'grok'], kind: 'xai', tag: 'XAI', chip: 'is-xai' },
-  { keys: ['openai'], kind: 'openai', tag: 'OPENAI', chip: 'is-codex' },
+  { keys: ['openai'], kind: 'openai', tag: 'OPENAI', chip: 'is-openai' },
   { keys: ['azure'], kind: 'azure', tag: 'AZURE', chip: 'is-api' },
 ];
 

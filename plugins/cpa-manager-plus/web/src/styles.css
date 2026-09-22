@@ -853,21 +853,50 @@ pre {
   color: #163222;
   background: #cde8d1;
 }
+.provider-chip.is-devin {
+  --provider-border: #d4a72c;
+  color: #6b4a00;
+  background: #fff3bf;
+}
+.provider-chip.is-cursor {
+  --provider-border: #8a82d9;
+  color: #312e81;
+  background: #e9e7ff;
+}
 .provider-chip.is-api {
   --provider-border: #7aa4d4;
   color: #1e3a5f;
   background: #c5daf0;
+}
+.provider-chip.is-openai {
+  --provider-border: #a8a29e;
+  color: #292524;
+  background: #ede9e6;
 }
 .provider-chip.is-kimi {
   --provider-border: #27272a;
   color: #f4f4f5;
   background: #18181b;
 }
-.provider-chip.is-gemini,
-.provider-chip.is-interactions {
+.provider-chip.is-kimi-code {
+  --provider-border: #67c5b2;
+  color: #0f5148;
+  background: #d7f6ef;
+}
+.provider-chip.is-meta {
+  --provider-border: #5eead4;
+  color: #115e59;
+  background: #ccfbf1;
+}
+.provider-chip.is-gemini {
   --provider-border: #c4b5fd;
   color: #3b0764;
   background: #ead7ff;
+}
+.provider-chip.is-interactions {
+  --provider-border: #67e8f9;
+  color: #164e63;
+  background: #cffafe;
 }
 .provider-chip.is-claude {
   --provider-border: #fdba74;
@@ -875,9 +904,9 @@ pre {
   background: #ffedd5;
 }
 .provider-chip.is-antigravity {
-  --provider-border: #fb923c;
-  color: #9a3412;
-  background: #ffedd5;
+  --provider-border: #7dd3fc;
+  color: #0c4a6e;
+  background: #e0f2fe;
 }
 .provider-chip.is-vertex {
   --provider-border: #93c5fd;
