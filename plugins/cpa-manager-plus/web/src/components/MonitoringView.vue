@@ -120,7 +120,7 @@
                 v-if="row.hasModelDetails"
                 type="button"
                 class="event-model-route"
-                :class="{ 'has-response-mismatch': row.showResponseModel }"
+                :class="{ 'has-response-mismatch': row.responseModelMismatch }"
                 :aria-label="row.hints.model"
                 :aria-expanded="modelRouteTooltip.visible && modelRouteTooltip.row?.id === row.id"
                 :aria-describedby="modelRouteTooltip.visible && modelRouteTooltip.row?.id === row.id ? 'event-model-tooltip' : undefined"
@@ -456,7 +456,7 @@ import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.j
 import { requestProtocol, requestProtocolLabel } from '../utils/requestProtocol.js';
 import { buildUsageIOC } from '../utils/usageBreakdown.js';
 import { canApplySelectedFilter, rowIdentity } from '../utils/rowFilter.js';
-import { buildEventHints, buildModelMeta, formatCacheSub, formatCallsSub, formatTpsSub, hasModelRouteDetails, hasResponseModelConflict, hasResponseModelDifference, mappedModelName, requestedModelName, responseModelName, responseModelSource } from '../utils/eventStreamDisplay.js';
+import { buildEventHints, buildModelMeta, formatCacheSub, formatCallsSub, formatTpsSub, hasModelRouteDetails, hasResponseModelConflict, hasResponseModelDifference, hasResponseModelMismatch, mappedModelName, requestedModelName, responseModelName, responseModelSource } from '../utils/eventStreamDisplay.js';
 import {
   formatQuotaResetRelative as formatQuotaResetRelativeValue,
   formatQuotaStatusMessage,
@@ -1424,6 +1424,7 @@ function buildEventTableRow(row, groupMap) {
     responseModelSource: responseModelSource(row),
     responseModelConflict: hasResponseModelConflict(row),
     showResponseModel: hasResponseModelDifference(row),
+    responseModelMismatch: hasResponseModelMismatch(row),
     hasModelDetails: hasModelRouteDetails(row),
     intensity: row.reasoning_effort || row.service_tier || '-',
     intensityDisplay: String(row.reasoning_effort || '').trim() || EMPTY_VALUE,

@@ -49,21 +49,24 @@ describe('event model popup interactions', () => {
   });
 
   it.each([
-    ['billed', 'billed', undefined, false, false],
-    ['alias', 'billed', undefined, false, true],
-    ['alias', 'billed', '   ', false, true],
-    ['billed', 'billed', 'billed', false, false],
-    ['alias', 'billed', ' billed ', false, true],
-    ['billed', 'billed', 'upstream', true, true],
-    ['alias', 'billed', 'upstream', true, true],
-    ['alias', 'billed', 'alias', true, true],
-    ['billed', 'billed', 'billed-2026-01-01', true, true],
-    ['billed', 'billed', 'BILLED', true, true],
-  ])('highlights only response mismatches: requested=%s billed=%s response=%s', (requested, billed, response, highlight, popup) => {
+    ['billed', 'billed', undefined, false, false, false],
+    ['alias', 'billed', undefined, false, true, false],
+    ['alias', 'billed', '   ', false, true, false],
+    ['billed', 'billed', 'billed', false, false, false],
+    ['alias', 'billed', ' billed ', false, true, false],
+    ['billed', 'billed', 'upstream', true, true, true],
+    ['alias', 'billed', 'upstream', true, true, true],
+    ['alias', 'billed', 'alias', true, true, false],
+    ['billed', 'billed', 'billed-2026-01-01', true, true, false],
+    ['billed', 'billed', 'BILLED', true, true, false],
+    ['grok-4.7', 'grok-4.7', 'grok-4.7-build', true, true, false],
+    ['gemini-3.7-flash', 'gemini-3.7-flash-high', 'gemini-3.7-flash', true, true, false],
+  ])('keeps allowed response variants non-red: requested=%s billed=%s response=%s', (requested, billed, response, highlight, popup, mismatch) => {
     for (const failed of [false, true]) {
       const built = state.buildEventTableRow({ alias: requested, model: billed, response_model: response, failed }, new Map());
-      // The button's mismatch class and the popup's response row share this flag.
+      // The popup keeps every response difference visible, while red is reserved for unrelated models.
       expect(built.showResponseModel).toBe(highlight);
+      expect(built.responseModelMismatch).toBe(mismatch);
       expect(built.hasModelDetails).toBe(popup);
       expect(built.model).toBe(requested);
       expect(built.mappedModel).toBe(billed);

@@ -8,6 +8,7 @@ import {
   hasModelMapping,
   hasModelRouteDetails,
   hasResponseModelDifference,
+  hasResponseModelMismatch,
   hasResponseModelConflict,
   responseModelSource,
   responseModelName,
@@ -67,22 +68,25 @@ describe('dual-source response metadata', () => {
 
 describe('event stream response model visibility', () => {
   it.each([
-    // requested, billed, response, popup, response row
-    ['same', 'same', undefined, false, false],
-    ['same', 'same', '', false, false],
-    ['same', 'same', '   ', false, false],
-    ['same', 'same', 'same', false, false],
-    ['alias', 'billed', undefined, true, false],
-    ['alias', 'billed', 'billed', true, false],
-    ['alias', 'billed', ' billed ', true, false],
-    ['same', 'same', 'upstream', true, true],
-    ['alias', 'billed', 'upstream', true, true],
-    ['alias', 'billed', 'alias', true, true],
-  ])('requested=%s billed=%s response=%s', (requested, billed, response, popup, visible) => {
+    // requested, billed, response, popup, response row, red mismatch
+    ['same', 'same', undefined, false, false, false],
+    ['same', 'same', '', false, false, false],
+    ['same', 'same', '   ', false, false, false],
+    ['same', 'same', 'same', false, false, false],
+    ['alias', 'billed', undefined, true, false, false],
+    ['alias', 'billed', 'billed', true, false, false],
+    ['alias', 'billed', ' billed ', true, false, false],
+    ['same', 'same', 'upstream', true, true, true],
+    ['alias', 'billed', 'upstream', true, true, true],
+    ['alias', 'billed', 'alias', true, true, false],
+    ['grok-4.7', 'grok-4.7', 'grok-4.7-build', true, true, false],
+    ['gemini-3.7-flash', 'gemini-3.7-flash-high', 'gemini-3.7-flash', true, true, false],
+  ])('requested=%s billed=%s response=%s', (requested, billed, response, popup, visible, mismatch) => {
     const raw = { alias: requested, model: billed, response_model: response };
     const normalized = { model: requested, mappedModel: billed, responseModel: response };
     for (const row of [raw, normalized]) {
       expect(hasResponseModelDifference(row)).toBe(visible);
+      expect(hasResponseModelMismatch(row)).toBe(mismatch);
       expect(hasModelRouteDetails(row)).toBe(popup);
       expect(buildEventHints(row, t).model.includes('上游响应模型')).toBe(visible);
       expect(mappedModelName(row)).toBe(billed);

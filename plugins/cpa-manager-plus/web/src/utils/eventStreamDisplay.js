@@ -32,6 +32,23 @@ export function hasResponseModelDifference(row = {}) {
   return Boolean(response && billed && response !== billed);
 }
 
+function modelNamesContainEachOther(left, right) {
+  const a = String(left || '').trim().toLowerCase();
+  const b = String(right || '').trim().toLowerCase();
+  return Boolean(a && b && (a.includes(b) || b.includes(a)));
+}
+
+// A provider may decorate or normalize a model name while still referring to
+// the requested or routed model. Keep those expected variants non-red, but
+// retain the response row in the model route popup for visibility.
+export function hasResponseModelMismatch(row = {}) {
+  const response = responseModelName(row);
+  const requested = requestedModelName(row);
+  const billed = mappedModelName(row);
+  if (!response || !billed || response === billed) return false;
+  return !modelNamesContainEachOther(response, requested) && !modelNamesContainEachOther(response, billed);
+}
+
 export function hasResponseModelConflict(row = {}) {
   return (row.responseModelConflict ?? row.response_model_conflict) === true;
 }
