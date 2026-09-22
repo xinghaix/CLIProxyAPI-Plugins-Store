@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -93,29 +94,44 @@ func (w *Writer) LastError() string {
 	return value
 }
 
-// DecodeEvent accepts the SDK usage payload plus an optional plugin extension.
-// The current host SDK does not emit a response model. A supporting producer must
-// capture it from the upstream response before any client-facing model rewrite.
-// ResponseModel takes precedence over response_model when non-null; neither is
-// inferred from Model, Alias, or headers. Metadata does not change event identity.
+// DecodeEvent accepts the SDK usage payload plus our backward-compatible
+// response_model extension. CPA's official UsageRecord.ResponseModel is the
+// primary source; the reflection fallback keeps direct typed calls compatible
+// with both old and new pluginapi versions without a compile-time field access.
+// If the official value is unavailable, responseModel/response_model are accepted
+// as legacy producer extensions. Nothing is inferred from Model, Alias, or headers.
+// Response metadata never changes event identity or billing fields.
 func DecodeEvent(raw []byte) (store.Event, error) {
 	var payload struct {
 		pluginapi.UsageRecord
-		ResponseModel      *string
-		ResponseModelSnake *string `json:"response_model"`
+		OfficialResponseModel *string `json:"ResponseModel"`
+		CamelResponseModel    *string `json:"responseModel"`
+		SnakeResponseModel    *string `json:"response_model"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return store.Event{}, err
 	}
 	event := ToEvent(payload.UsageRecord)
-	responseModel := payload.ResponseModel
-	if responseModel == nil {
-		responseModel = payload.ResponseModelSnake
-	}
-	if responseModel != nil {
-		event.ResponseModel = strings.TrimSpace(*responseModel)
+	for _, candidate := range []*string{payload.OfficialResponseModel, payload.CamelResponseModel, payload.SnakeResponseModel} {
+		if candidate == nil {
+			continue
+		}
+		if value := strings.TrimSpace(*candidate); value != "" {
+			event.ResponseModel = value
+			break
+		}
 	}
 	return event, nil
+}
+
+// typedResponseModel reads the official field when this plugin is built against
+// a newer CPA SDK, while remaining source-compatible with older SDK structs.
+func typedResponseModel(record pluginapi.UsageRecord) string {
+	field := reflect.ValueOf(record).FieldByName("ResponseModel")
+	if field.IsValid() && field.Kind() == reflect.String {
+		return strings.TrimSpace(field.String())
+	}
+	return ""
 }
 
 func ToEvent(record pluginapi.UsageRecord) store.Event {
@@ -134,6 +150,7 @@ func ToEvent(record pluginapi.UsageRecord) store.Event {
 		Provider:               strings.TrimSpace(record.Provider),
 		ExecutorType:           strings.TrimSpace(record.ExecutorType),
 		Model:                  model,
+		ResponseModel:          typedResponseModel(record),
 		Alias:                  strings.TrimSpace(record.Alias),
 		APIKeyHash:             digest(record.APIKey),
 		AuthID:                 strings.TrimSpace(record.AuthID),

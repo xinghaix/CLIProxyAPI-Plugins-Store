@@ -13,9 +13,10 @@ func TestDecodeEventResponseModel(t *testing.T) {
 		{"same as billed", ",\"ResponseModel\":\"billed\"", "billed"},
 		{"blank", ",\"ResponseModel\":\"  \"", ""},
 		{"null", ",\"ResponseModel\":null", ""},
-		{"precedence", ",\"ResponseModel\":\"preferred\",\"response_model\":\"fallback\"", "preferred"},
-		{"explicit blank wins", ",\"ResponseModel\":\" \",\"response_model\":\"fallback\"", ""},
-		{"null fallback", ",\"ResponseModel\":null,\"response_model\":\"fallback\"", "fallback"},
+		{"official beats legacy extensions", `,"ResponseModel":"official","responseModel":"camel","response_model":"snake"`, "official"},
+		{"blank official prefers camel", `,"ResponseModel":" ","responseModel":"camel","response_model":"snake"`, "camel"},
+		{"blank official falls back", `,"ResponseModel":" ","response_model":"fallback"`, "fallback"},
+		{"null fallback", `,"ResponseModel":null,"response_model":"fallback"`, "fallback"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			base := `{"Model":" billed ","Alias":" requested ","RequestedAt":"2026-01-01T00:00:00Z","Detail":{"InputTokens":5,"OutputTokens":3},"ResponseHeaders":{"X-Model":["not-authoritative"]}`
@@ -38,7 +39,7 @@ func TestDecodeEventResponseModel(t *testing.T) {
 }
 
 func TestDecodeEventRejectsInvalidResponseModel(t *testing.T) {
-	for _, key := range []string{"ResponseModel", "response_model"} {
+	for _, key := range []string{"ResponseModel", "responseModel", "response_model"} {
 		for _, value := range []string{"42", "{}", "[]", "true"} {
 			if _, err := DecodeEvent([]byte(fmt.Sprintf(`{"Model":"billed",%q:%s}`, key, value))); err == nil {
 				t.Fatalf("accepted non-string %s=%s", key, value)
