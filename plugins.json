@@ -41,7 +41,7 @@
       "name": "Codex Window Keeper",
       "description": "Tracks each Codex OAuth account's actual quota windows and sends one pinned Responses message when observed exhausted windows recover; persists scheduler state in one SQLite database.",
       "author": "xinghaix",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "repository": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store",
       "logo": "https://cdn.jsdelivr.net/gh/xinghaix/CLIProxyAPI-Plugins-Store@main/plugins/codex-window-keeper/assets/logo.svg",
       "homepage": "https://github.com/xinghaix/CLIProxyAPI-Plugins-Store/tree/main/plugins/codex-window-keeper",
