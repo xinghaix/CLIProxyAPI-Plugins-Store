@@ -12,6 +12,10 @@ func Key(state State) string {
 }
 
 func Advance(prev []State, current []Window, now time.Time, skew time.Duration) Result {
+	return AdvanceWithMode(prev, current, now, skew, "auto")
+}
+
+func AdvanceWithMode(prev []State, current []Window, now time.Time, skew time.Duration, mode string) Result {
 	previous := map[string]State{}
 	for _, state := range prev {
 		previous[Key(state)] = state
@@ -19,7 +23,7 @@ func Advance(prev []State, current []Window, now time.Time, skew time.Duration) 
 	seen := map[string]bool{}
 	var states []State
 	for _, window := range current {
-		state := fromWindow(previous[windowKey(window)], window, now)
+		state := fromWindow(previous[windowKey(window)], window, now, mode)
 		states = append(states, state)
 		seen[Key(state)] = true
 	}
@@ -38,7 +42,8 @@ func Advance(prev []State, current []Window, now time.Time, skew time.Duration) 
 	blocked := 0
 	baseline := 0
 	fixed := 0
-	var latest time.Time
+	var latestBlocked time.Time
+	var nextRolling time.Time
 	for _, state := range states {
 		if !state.Gating || state.Absent {
 			continue
@@ -47,34 +52,52 @@ func Advance(prev []State, current []Window, now time.Time, skew time.Duration) 
 		switch state.Phase {
 		case PhaseBlocked:
 			blocked++
-			if state.EndsAt.After(latest) {
-				latest = state.EndsAt
+			if state.EndsAt.After(latestBlocked) {
+				latestBlocked = state.EndsAt
 			}
 		case PhaseBaseline:
 			baseline++
+			if !state.EndsAt.IsZero() && state.EndsAt.After(now) {
+				if nextRolling.IsZero() || state.EndsAt.Before(nextRolling) {
+					nextRolling = state.EndsAt
+				}
+			}
 		case PhaseDue:
 			due = append(due, state)
 		case PhaseFixed, PhaseInconclusive, PhaseStopped:
 			fixed++
+		case PhaseAnchored, PhaseClear:
+			if !state.EndsAt.IsZero() && state.EndsAt.After(now) {
+				if nextRolling.IsZero() || state.EndsAt.Before(nextRolling) {
+					nextRolling = state.EndsAt
+				}
+			}
 		}
 	}
+	alwaysRoll := (mode == "always" || mode == "rolling")
 	switch {
 	case gating == 0:
 		result.Action = ActionIdle
 	case blocked > 0:
 		result.Action = ActionWait
-		if !latest.IsZero() {
-			result.NotBefore = latest.Add(skew)
+		if !latestBlocked.IsZero() {
+			result.NotBefore = latestBlocked.Add(skew)
 		}
 	case len(due) > 0:
 		result.Action = ActionSend
 		result.Generation = Generation(due)
 	case fixed == gating:
 		result.Action = ActionFixed
-	case baseline == gating:
+	case baseline == gating && !alwaysRoll:
 		result.Action = ActionBaseline
+		if !nextRolling.IsZero() {
+			result.NotBefore = nextRolling.Add(skew)
+		}
 	default:
 		result.Action = ActionIdle
+		if alwaysRoll && !nextRolling.IsZero() {
+			result.NotBefore = nextRolling.Add(skew)
+		}
 	}
 	return result
 }
@@ -96,7 +119,7 @@ func Judge(beforeStart, beforeEnd, afterStart, afterEnd, completed time.Time, pe
 	return PhaseInconclusive
 }
 
-func fromWindow(prev State, window Window, now time.Time) State {
+func fromWindow(prev State, window Window, now time.Time, mode string) State {
 	state := State{
 		LimitID: window.LimitID, Slot: window.Slot, Kind: window.Kind, PeriodSeconds: window.PeriodSeconds,
 		StartsAt: window.StartsAt, EndsAt: window.EndsAt, TimeSource: window.TimeSource,
@@ -107,25 +130,35 @@ func fromWindow(prev State, window Window, now time.Time) State {
 	if !window.EndsAt.IsZero() && !window.EndsAt.After(now) {
 		blocked = false
 	}
+
+	alwaysRoll := (mode == "always" || mode == "rolling")
+	expiredRolling := alwaysRoll && !window.EndsAt.IsZero() && !window.EndsAt.After(now) &&
+		(window.UsedPercent > 0 || prev.SeenBlocked || prev.Phase == PhaseAnchored || prev.Phase == PhaseClear)
+
 	switch {
 	case blocked:
 		state.Phase = PhaseBlocked
 		state.SeenBlocked = true
 		state.LastBlockedEnd = window.EndsAt
+		state.Hypothesis = "" // Reset hypothesis on new block to ensure new exhaustion cycles can activate!
+	case prev.Phase == PhaseBlocked || prev.Phase == PhaseDue:
+		state.Phase = PhaseDue
+		state.SeenBlocked = true
+		state.Hypothesis = ""
+	case expiredRolling && prev.Phase != PhaseInconclusive && prev.Phase != PhaseStopped:
+		state.Phase = PhaseDue
+		state.SeenBlocked = true
+		state.Hypothesis = ""
 	case prev.Hypothesis == PhaseFixed:
 		state.Phase = PhaseFixed
 		state.Hypothesis = PhaseFixed
 	case prev.Phase == PhaseInconclusive || prev.Phase == PhaseStopped:
 		state.Phase = prev.Phase
 		state.Hypothesis = prev.Hypothesis
-	case prev.Phase == PhaseBlocked || prev.Phase == PhaseDue:
-		state.Phase = PhaseDue
-		state.SeenBlocked = true
-		state.Hypothesis = ""
 	case prev.Hypothesis == PhaseAnchored || prev.Phase == PhaseAnchored:
 		state.Phase = PhaseAnchored
 		state.Hypothesis = PhaseAnchored
-	case !prev.SeenBlocked:
+	case !prev.SeenBlocked && !alwaysRoll:
 		state.Phase = PhaseBaseline
 	default:
 		state.Phase = PhaseClear

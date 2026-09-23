@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -141,6 +142,7 @@ func (k *Keeper) Process(ctx context.Context, now time.Time) error {
 		known[ref.AuthID] = ref
 	}
 	poll := time.Duration(settings.PollSeconds) * time.Second
+	var runnable []AccountRef
 	for _, account := range accounts {
 		ref, ok := known[account.AuthID]
 		if !ok {
@@ -159,17 +161,54 @@ func (k *Keeper) Process(ctx context.Context, now time.Time) error {
 			_ = k.Store.SetNotBefore(ctx, ref.AuthID, now.Add(poll))
 			continue
 		}
-		if account.PauseReason != "" {
+		if account.PauseReason == "reauth" {
+			// Auto self-healing check every 15m
+			if !account.NotBefore.After(now) {
+				if probeErr := k.observe(ctx, ref, settings, now); probeErr == nil {
+					_ = k.Store.SetPause(ctx, ref.AuthID, "")
+					account.PauseReason = ""
+				} else {
+					_ = k.Store.SetNotBefore(ctx, ref.AuthID, now.Add(15*time.Minute))
+					continue
+				}
+			} else {
+				continue
+			}
+		} else if account.PauseReason != "" {
 			_ = k.Store.SetNotBefore(ctx, ref.AuthID, now.Add(poll))
 			continue
 		}
 		if account.NotBefore.After(now) {
 			continue
 		}
-		if err := k.processOne(ctx, ref, settings, now); err != nil {
-			return err
-		}
+		runnable = append(runnable, ref)
 	}
+
+	if len(runnable) == 0 {
+		return nil
+	}
+
+	maxWorkers := settings.MaxConcurrentSends
+	if maxWorkers <= 0 {
+		maxWorkers = 4
+	}
+	if maxWorkers > len(runnable) {
+		maxWorkers = len(runnable)
+	}
+
+	sem := make(chan struct{}, maxWorkers)
+	var wg sync.WaitGroup
+	for _, r := range runnable {
+		targetRef := r
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			_ = k.processOne(ctx, targetRef, settings, now)
+		}()
+	}
+	wg.Wait()
 	return nil
 }
 
@@ -184,6 +223,22 @@ func (k *Keeper) Activate(ctx context.Context, authID string) error {
 	ref, err := k.ref(ctx, authID)
 	if err != nil {
 		return err
+	}
+	_ = k.observe(ctx, ref, settings, k.now())
+	states, err := k.Store.LoadWindows(ctx, authID)
+	if err == nil && len(states) > 0 {
+		hasDue := false
+		for i := range states {
+			if states[i].Gating && states[i].Phase != PhaseBlocked {
+				states[i].Phase = PhaseDue
+				states[i].SeenBlocked = true
+				states[i].Hypothesis = ""
+				hasDue = true
+			}
+		}
+		if hasDue {
+			_ = k.Store.SaveWindows(ctx, authID, states)
+		}
 	}
 	_ = k.Store.SetNotBefore(ctx, authID, k.now())
 	return k.processOne(ctx, ref, settings, k.now())
@@ -222,7 +277,8 @@ func (k *Keeper) processOne(ctx context.Context, ref AccountRef, settings Settin
 			return nil
 		}
 	}
-	if err := k.observe(ctx, ref, effective, now); err != nil {
+	result, err := k.observeAndAdvance(ctx, ref, effective, now)
+	if err != nil {
 		next := now.Add(time.Duration(settings.PollSeconds) * time.Second)
 		var statusErr interface{ StatusCode() int }
 		if errors.As(err, &statusErr) && statusErr.StatusCode() >= 500 {
@@ -230,25 +286,6 @@ func (k *Keeper) processOne(ctx context.Context, ref AccountRef, settings Settin
 		}
 		_ = k.Store.SetNotBefore(ctx, ref.AuthID, next)
 		return nil
-	}
-	states, err := k.Store.LoadWindows(ctx, ref.AuthID)
-	if err != nil {
-		return err
-	}
-	var current []Window
-	for _, state := range states {
-		if state.Absent {
-			continue
-		}
-		current = append(current, Window{
-			LimitID: state.LimitID, Slot: state.Slot, Kind: state.Kind, PeriodSeconds: state.PeriodSeconds,
-			UsedPercent: state.UsedPercent, LimitReached: state.Phase == PhaseBlocked, StartsAt: state.StartsAt,
-			EndsAt: state.EndsAt, TimeSource: state.TimeSource, Gating: state.Gating,
-		})
-	}
-	result := Advance(states, current, now, time.Duration(settings.SkewSeconds)*time.Second)
-	if err := k.Store.SaveWindows(ctx, ref.AuthID, result.States); err != nil {
-		return err
 	}
 	poll := time.Duration(settings.PollSeconds) * time.Second
 	next := now.Add(poll)
@@ -313,6 +350,13 @@ func (k *Keeper) processOne(ctx context.Context, ref AccountRef, settings Settin
 	for _, state := range result.States {
 		before[Key(state)] = state
 	}
+	if k.Now == nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(1500 * time.Millisecond):
+		}
+	}
 	observeErr := k.observe(ctx, ref, effective, now)
 	after, loadErr := k.Store.LoadWindows(ctx, ref.AuthID)
 	if loadErr != nil {
@@ -357,9 +401,14 @@ func stopGeneration(states []State) {
 }
 
 func (k *Keeper) observe(ctx context.Context, ref AccountRef, settings Settings, now time.Time) error {
+	_, err := k.observeAndAdvance(ctx, ref, settings, now)
+	return err
+}
+
+func (k *Keeper) observeAndAdvance(ctx context.Context, ref AccountRef, settings Settings, now time.Time) (Result, error) {
 	snap, err := k.Prober.Probe(ctx, ref)
 	if err != nil {
-		return err
+		return Result{}, err
 	}
 	windows := MarkOtherModels(snap.Windows, settings.Model)
 	windows = Select(windows, Options{
@@ -368,18 +417,21 @@ func (k *Keeper) observe(ctx context.Context, ref AccountRef, settings Settings,
 	})
 	prev, err := k.Store.LoadWindows(ctx, ref.AuthID)
 	if err != nil {
-		return err
+		return Result{}, err
 	}
-	advanced := Advance(prev, windows, now, time.Duration(settings.SkewSeconds)*time.Second)
+	advanced := AdvanceWithMode(prev, windows, now, time.Duration(settings.SkewSeconds)*time.Second, settings.WindowMode)
 	plan := snap.PlanType
 	if plan == "" {
 		plan = ref.Plan
 	}
 	group := Group(plan)
 	if err := k.Store.SetPlan(ctx, ref.AuthID, plan, group, Mismatch(group, windows)); err != nil {
-		return err
+		return Result{}, err
 	}
-	return k.Store.SaveWindows(ctx, ref.AuthID, advanced.States)
+	if err := k.Store.SaveWindows(ctx, ref.AuthID, advanced.States); err != nil {
+		return Result{}, err
+	}
+	return advanced, nil
 }
 
 func (k *Keeper) settings(ctx context.Context) (Settings, bool, error) {

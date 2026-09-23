@@ -820,6 +820,12 @@ export default {
       model: '模型',
       effort: '思考級別',
       serviceTier: '服務等級',
+      windowMode: '保活觸發模式',
+      windowModes: {
+        auto: '僅額度耗盡(100%)恢復後保活 (推薦)',
+        always: '窗口到期即翻新保活 (盡量刷滿額度)',
+        alwaysShort: '自動翻新',
+      },
       prompt: '提示詞',
       includeAdditional: '額外限額',
       additionalModes: {

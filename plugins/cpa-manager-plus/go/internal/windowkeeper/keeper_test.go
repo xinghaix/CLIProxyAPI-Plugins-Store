@@ -2,6 +2,7 @@ package windowkeeper
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -165,6 +166,23 @@ func (s *mockSender) Send(context.Context, AccountRef, Settings) (SendResult, er
 	return SendResult{OK: true, Status: 200, Excerpt: "OK", ResponseID: "resp"}, nil
 }
 
+type mockFnProber struct {
+	fn func(AccountRef) Snapshot
+}
+
+func (p *mockFnProber) Probe(_ context.Context, ref AccountRef) (Snapshot, error) {
+	return p.fn(ref), nil
+}
+
+type mockFnSender struct {
+	fn func()
+}
+
+func (s *mockFnSender) Send(context.Context, AccountRef, Settings) (SendResult, error) {
+	s.fn()
+	return SendResult{OK: true, Status: 200, Excerpt: "OK", ResponseID: "resp"}, nil
+}
+
 func TestKeeperProcessFlow(t *testing.T) {
 	ctx := context.Background()
 	store := newMockStore()
@@ -245,5 +263,74 @@ func TestSleepForSkipsDisabledAndPaused(t *testing.T) {
 	_ = store.TouchAccount(ctx, Account{AuthID: "act"})
 	if d := k.sleepFor(ctx); d != time.Second {
 		t.Fatalf("zero not_before sleep = %v, want 1s", d)
+	}
+}
+
+func TestProcessParallelAndErrorIsolation(t *testing.T) {
+	ctx := context.Background()
+	store := newMockStore()
+	store.settings.Enabled = true
+	store.settings.PollSeconds = 20
+	store.settings.SkewSeconds = 3
+	store.settings.MaxConcurrentSends = 4
+
+	now := time.Date(2026, 9, 23, 8, 0, 0, 0, time.UTC)
+	end := now.Add(time.Hour)
+
+	win := Window{
+		LimitID: "codex", Slot: "primary", Kind: KindFiveHour, PeriodSeconds: 18000,
+		UsedPercent: 100, LimitReached: true, EndsAt: end, StartsAt: end.Add(-5 * time.Hour),
+	}
+	clearedWin := win
+	clearedWin.LimitReached = false
+	clearedWin.UsedPercent = 0
+	clearedWin.StartsAt = end.Add(3 * time.Second)
+	clearedWin.EndsAt = clearedWin.StartsAt.Add(5 * time.Hour)
+
+	type funcProber struct {
+		fn func(AccountRef) Snapshot
+	}
+	isCleared := false
+	prober := &funcProber{fn: func(ref AccountRef) Snapshot {
+		if !isCleared {
+			return Snapshot{PlanType: "plus", Windows: []Window{win}}
+		}
+		return Snapshot{PlanType: "plus", Windows: []Window{clearedWin}}
+	}}
+	type syncSender struct {
+		mu    sync.Mutex
+		calls int
+	}
+	sender := &syncSender{}
+
+	k := &Keeper{
+		Store:   store,
+		Catalog: mockCatalog{refs: []AccountRef{
+			{AuthID: "acc1", Email: "acc1@example.com", Plan: "plus"},
+			{AuthID: "acc2", Email: "acc2@example.com", Plan: "plus"},
+		}},
+		Prober:  &mockFnProber{fn: prober.fn},
+		Sender:  &mockFnSender{fn: func() { sender.mu.Lock(); sender.calls++; sender.mu.Unlock() }},
+		Owner:   "test",
+		Now:     func() time.Time { return now },
+	}
+
+	// First pass sets up accounts in blocked state
+	if err := k.Process(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second pass at recovery time: windows are cleared
+	isCleared = true
+	k.Now = func() time.Time { return end.Add(3 * time.Second) }
+	if err := k.Process(ctx, end.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	sender.mu.Lock()
+	calls := sender.calls
+	sender.mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("expected both accounts to be sent in parallel, got %d calls", calls)
 	}
 }

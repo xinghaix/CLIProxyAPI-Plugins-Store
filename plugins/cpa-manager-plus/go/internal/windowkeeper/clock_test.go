@@ -110,3 +110,55 @@ func markState(states []State, hypothesis string) []State {
 	}
 	return states
 }
+
+func TestFixedHypothesisDoesNotDeadlockNewBlockCycle(t *testing.T) {
+	now := time.Date(2026, 9, 23, 8, 0, 0, 0, time.UTC)
+	blockedEnd := now.Add(time.Hour)
+	firstBlocked := Advance(nil, []Window{makeWindow(KindFiveHour, 18000, blockedEnd, true, true)}, now, 3*time.Second)
+	firstRecovered := Advance(firstBlocked.States, []Window{makeWindow(KindFiveHour, 18000, blockedEnd, false, true)}, blockedEnd.Add(3*time.Second), 3*time.Second)
+	if firstRecovered.Action != ActionSend {
+		t.Fatalf("firstRecovered action = %s, want send", firstRecovered.Action)
+	}
+
+	// Mark as PhaseFixed from previous cycle
+	for i := range firstRecovered.States {
+		firstRecovered.States[i].Phase = PhaseFixed
+		firstRecovered.States[i].Hypothesis = PhaseFixed
+	}
+
+	// A new cycle gets blocked later
+	newBlockEnd := blockedEnd.Add(6 * time.Hour)
+	secondBlocked := Advance(firstRecovered.States, []Window{makeWindow(KindFiveHour, 18000, newBlockEnd, true, true)}, blockedEnd.Add(time.Hour), 3*time.Second)
+	if secondBlocked.Action != ActionWait {
+		t.Fatalf("secondBlocked action = %s, want wait", secondBlocked.Action)
+	}
+
+	// New cycle expires: should transition to ActionSend and NOT be deadlocked by past PhaseFixed
+	secondRecovered := Advance(secondBlocked.States, []Window{makeWindow(KindFiveHour, 18000, newBlockEnd, false, true)}, newBlockEnd.Add(3*time.Second), 3*time.Second)
+	if secondRecovered.Action != ActionSend {
+		t.Fatalf("secondRecovered action = %s, want send after new block cycle", secondRecovered.Action)
+	}
+}
+
+func TestAdvanceAlwaysModeTriggersOnExpiredActiveWindow(t *testing.T) {
+	now := time.Date(2026, 9, 23, 8, 0, 0, 0, time.UTC)
+	end := now.Add(2 * time.Hour)
+	// Window had 60% usage, but was not 100% blocked
+	w := Window{
+		LimitID: "codex", Slot: "primary", Kind: KindFiveHour, PeriodSeconds: 18000,
+		EndsAt: end, StartsAt: end.Add(-5 * time.Hour), UsedPercent: 60, LimitReached: false, Gating: true,
+	}
+
+	// In auto mode, it should be baseline
+	autoRes := AdvanceWithMode(nil, []Window{w}, now, 3*time.Second, "auto")
+	if autoRes.Action != ActionBaseline {
+		t.Fatalf("autoRes action = %s, want baseline", autoRes.Action)
+	}
+
+	// In always mode, when window expires at end+3s, it should transition to ActionSend
+	expiredWindow := w
+	alwaysRes := AdvanceWithMode(autoRes.States, []Window{expiredWindow}, end.Add(3*time.Second), 3*time.Second, "always")
+	if alwaysRes.Action != ActionSend {
+		t.Fatalf("alwaysRes action = %s, want send", alwaysRes.Action)
+	}
+}

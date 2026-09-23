@@ -86,8 +86,11 @@ func NormalizeSettings(settings Settings) (Settings, error) {
 	}
 	if settings.WindowMode == "" {
 		settings.WindowMode = "auto"
-	} else if settings.WindowMode != "auto" {
-		return settings, fmt.Errorf("invalid window mode: %s (only auto supported)", settings.WindowMode)
+	}
+	switch settings.WindowMode {
+	case "auto", "blocked_only", "always", "rolling":
+	default:
+		return settings, fmt.Errorf("invalid window mode: %s", settings.WindowMode)
 	}
 	if settings.PollSeconds < 5 || settings.PollSeconds > 600 {
 		return settings, fmt.Errorf("poll interval must be 5 to 600 seconds")

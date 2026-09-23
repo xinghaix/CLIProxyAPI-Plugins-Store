@@ -944,6 +944,12 @@ export default {
       model: 'Model',
       effort: 'Reasoning Effort',
       serviceTier: 'Service Tier',
+      windowMode: 'Keep-alive Trigger Mode',
+      windowModes: {
+        auto: 'Only after exhausted (100% blocked, recommended)',
+        always: 'Whenever window expires (Always roll)',
+        alwaysShort: 'Auto-roll',
+      },
       prompt: 'Prompt',
       includeAdditional: 'Additional Limits',
       additionalModes: {

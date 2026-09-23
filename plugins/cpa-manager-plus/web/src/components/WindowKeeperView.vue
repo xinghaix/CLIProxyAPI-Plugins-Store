@@ -18,6 +18,7 @@
           <span class="muted small-text">
             {{ settings.model || 'gpt-5.4' }} · {{ settings.effort || 'low' }}
             <template v-if="settings.service_tier"> · {{ settings.service_tier }}</template>
+            <template v-if="settings.window_mode === 'always'"> · {{ t('windowKeeper.policy.windowModes.alwaysShort') }}</template>
           </span>
         </div>
         <div class="config-actions-bar" style="padding:0">
@@ -41,6 +42,13 @@
             <span class="config-field-label">{{ t('windowKeeper.policy.effort') }}</span>
             <select v-model="form.effort" class="control">
               <option v-for="opt in ['minimal', 'low', 'medium', 'high', 'xhigh']" :key="opt" :value="opt">{{ opt }}</option>
+            </select>
+          </label>
+          <label class="config-field">
+            <span class="config-field-label">{{ t('windowKeeper.policy.windowMode') }}</span>
+            <select v-model="form.window_mode" class="control">
+              <option value="auto">{{ t('windowKeeper.policy.windowModes.auto') }}</option>
+              <option value="always">{{ t('windowKeeper.policy.windowModes.always') }}</option>
             </select>
           </label>
           <label class="config-field">
@@ -274,6 +282,7 @@ const settings = reactive({
   enabled: false,
   model: 'gpt-5.4',
   effort: 'low',
+  window_mode: 'auto',
   service_tier: '',
   prompt: 'Reply with exactly OK.',
   include_additional: 'fill_gaps',
@@ -284,6 +293,7 @@ const settings = reactive({
 const form = reactive({
   model: 'gpt-5.4',
   effort: 'low',
+  window_mode: 'auto',
   service_tier: '',
   prompt: 'Reply with exactly OK.',
   include_additional: 'fill_gaps',

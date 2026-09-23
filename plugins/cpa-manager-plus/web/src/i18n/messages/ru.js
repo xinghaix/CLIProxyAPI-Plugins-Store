@@ -820,6 +820,12 @@ export default {
       model: 'Модель',
       effort: 'Уровень рассуждений',
       serviceTier: 'Уровень сервиса',
+      windowMode: 'Режим срабатывания',
+      windowModes: {
+        auto: 'Только при исчерпании лимита (100%)',
+        always: 'При каждом истечении окна (Всегда)',
+        alwaysShort: 'Авто-обновление',
+      },
       prompt: 'Промпт',
       includeAdditional: 'Дополнительные лимиты',
       additionalModes: {
