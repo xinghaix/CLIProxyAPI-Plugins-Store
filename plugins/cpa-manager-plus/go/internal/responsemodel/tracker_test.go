@@ -81,6 +81,37 @@ func TestCorrelationKey(t *testing.T) {
 		}
 	}
 }
+func TestActualServiceTierObservationAndStreamingConflict(t *testing.T) {
+	key := CorrelationKey("auth", http.Header{"X-Request-ID": {"response-tier"}})
+	tracker := New()
+	responseBody := response("openai", "response-tier", "response-tier")
+	responseBody.Body = []byte(`{"id":"response-tier","model":"gpt-5.6-sol","service_tier":"priority"}`)
+	observed := tracker.ObserveResponse(responseBody)
+	if len(observed) != 1 || observed[0].Key != key || observed[0].ServiceTier != "priority" || observed[0].ServiceTierAmbiguous {
+		t.Fatalf("actual tier was not captured: %+v", observed)
+	}
+
+	streamTracker := New()
+	stream := response("openai", "response-stream", "response-stream")
+	stream.Body = []byte(`{"id":"response-stream","model":"gpt-5.6-sol"}`)
+	none(t, streamTracker.ObserveResponse(stream))
+	stream.Body = []byte(`{"id":"response-stream","model":"gpt-5.6-sol","service_tier":"default"}`)
+	observed = streamTracker.ObserveResponse(stream)
+	if len(observed) != 1 || observed[0].ServiceTier != "default" {
+		t.Fatalf("late stream tier was not emitted: %+v", observed)
+	}
+	stream.Body = []byte(`{"id":"response-stream","model":"gpt-5.6-sol","service_tier":"priority"}`)
+	observed = streamTracker.ObserveResponse(stream)
+	if len(observed) != 1 || !observed[0].ServiceTierAmbiguous || observed[0].ServiceTier != "" {
+		t.Fatalf("conflicting tiers were not quarantined: %+v", observed)
+	}
+
+	unknownTracker := New()
+	unknown := response("openai", "response-unknown", "response-unknown")
+	unknown.Body = []byte(`{"id":"response-unknown","service_tier":"made-up"}`)
+	none(t, unknownTracker.ObserveResponse(unknown))
+}
+
 func TestExactJoinsBothOrdersAndFormats(t *testing.T) {
 	for _, source := range []string{"gemini", "antigravity"} {
 		for _, format := range []string{"openai", "openai-response", "claude", "gemini"} {

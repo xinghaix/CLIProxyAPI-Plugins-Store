@@ -67,6 +67,10 @@
     <section v-if="!ready" class="notice">{{ t('monitoring.missingKey') }}</section>
 
     <MetricGrid :cards="summaryCards"/>
+    <div class="cost-estimate-note" role="note">
+      <span class="cost-estimate-note-icon" aria-hidden="true">≈</span>
+      <div><strong>{{ t('monitoring.costEstimate.apiEquivalent') }}</strong><span>{{ t('monitoring.costEstimate.subscriptionNote') }}</span><span>{{ t('monitoring.costEstimate.recalculated') }}</span></div>
+    </div>
 
     <div class="monitor-tabs card">
       <div class="monitor-tabs-list">
@@ -196,7 +200,11 @@
               <div class="muted small-text usage-breakdown">{{ row.usageText }}</div>
             </td>
             <td :title="row.hints.cost"><strong>{{ fmtCacheHitRate(row.cacheHitRate) }}</strong></td>
-            <td :title="row.hints.cost"><strong>{{ fmtMoney(row.cost) }}</strong></td>
+            <td class="event-cost-cell" :title="row.costTooltip">
+              <strong>{{ row.costText }}</strong>
+              <span class="cost-estimate-meta">{{ row.costMeta }}</span>
+              <span v-if="row.reasoningMeta" class="cost-reasoning-meta">{{ row.reasoningMeta }}</span>
+            </td>
           </tr>
           </tbody>
         </table>
@@ -284,7 +292,10 @@
             <td>{{ fmtInt(row.calls) }}</td>
             <td><strong :class="successRateClass(row.success_rate)">{{ fmtPct(row.success_rate) }}</strong></td>
             <td>{{ fmtCompact(row.total_tokens) }}</td>
-            <td>{{ fmtMoney(row.cost) }}</td>
+            <td :title="aggregateCostCoverage(row)">
+              <strong>{{ aggregateCostText(row) }}</strong>
+              <small v-if="Number(row.unpriced_calls || 0) > 0" class="cost-aggregate-meta">{{ t('monitoring.costEstimate.unpricedShort', {count: fmtInt(row.unpriced_calls)}) }}</small>
+            </td>
             <td>{{ fmtDuration(row.average_latency_ms) }}</td>
             <td>{{ formatDateTime(row.last_seen_ms) }}</td>
             <td><button type="button" class="btn btn-xs" @click.stop="filterAccountAPIKey(row)">{{ t('monitoring.labels.filter') }}</button></td>
@@ -328,7 +339,7 @@
           </div>
         </div>
         <div class="auth-meta">
-          {{ fmtCompact(selectedAccount.total_tokens) }} tok · {{ fmtMoney(selectedAccount.cost) }} · {{ fmtDuration(selectedAccount.average_latency_ms) }} · {{ formatDateTime(selectedAccount.last_seen_ms) }}
+          {{ fmtCompact(selectedAccount.total_tokens) }} tok · {{ aggregateCostText(selectedAccount) }} · {{ fmtDuration(selectedAccount.average_latency_ms) }} · {{ formatDateTime(selectedAccount.last_seen_ms) }}
         </div>
         <div class="auth-file-meta">
           <span v-if="accountQuota.authMetadata?.authIndex" class="auth-file-meta-item"><b>{{ t('monitoring.authCard.authIndex') }}</b> {{ accountQuota.authMetadata.authIndex }}</span>
@@ -455,6 +466,7 @@ import { EMPTY_VALUE, formatDate, formatDateTime, formatInt, formatTime } from '
 import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
 import { requestProtocol, requestProtocolLabel } from '../utils/requestProtocol.js';
 import { buildUsageIOC } from '../utils/usageBreakdown.js';
+import { aggregateCostCoverage as formatAggregateCostCoverage, aggregateCostText as formatAggregateCostText, eventCostAmount as formatEventCostAmount, eventCostMeta as formatEventCostMeta, eventCostTooltip as formatEventCostTooltip, eventReasoningMeta as formatEventReasoningMeta } from '../utils/costEstimateDisplay.js';
 import { canApplySelectedFilter, rowIdentity } from '../utils/rowFilter.js';
 import { buildEventHints, buildModelMeta, formatCacheSub, formatCallsSub, formatTpsSub, hasModelRouteDetails, hasResponseModelConflict, hasResponseModelDifference, hasResponseModelMismatch, mappedModelName, requestedModelName, responseModelName, responseModelSource } from '../utils/eventStreamDisplay.js';
 import {
@@ -481,7 +493,6 @@ const API_KEY_AUTO_COLLAPSE_MS = 5000;
 const {t, locale} = useI18n();
 
 const data = ref(null);
-const modelPrices = ref({});
 const loading = ref(false);
 const error = ref('');
 const timeRange = ref('today');
@@ -520,7 +531,6 @@ const activeMonitorNote = computed(() => dataTabs.value.find((tab) => tab.key ==
 
 const summary = computed(() => data.value?.summary || {});
 const eventRows = computed(() => (data.value?.events?.items || []).map((row, idx) => ({...row, __id: idx})));
-const hasPrices = computed(() => Object.keys(modelPrices.value).length > 0);
 const summaryCards = computed(() => {
   const s = summary.value;
   const totalCacheTokens = Number(s.cached_tokens ?? 0) + Number(s.cache_read_tokens ?? 0) + Number(s.cache_creation_tokens ?? 0);
@@ -532,8 +542,8 @@ const summaryCards = computed(() => {
     {label: t('monitoring.kpi.failureTotal'), value: fmtInt(s.failure_calls), sub: t('monitoring.kpi.monitorGroupsSub', {count: failedGroupCount.value})},
     {
       label: t('monitoring.kpi.estimatedCost'),
-      value: hasPrices.value ? fmtMoney(s.total_cost) : '--',
-      sub: hasPrices.value ? t('monitoring.kpi.pricesConfigured') : t('monitoring.kpi.pricesMissing')
+      value: Number(s.priced_calls || 0) > 0 ? fmtMoney(s.total_cost) : EMPTY_VALUE,
+      sub: t('monitoring.costEstimate.coverage', {priced: fmtInt(s.priced_calls), unpriced: fmtInt(s.unpriced_calls)})
     },
     {label: t('monitoring.kpi.totalTokens'), value: fmtCompact(s.total_tokens), sub: t('monitoring.kpi.reasoningSub', {value: fmtCompact(s.reasoning_tokens)})},
     {label: t('monitoring.kpi.inputTokens'), value: fmtCompact(s.input_tokens), sub: t('monitoring.kpi.shareSub', {value: tokenMix(Number(s.input_tokens ?? 0))})},
@@ -586,9 +596,9 @@ const eventDetailCards = computed(() => selectedEvent.value ? [
   {label: t('monitoring.labels.status'), value: selectedEvent.value.failed ? t('monitoring.labels.failed') : t('monitoring.labels.success')},
   {label: t('monitoring.labels.token'), value: selectedEvent.value.total_tokens ?? 0},
   {label: t('monitoring.labels.latency'), value: fmtMs(selectedEvent.value.latency_ms)},
-  {label: t('monitoring.labels.cost'), value: fmtMoney(calculateEventCost(selectedEvent.value, modelPrices.value))},
+  {label: t('monitoring.labels.cost'), value: fmtMoney(eventCostAmount(selectedEvent.value)), sub: [t('monitoring.costEstimate.apiEquivalent'), eventCostMeta(selectedEvent.value), eventReasoningMeta(selectedEvent.value)].filter(Boolean).join(' · ')},
 ] : []);
-const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'alias', 'requested_model', 'resolved_model', 'response_model', 'host_response_model', 'observed_response_model', 'response_model_source', 'response_model_conflict', 'endpoint', 'method', 'path', 'protocol', 'executor_type', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'cache_input_mode', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
+const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'alias', 'requested_model', 'resolved_model', 'response_model', 'host_response_model', 'observed_response_model', 'response_model_source', 'response_model_conflict', 'endpoint', 'method', 'path', 'protocol', 'executor_type', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'cache_input_mode', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'reasoning_effort', 'service_tier', 'response_service_tier', 'cost_estimate', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
 const eventHeaderDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['header_quota_recover_at_ms', 'header_quota_used_percent', 'header_quota_plan_type', 'header_error_kind', 'header_error_code', 'header_trace_id'])) : {});
 
 watch(timeRange, () => {
@@ -654,28 +664,15 @@ async function refresh(force = false) {
   loading.value = true;
   error.value = '';
   try {
-    const [analyticsData, pricesData] = await Promise.all([
-      props.proxyCall({method: 'POST', path: '/v0/management/monitoring/analytics', body: buildAnalyticsRequest()}),
-      loadModelPrices(),
-    ]);
+    const analyticsData = await props.proxyCall({method: 'POST', path: '/v0/management/monitoring/analytics', body: buildAnalyticsRequest()});
     if (analyticsData && analyticsData.error) {
       error.value = String(analyticsData.error);
     }
     data.value = analyticsData;
-    modelPrices.value = pricesData;
   } catch (e) {
     error.value = e.message || String(e);
   } finally {
     loading.value = false;
-  }
-}
-
-async function loadModelPrices() {
-  try {
-    const resp = await props.proxyCall({method: 'GET', path: '/v0/management/model-prices'});
-    return resp?.prices || {};
-  } catch {
-    return {};
   }
 }
 
@@ -1444,7 +1441,10 @@ function buildEventTableRow(row, groupMap) {
     totalTokens: Number(row.total_tokens || 0),
     usageText: buildUsageText(row),
     cacheHitRate: computeCacheHitRate(row),
-    cost: calculateEventCost(row, modelPrices.value),
+    cost: eventCostAmount(row),
+    costMeta: eventCostMeta(row),
+    reasoningMeta: eventReasoningMeta(row),
+    costTooltip: eventCostTooltip(row),
     failStatusCode: numberOrNull(row.fail_status_code),
     failSummary: row.fail_summary || '',
   };
@@ -1452,6 +1452,7 @@ function buildEventTableRow(row, groupMap) {
   built.callsSub = formatCallsSub(fmtInt(built.totalCalls), t);
   built.tpsSub = formatTpsSub(fmtTps(built.tps), t);
   built.cacheSub = formatCacheSub(fmtCacheHitRate(built.cacheHitRate), t);
+  built.costText = fmtMoney(built.cost);
   built.hints = buildEventHints({
     ...built,
     successRateText: fmtPct(built.successRate),
@@ -1488,56 +1489,28 @@ function fmtCacheHitRate(value) {
   return formatCacheHitRate(value, fmtPct, EMPTY_VALUE);
 }
 
-const TOKENS_PER_PRICE_UNIT = 1000000;
-
-function calculateEventCost(row, prices) {
-  if (!prices || Object.keys(prices).length === 0) return null;
-  const model = row.resolved_model || row.model || '';
-  const price = prices[model] || prices[row.model || ''];
-  if (!price) return null;
-  const inputTokens = Math.max(Number(row.input_tokens || 0), 0);
-  const outputTokens = Math.max(Number(row.output_tokens || 0), 0);
-  const cachedTokens = Math.max(Number(row.cached_tokens || 0), 0);
-  const cacheReadTokens = Math.max(Number(row.cache_read_tokens || 0), 0);
-  const cacheCreationTokens = Math.max(Number(row.cache_creation_tokens || 0), 0);
-  const promptPrice = Number(price.prompt) || 0;
-  const completionPrice = Number(price.completion) || 0;
-  let standardCost = 0;
-  if (cacheReadTokens > 0 || cacheCreationTokens > 0) {
-    const cacheReadPrice = Number(price.cacheRead) || Number(price.cache) || 0;
-    const cacheCreationPrice = Number(price.cacheCreation) || promptPrice;
-    const promptTokens = Math.max(inputTokens - cachedTokens, 0);
-    standardCost =
-        (promptTokens / TOKENS_PER_PRICE_UNIT) * promptPrice +
-        (outputTokens / TOKENS_PER_PRICE_UNIT) * completionPrice +
-        (cachedTokens / TOKENS_PER_PRICE_UNIT) * (Number(price.cache) || 0) +
-        (cacheReadTokens / TOKENS_PER_PRICE_UNIT) * cacheReadPrice +
-        (cacheCreationTokens / TOKENS_PER_PRICE_UNIT) * cacheCreationPrice;
-  } else {
-    const promptTokens = Math.max(inputTokens - cachedTokens, 0);
-    standardCost =
-        (promptTokens / TOKENS_PER_PRICE_UNIT) * promptPrice +
-        (outputTokens / TOKENS_PER_PRICE_UNIT) * completionPrice +
-        (cachedTokens / TOKENS_PER_PRICE_UNIT) * (Number(price.cache) || 0);
-  }
-  const serviceTier = row.service_tier || '';
-  const multiplier = getServiceTierMultiplier(model || row.model, serviceTier);
-  const total = standardCost * multiplier;
-  return Number.isFinite(total) && total > 0 ? total : 0;
+function eventCostAmount(row) {
+  return formatEventCostAmount(row);
 }
 
-function getServiceTierMultiplier(model, tier) {
-  if (!tier) return 1;
-  const t = String(tier).trim().toLowerCase();
-  if (!t || t === 'default' || t === 'standard') return 1;
-  const m = String(model || '').toLowerCase();
-  if (t === 'priority') {
-    if (m.includes('gpt-5.5')) return 2.5;
-    if (m.includes('gpt-5.4-mini')) return 2;
-    if (m.includes('gpt-5.4')) return 2;
-    return 2;
-  }
-  return 1;
+function eventCostMeta(row) {
+  return formatEventCostMeta(row, t);
+}
+
+function eventReasoningMeta(row) {
+  return formatEventReasoningMeta(row, t, fmtCompact);
+}
+
+function eventCostTooltip(row) {
+  return formatEventCostTooltip(row, t, fmtCompact);
+}
+
+function aggregateCostCoverage(row) {
+  return formatAggregateCostCoverage(row, t, fmtInt);
+}
+
+function aggregateCostText(row) {
+  return formatAggregateCostText(row, fmtMoney, EMPTY_VALUE);
 }
 
 function pretty(v) {
@@ -1748,7 +1721,7 @@ function buildAccountDetail(row) {
     {label: t('monitoring.labels.requests'), value: fmtInt(row.calls)},
     {label: t('monitoring.labels.successRate'), value: fmtPct(row.success_rate)},
     {label: t('monitoring.labels.token'), value: fmtCompact(row.total_tokens)},
-    {label: t('monitoring.labels.cost'), value: fmtMoney(row.cost)},
+    {label: t('monitoring.labels.cost'), value: aggregateCostText(row)},
     {label: t('monitoring.labels.latency'), value: fmtMs(row.average_latency_ms)},
     {
       label: t('monitoring.labels.lastSeen'),
@@ -1789,7 +1762,15 @@ function renderCell(v, type, row) {
     ]);
   }
   if (type === 'pct') return fmtPct(v);
-  if (type === 'money') return fmtMoney(v);
+  if (type === 'money') {
+    const pricedCalls = Number(row?.priced_calls || 0);
+    const unpricedCalls = Number(row?.unpriced_calls || 0);
+    const title = `${t('monitoring.costEstimate.apiEquivalent')} · ${aggregateCostCoverage(row)} · ${t('monitoring.costEstimate.subscriptionNote')}`;
+    return h('span', {class: 'cost-aggregate-cell', title}, [
+      h('strong', pricedCalls > 0 ? fmtMoney(v) : EMPTY_VALUE),
+      unpricedCalls > 0 ? h('small', {class: 'cost-aggregate-meta'}, t('monitoring.costEstimate.unpricedShort', {count: fmtInt(unpricedCalls)})) : null,
+    ]);
+  }
   if (type === 'ms') return fmtMs(v);
   if (type === 'time') return formatDateTime(v);
   if (type === 'int') return fmtInt(v);

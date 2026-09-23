@@ -10,20 +10,45 @@ import (
 const responseObservationTTL = 7 * 24 * time.Hour
 const maxOrphanResponseObservations = 10_000
 
+type responseObservationColumn struct {
+	name, definition string
+	migrate          bool
+}
+
+func responseObservationColumns() []responseObservationColumn {
+	return []responseObservationColumn{
+		{name: "correlation_key", definition: "text primary key"},
+		{name: "model", definition: "text not null"},
+		{name: "evidence_id", definition: "text not null"},
+		{name: "service_tier", definition: "text not null default ''", migrate: true},
+		{name: "service_tier_ambiguous", definition: "integer not null default 0", migrate: true},
+		{name: "ambiguous", definition: "integer not null default 0"},
+		{name: "referenced", definition: "integer not null default 0"},
+		{name: "updated_at_ms", definition: "integer not null"},
+	}
+}
+
 func (s *Store) ensureResponseObservationSchema(ctx context.Context) error {
+	columns := responseObservationColumns()
+	definitions := make([]string, 0, len(columns))
+	for _, column := range columns {
+		definitions = append(definitions, column.name+" "+column.definition)
+	}
+	createTable := "create table if not exists response_observations (\n   " + strings.Join(definitions, ",\n   ") + "\n  )"
 	for _, statement := range []string{
 		`create index if not exists idx_usage_events_response_correlation on usage_events(response_correlation_key)`,
-		`create table if not exists response_observations (
-   correlation_key text primary key,
-   model text not null,
-   evidence_id text not null,
-   ambiguous integer not null default 0,
-   referenced integer not null default 0,
-   updated_at_ms integer not null
-  )`,
+		createTable,
 		`create index if not exists idx_response_observations_orphans on response_observations(updated_at_ms desc, correlation_key) where referenced = 0`,
 	} {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	for _, column := range columns {
+		if !column.migrate {
+			continue
+		}
+		if err := s.ensureResponseObservationColumn(ctx, column.name, column.definition); err != nil {
 			return err
 		}
 	}
@@ -35,36 +60,7 @@ func (s *Store) ensureResponseObservationSchema(ctx context.Context) error {
 // A second evidence identity or conflicting nonblank model permanently quarantines
 // the key. Replays cannot clear quarantine, including after a process restart.
 func (s *Store) RecordResponseObservation(ctx context.Context, key, model, evidenceID string, ambiguous bool) error {
-	key, model, evidenceID = strings.TrimSpace(key), strings.TrimSpace(model), strings.TrimSpace(evidenceID)
-	if key == "" {
-		return nil
-	}
-	// Missing evidence cannot safely establish a unique upstream response.
-	if evidenceID == "" {
-		ambiguous = true
-	}
-	now := time.Now().UnixMilli()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	ambiguous = ambiguous || s.responseObservationsSuppressed.Load()
-	_, err = tx.ExecContext(ctx, `insert into response_observations(correlation_key,model,evidence_id,ambiguous,updated_at_ms,referenced)
- values(?,?,?,?,?,exists(select 1 from usage_events where response_correlation_key=?)) on conflict(correlation_key) do update set
- ambiguous = response_observations.ambiguous or excluded.ambiguous
-  or response_observations.evidence_id <> excluded.evidence_id
-  or (response_observations.model <> '' and excluded.model <> '' and response_observations.model <> excluded.model),
- model = case when response_observations.model = '' then excluded.model else response_observations.model end,
- referenced = excluded.referenced,
- updated_at_ms = excluded.updated_at_ms`, key, model, evidenceID, boolInt(ambiguous), now, key)
-	if err != nil {
-		return err
-	}
-	if err := cleanupResponseObservations(ctx, tx, now); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return s.RecordResponseMetadata(ctx, ResponseMetadata{Key: key, Model: model, EvidenceID: evidenceID, Ambiguous: ambiguous})
 }
 
 // Only orphan metadata can expire or be evicted. In particular, quarantines still
@@ -128,6 +124,6 @@ func (s *Store) SuppressResponseObservations() {
 // delivery gap. Explicit host metadata and all usage/billing data remain untouched.
 func (s *Store) QuarantineResponseObservations(ctx context.Context) error {
 	s.SuppressResponseObservations()
-	_, err := s.db.ExecContext(ctx, `update response_observations set ambiguous=1 where ambiguous=0`)
+	_, err := s.db.ExecContext(ctx, `update response_observations set ambiguous=1,service_tier_ambiguous=1 where ambiguous=0 or service_tier_ambiguous=0`)
 	return err
 }

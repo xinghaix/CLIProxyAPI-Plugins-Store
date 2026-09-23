@@ -1,5 +1,6 @@
 // Package responsemodel joins verified upstream model evidence to native HTTP
-// request-header identities. It never changes responses or billing identities.
+// request-header identities. It never changes client responses or routed models.
+// OpenAI response tiers are reduced to allow-listed metadata for cost estimates.
 // Only Gemini/Antigravity -> Gemini, Claude, OpenAI Chat and Responses are
 // supported. Missing evidence, fragmented SSE, synthetic Imagen and unsupported
 // protocols fail closed. No universal WebSocket correlation is implied.
@@ -30,10 +31,12 @@ const (
 
 // Observation is evidence only. Ambiguous revokes any earlier evidence for Key.
 type Observation struct {
-	Key        string
-	Model      string
-	EvidenceID string
-	Ambiguous  bool
+	Key                  string
+	Model                string
+	EvidenceID           string
+	ServiceTier          string
+	ServiceTierAmbiguous bool
+	Ambiguous            bool
 }
 
 func digest(parts ...string) string {
@@ -83,10 +86,10 @@ func CorrelationKey(authID string, headers http.Header) string {
 }
 
 type entry struct {
-	evidence, model, scope string
-	ambiguous              bool
-	keys                   map[string]bool
-	expires                time.Time
+	evidence, model, scope, serviceTier string
+	ambiguous, serviceTierAmbiguous     bool
+	keys                                map[string]bool
+	expires                             time.Time
 }
 type bridge struct {
 	scope, key, identity, format, authHash, headerHash string
@@ -94,9 +97,9 @@ type bridge struct {
 	expires                                            time.Time
 }
 type keyState struct {
-	identity, emitted string
-	ambiguous         bool
-	expires           time.Time
+	identity, emitted, emittedTier string
+	ambiguous, tierAmbiguous       bool
+	expires                        time.Time
 }
 
 // Tracker is safe for concurrent use. New must be used to initialize it.
@@ -192,12 +195,15 @@ func (t *Tracker) touch(e *entry, now time.Time) {
 	}
 }
 func observations(e *entry) []Observation {
-	if e == nil || (!e.ambiguous && e.evidence == "") {
+	if e == nil || (!e.ambiguous && e.evidence == "" && e.serviceTier == "" && !e.serviceTierAmbiguous) {
 		return nil
 	}
 	out := make([]Observation, 0, len(e.keys))
 	for key := range e.keys {
-		out = append(out, Observation{Key: key, Model: e.model, EvidenceID: e.evidence, Ambiguous: e.ambiguous})
+		out = append(out, Observation{
+			Key: key, Model: e.model, EvidenceID: e.evidence, Ambiguous: e.ambiguous,
+			ServiceTier: e.serviceTier, ServiceTierAmbiguous: e.serviceTierAmbiguous || e.ambiguous,
+		})
 	}
 	return out
 }
@@ -458,6 +464,7 @@ func (t *Tracker) observe(requestID, format string, original []byte, headers htt
 			if e == nil {
 				continue
 			}
+			mergeActualServiceTier(e, actualServiceTier(doc, format))
 			if b != nil {
 				if b.ambiguous {
 					e.ambiguous = true
@@ -494,52 +501,101 @@ func (t *Tracker) observe(requestID, format string, original []byte, headers htt
 }
 
 // publish coalesces a callback before emission, so a conflict in its final
-// frame cannot emit an earlier positive result. Revocations are sticky and
-// each key emits at most one positive observation and one revocation per TTL.
+// frame cannot emit an earlier positive result. Revocations are sticky; a key
+// can emit a later actual-tier update and at most one revocation per TTL.
 func (t *Tracker) publish(in []Observation) []Observation {
 	merged := make(map[string]Observation)
-	for _, o := range in {
-		if o.Key != "" {
-			old, ok := merged[o.Key]
-			if !ok || !old.Ambiguous {
-				merged[o.Key] = o
-			}
+	for _, observation := range in {
+		if observation.Key == "" {
+			continue
 		}
+		current, ok := merged[observation.Key]
+		if !ok {
+			merged[observation.Key] = observation
+			continue
+		}
+		if current.Ambiguous || observation.Ambiguous {
+			current.Ambiguous = true
+			current.ServiceTier = ""
+			current.ServiceTierAmbiguous = true
+			merged[observation.Key] = current
+			continue
+		}
+		model, modelConflict := mergeText(current.Model, observation.Model)
+		evidence, evidenceConflict := mergeText(current.EvidenceID, observation.EvidenceID)
+		current.Model, current.EvidenceID = model, evidence
+		if modelConflict || evidenceConflict {
+			current.Ambiguous = true
+		}
+		if current.Ambiguous {
+			current.Model, current.EvidenceID = "", ""
+			current.ServiceTier, current.ServiceTierAmbiguous = "", true
+			merged[observation.Key] = current
+			continue
+		}
+		if current.ServiceTierAmbiguous || observation.ServiceTierAmbiguous {
+			current.ServiceTier, current.ServiceTierAmbiguous = "", true
+		} else {
+			tier, tierConflict := mergeText(current.ServiceTier, observation.ServiceTier)
+			current.ServiceTier = tier
+			current.ServiceTierAmbiguous = tierConflict
+		}
+		merged[observation.Key] = current
 	}
+
 	var out []Observation
-	for key, o := range merged {
-		k := t.keys[key]
-		if k == nil {
+	for key, observation := range merged {
+		state := t.keys[key]
+		if state == nil {
 			if len(t.keys) >= t.limit {
 				continue
 			}
-			k = &keyState{expires: t.now().Add(retention)}
-			t.keys[key] = k
+			state = &keyState{expires: t.now().Add(retention)}
+			t.keys[key] = state
 		}
-		if o.Ambiguous {
-			k.ambiguous = true
+		if observation.Ambiguous {
+			state.ambiguous = true
+			state.tierAmbiguous = true
 		}
-		if k.ambiguous {
-			o.Ambiguous = true
-			o.Model = ""
+		if observation.ServiceTierAmbiguous {
+			state.tierAmbiguous = true
 		}
-		signature := digest(o.Model, o.EvidenceID)
-		if o.Ambiguous {
+		if state.ambiguous {
+			observation.Ambiguous = true
+			observation.Model, observation.EvidenceID = "", ""
+			state.tierAmbiguous = true
+		}
+
+		signature := digest(observation.Model, observation.EvidenceID)
+		if observation.Ambiguous {
 			signature = "ambiguous"
-			o.EvidenceID = ""
 		}
-		if k.emitted == signature {
+		tierSignature := state.emittedTier
+		if state.tierAmbiguous {
+			tierSignature = "tier-ambiguous"
+			observation.ServiceTier, observation.ServiceTierAmbiguous = "", true
+		} else if observation.ServiceTier != "" {
+			if state.emittedTier != "" && state.emittedTier != observation.ServiceTier {
+				state.tierAmbiguous = true
+				tierSignature = "tier-ambiguous"
+				observation.ServiceTier, observation.ServiceTierAmbiguous = "", true
+			} else {
+				tierSignature = observation.ServiceTier
+			}
+		}
+		if state.emitted != "" && signature != "ambiguous" && state.emitted != signature {
+			state.ambiguous = true
+			state.tierAmbiguous = true
+			observation.Ambiguous = true
+			observation.Model, observation.EvidenceID = "", ""
+			observation.ServiceTier, observation.ServiceTierAmbiguous = "", true
+			signature, tierSignature = "ambiguous", "tier-ambiguous"
+		}
+		if state.emitted == signature && state.emittedTier == tierSignature {
 			continue
 		}
-		if k.emitted != "" && signature != "ambiguous" {
-			k.ambiguous = true
-			o.Ambiguous = true
-			o.Model = ""
-			o.EvidenceID = ""
-			signature = "ambiguous"
-		}
-		k.emitted = signature
-		out = append(out, o)
+		state.emitted, state.emittedTier = signature, tierSignature
+		out = append(out, observation)
 	}
 	return out
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/responsemodel"
+	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/store"
 )
 
 // Only evidence is queued: never response bodies, request payloads, or credentials.
@@ -101,7 +102,10 @@ func (r *Runtime) runResponseObserver(ctx context.Context) {
 			quarantine(writeCtx)
 			return
 		}
-		if err := r.store.RecordResponseObservation(writeCtx, evidence.Key, evidence.Model, evidence.EvidenceID, evidence.Ambiguous); err != nil {
+		if err := r.store.RecordResponseMetadata(writeCtx, store.ResponseMetadata{
+			Key: evidence.Key, Model: evidence.Model, ServiceTier: evidence.ServiceTier, EvidenceID: evidence.EvidenceID,
+			TierAmbiguous: evidence.ServiceTierAmbiguous, Ambiguous: evidence.Ambiguous,
+		}); err != nil {
 			o.lastError.Store(err.Error())
 			o.disabled.Store(true)
 			r.store.SuppressResponseObservations()

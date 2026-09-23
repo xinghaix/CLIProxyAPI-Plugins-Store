@@ -38,7 +38,8 @@ type AnalyticsRequest struct {
 
 type eventRow struct {
 	ObservedResponseModel                                                                                                              string
-	ResponseObservationPresent, ResponseObservationAmbiguous                                                                           bool
+	ResponseObservationPresent, ResponseObservationAmbiguous, ResponseTierAmbiguous                                                    bool
+	ObservedServiceTier                                                                                                                string
 	ResponseUsageCount                                                                                                                 int64
 	ID                                                                                                                                 int64
 	TimestampMS                                                                                                                        int64
@@ -175,7 +176,7 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 	 where response_correlation_key in (select response_correlation_key from selected)
 	 group by response_correlation_key
 	) select selected.*, coalesce(o.model,''), o.correlation_key is not null,
-	 coalesce(o.ambiguous,0), coalesce(m.usage_count,0)
+	 coalesce(o.ambiguous,0), coalesce(o.service_tier,''), coalesce(o.service_tier_ambiguous,0), coalesce(m.usage_count,0)
 	 from selected left join response_observations o on o.correlation_key=selected.response_correlation_key
 	 left join usage_matches m on m.response_correlation_key=selected.response_correlation_key
 	 order by selected.timestamp_ms desc`
@@ -188,7 +189,7 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 	for dbRows.Next() {
 		var row eventRow
 		var correlationKey sql.NullString
-		if err := dbRows.Scan(&correlationKey, &row.ID, &row.TimestampMS, &row.Provider, &row.ExecutorType, &row.Model, &row.Alias, &row.ResponseModel, &row.APIKeyHash, &row.AuthID, &row.AuthIndex, &row.AuthType, &row.Source, &row.ReasoningEffort, &row.ServiceTier, &row.InputTokens, &row.OutputTokens, &row.ReasoningTokens, &row.CachedTokens, &row.CacheReadTokens, &row.CacheCreationTokens, &row.TotalTokens, &row.LatencyMS, &row.TTFTMS, &row.Failed, &row.FailStatus, &row.FailSummary, &row.ObservedResponseModel, &row.ResponseObservationPresent, &row.ResponseObservationAmbiguous, &row.ResponseUsageCount); err != nil {
+		if err := dbRows.Scan(&correlationKey, &row.ID, &row.TimestampMS, &row.Provider, &row.ExecutorType, &row.Model, &row.Alias, &row.ResponseModel, &row.APIKeyHash, &row.AuthID, &row.AuthIndex, &row.AuthType, &row.Source, &row.ReasoningEffort, &row.ServiceTier, &row.InputTokens, &row.OutputTokens, &row.ReasoningTokens, &row.CachedTokens, &row.CacheReadTokens, &row.CacheCreationTokens, &row.TotalTokens, &row.LatencyMS, &row.TTFTMS, &row.Failed, &row.FailStatus, &row.FailSummary, &row.ObservedResponseModel, &row.ResponseObservationPresent, &row.ResponseObservationAmbiguous, &row.ObservedServiceTier, &row.ResponseTierAmbiguous, &row.ResponseUsageCount); err != nil {
 			return nil, err
 		}
 		candidates = append(candidates, row)
@@ -354,6 +355,7 @@ type stats struct {
 	Latency                                                                                     int64
 	LatencySamples                                                                              int64
 	Cost                                                                                        float64
+	PricedCalls, UnpricedCalls                                                                  int64
 	Last                                                                                        int64
 }
 
@@ -383,7 +385,7 @@ func (s *stats) add(row eventRow, price Price) {
 		s.Latency += row.LatencyMS.Int64
 		s.LatencySamples++
 	}
-	s.Cost += cost(row, price)
+	s.addEstimate(estimateEventCost(row, price))
 	if row.TimestampMS > s.Last {
 		s.Last = row.TimestampMS
 	}
@@ -397,7 +399,7 @@ func (s stats) json() map[string]any {
 	if s.LatencySamples > 0 {
 		avg = float64(s.Latency) / float64(s.LatencySamples)
 	}
-	return map[string]any{"calls": s.Calls, "total_calls": s.Calls, "success_calls": s.Success, "failure_calls": s.Failure, "success_rate": rate, "input_tokens": s.Input, "output_tokens": s.Output, "reasoning_tokens": s.Reasoning, "cached_tokens": s.Cached, "cache_read_tokens": s.CacheRead, "cache_creation_tokens": s.CacheCreation, "cache_hit_tokens": s.CacheHitTokens, "cache_hit_input_tokens": s.CacheHitInputTokens, "cache_hit_rate": cacheHitRate(s.CacheHitTokens, s.CacheHitInputTokens), "total_tokens": s.Tokens, "tokens": s.Tokens, "average_latency_ms": avg, "cost": s.Cost, "total_cost": s.Cost, "last_seen_ms": s.Last}
+	return map[string]any{"calls": s.Calls, "total_calls": s.Calls, "success_calls": s.Success, "failure_calls": s.Failure, "success_rate": rate, "input_tokens": s.Input, "output_tokens": s.Output, "reasoning_tokens": s.Reasoning, "cached_tokens": s.Cached, "cache_read_tokens": s.CacheRead, "cache_creation_tokens": s.CacheCreation, "cache_hit_tokens": s.CacheHitTokens, "cache_hit_input_tokens": s.CacheHitInputTokens, "cache_hit_rate": cacheHitRate(s.CacheHitTokens, s.CacheHitInputTokens), "total_tokens": s.Tokens, "tokens": s.Tokens, "average_latency_ms": avg, "cost": s.Cost, "total_cost": s.Cost, "cost_currency": "USD", "cost_basis": "openai_api_equivalent", "priced_calls": s.PricedCalls, "unpriced_calls": s.UnpricedCalls, "cost_complete": s.UnpricedCalls == 0, "last_seen_ms": s.Last}
 }
 func cacheHitTotals(row eventRow) (hitTokens, inputTokens int64) {
 	cached := max64(row.CachedTokens, 0)
@@ -420,9 +422,6 @@ func cacheHitRate(hitTokens, inputTokens int64) float64 {
 	return rate
 }
 
-func cost(row eventRow, price Price) float64 {
-	return (float64(max64(row.InputTokens-row.CachedTokens, 0))*price.Prompt + float64(row.OutputTokens)*price.Completion + float64(row.CachedTokens)*price.Cache + float64(row.CacheReadTokens)*price.CacheRead + float64(row.CacheCreationTokens)*price.CacheCreation) / 1_000_000
-}
 func max64(a, b int64) int64 {
 	if a > b {
 		return a
@@ -644,6 +643,7 @@ func requestProtocol(executorType string) string {
 func eventJSON(row eventRow, price Price) map[string]any {
 	hitTokens, inputTokens := cacheHitTotals(row)
 	response := resolveResponseModel(row.ResponseModel, row.ObservedResponseModel, row.ResponseObservationPresent, row.ResponseObservationAmbiguous, row.ResponseUsageCount, row.Failed != 0)
+	estimate := estimateEventCost(row, price)
 	return map[string]any{
 		"id":                      row.ID,
 		"timestamp_ms":            row.TimestampMS,
@@ -669,6 +669,7 @@ func eventJSON(row eventRow, price Price) map[string]any {
 		"source":                  sourceSnapshot(row),
 		"reasoning_effort":        row.ReasoningEffort,
 		"service_tier":            row.ServiceTier,
+		"response_service_tier":   displayedResponseTier(row),
 		"input_tokens":            row.InputTokens,
 		"output_tokens":           row.OutputTokens,
 		"reasoning_tokens":        row.ReasoningTokens,
@@ -684,7 +685,8 @@ func eventJSON(row eventRow, price Price) map[string]any {
 		"failed":                  row.Failed != 0,
 		"fail_status_code":        row.FailStatus.Int64,
 		"fail_summary":            row.FailSummary.String,
-		"cost":                    cost(row, price),
+		"cost":                    displayedCost(estimate),
+		"cost_estimate":           estimate,
 	}
 }
 func failureRows(rows []eventRow, prices map[string]Price) []map[string]any {

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"testing"
@@ -205,6 +206,103 @@ func TestResponseObservationMissingKeysAndFailedUsage(t *testing.T) {
 	assertResponseMetadata(t, items[0], "", "", "", "", false)
 	assertResponseMetadata(t, items[1], "", "", "", "", false)
 	assertResponseMetadata(t, items[2], "host", "host", "", "host", false)
+}
+
+func decodeCostEstimate(t *testing.T, item map[string]any) map[string]any {
+	t.Helper()
+	encoded, err := json.Marshal(item["cost_estimate"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var estimate map[string]any
+	if err := json.Unmarshal(encoded, &estimate); err != nil {
+		t.Fatal(err)
+	}
+	return estimate
+}
+
+func TestActualServiceTierPricingOverridesRequestAndConflictsFailClosed(t *testing.T) {
+	ctx := context.Background()
+	db := observationStore(t)
+	request := AnalyticsRequest{ToMS: 10, Limit: 10}
+	event := Event{Hash: "tiered", TimestampMS: 1, Model: "gpt-5.6-sol", ServiceTier: "fast", InputTokens: 100_000, TotalTokens: 100_000, ResponseCorrelationKey: "tier-key"}
+	if _, err := db.InsertEvents(ctx, []Event{event}); err != nil {
+		t.Fatal(err)
+	}
+	before := observationItems(t, db, request)[0]
+	requested := decodeCostEstimate(t, before)
+	if before["cost"] != float64(0.8) || requested["tier_source"] != "requested" || requested["service_tier"] != "fast" {
+		t.Fatalf("request Fast estimate mismatch: %#v", before)
+	}
+	if err := db.RecordResponseMetadata(ctx, ResponseMetadata{Key: "tier-key", ServiceTier: "default"}); err != nil {
+		t.Fatal(err)
+	}
+	after := observationItems(t, db, request)[0]
+	actual := decodeCostEstimate(t, after)
+	if after["cost"] != float64(0.4) || after["response_service_tier"] != "default" || actual["tier_source"] != "response" || actual["service_tier"] != "standard" {
+		t.Fatalf("actual Standard downgrade was not applied: %#v / %#v", after, actual)
+	}
+	result, err := db.Analytics(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := result["summary"].(map[string]any)
+	if summary["cost"] != float64(0.4) || summary["priced_calls"] != int64(1) || summary["unpriced_calls"] != int64(0) {
+		t.Fatalf("summary did not use the same estimator: %#v", summary)
+	}
+	if err := db.RecordResponseMetadata(ctx, ResponseMetadata{Key: "tier-key", ServiceTier: "priority"}); err != nil {
+		t.Fatal(err)
+	}
+	conflicted := observationItems(t, db, request)[0]
+	fallback := decodeCostEstimate(t, conflicted)
+	if conflicted["cost"] != float64(0.8) || conflicted["response_service_tier"] != "" || fallback["tier_source"] != "requested" || fallback["service_tier"] != "fast" {
+		t.Fatalf("conflicting observed tiers were trusted: %#v / %#v", conflicted, fallback)
+	}
+}
+
+func TestExistingObservationTableGainsTierColumns(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{"drop index if exists idx_response_observations_orphans", "drop table response_observations", "create table response_observations (correlation_key text primary key, model text not null, evidence_id text not null, ambiguous integer not null default 0, referenced integer not null default 0, updated_at_ms integer not null)"} {
+		if _, err := db.db.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err = Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	columns := map[string]bool{}
+	rows, err := db.db.QueryContext(ctx, "pragma table_info(response_observations)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		columns[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		t.Fatal(err)
+	}
+	rows.Close()
+	if !columns["service_tier"] || !columns["service_tier_ambiguous"] {
+		t.Fatalf("tier migration missing: %#v", columns)
+	}
 }
 
 func TestResponseObservationsLeaveBillingAndGroupsUnchanged(t *testing.T) {
