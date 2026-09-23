@@ -9,9 +9,8 @@
 | 插件 | 说明 |
 |------|------|
 | [developer-role-normalizer](plugins/developer-role-normalizer/) | 将不兼容上游里的 `developer` 消息角色转换为 `system`，主要面向 DeepSeek 等 OpenAI-compatible provider。 |
-| [cpa-manager-plus](plugins/cpa-manager-plus/) | 在 CPA 管理端提供 Manager Plus 风格的仪表盘、用量分析、请求监控、账号巡检与配置页，并反向代理到 Manager Server。 |
+| [cpa-manager-plus](plugins/cpa-manager-plus/) | 在 CPA 管理端提供 Manager Plus 风格的仪表盘、用量分析、请求监控、账号巡检、Codex 额度窗口保活与配置页，并在本地 Runtime 运行。 |
 | [codex-oauth-base-url](plugins/codex-oauth-base-url/) | 改写 Codex OAuth（ChatGPT 订阅账号）凭据的上游 base URL，让 Codex 账号指向自建或第三方上游，无需修改 CPA 源码。只影响推理请求；登录与 token 刷新仍走 `auth.openai.com` 固定地址。 |
-| [codex-window-keeper](plugins/codex-window-keeper/) | 按账号实际 usage 动态跟踪 Codex OAuth 额度窗口，在观测到耗尽窗口恢复后固定路由发送一条完整消息；使用本地 SQLite 持久化调度状态。 |
 | [cursor-oauth](plugins/cursor-oauth/) | 将用户授权的 Cursor 订阅账号接入 OpenAI 兼容的 `/v1/chat/completions` 接口，支持思考过程透传（`reasoning_content`）、纯文本约束注入、会话检查点复用与官方图标。 |
 
 ## 推荐安装入口
