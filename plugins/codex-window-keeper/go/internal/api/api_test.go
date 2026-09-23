@@ -57,4 +57,23 @@ func TestManagementConnectionAndResume(t *testing.T) {
 	if err := json.Unmarshal(body, &response); err != nil || response["ok"] != true {
 		t.Fatalf("response = %s, %v", body, err)
 	}
+	status, body = service.Handle(ctx, http.MethodPut, "/v0/management/codex-window-keeper/accounts/auth-1", []byte(`{"enabled":"off","model":"gpt-5.4-mini"}`))
+	if status != http.StatusOK {
+		t.Fatalf("put override status = %d: %s", status, body)
+	}
+	accounts, err = db.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 || !strings.Contains(accounts[0].OverrideJSON, "gpt-5.4-mini") {
+		t.Fatalf("override not saved: %+v", accounts)
+	}
+	if err := db.SetPause(ctx, "auth-1", "reauth"); err != nil {
+		t.Fatal(err)
+	}
+	status, body = service.Handle(ctx, http.MethodPost, "/v0/management/codex-window-keeper/accounts/auth-1/resume", nil)
+	if status != http.StatusOK {
+		t.Fatalf("parameterized resume status = %d: %s", status, body)
+	}
+	accounts, err = db.ListAccounts(ctx)
+	if err != nil || len(accounts) != 1 || accounts[0].PauseReason != "" {
+		t.Fatalf("accounts not resumed: %+v", accounts)
+	}
 }

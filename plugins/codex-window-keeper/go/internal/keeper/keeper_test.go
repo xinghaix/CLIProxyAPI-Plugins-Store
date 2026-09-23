@@ -91,3 +91,52 @@ func TestSendsOnceWhenWindowClearsAndSurvivesRestart(t *testing.T) {
 		t.Fatalf("restart sent again: %d", send.calls)
 	}
 }
+
+func TestSleepForSkipsDisabledAndPausedAccounts(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	db, err := store.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	settings := config.Default()
+	settings.Enabled = true
+	settings.PollSeconds = 30
+	if err := db.SaveSettings(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 23, 8, 0, 0, 0, time.UTC)
+	k := &Keeper{Store: db, Now: func() time.Time { return now }}
+	// No accounts: sleepFor returns poll interval
+	if d := k.sleepFor(ctx); d != 30*time.Second {
+		t.Fatalf("empty accounts sleep = %v", d)
+	}
+	// Disabled or paused accounts should not force a 1-second busy loop
+	if err := db.TouchAccount(ctx, store.Account{AuthID: "dis", Disabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.TouchAccount(ctx, store.Account{AuthID: "pau"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetPause(ctx, "pau", "reauth"); err != nil {
+		t.Fatal(err)
+	}
+	if d := k.sleepFor(ctx); d < 30*time.Second {
+		t.Fatalf("disabled/paused accounts caused busy sleep = %v", d)
+	}
+	// An active account with zero not_before should wake up immediately (1s)
+	if err := db.TouchAccount(ctx, store.Account{AuthID: "act"}); err != nil {
+		t.Fatal(err)
+	}
+	if d := k.sleepFor(ctx); d != time.Second {
+		t.Fatalf("active account with zero not_before sleep = %v, want 1s", d)
+	}
+	// Scheduled active account
+	if err := db.SetNotBefore(ctx, "act", now.Add(15*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if d := k.sleepFor(ctx); d != 15*time.Second {
+		t.Fatalf("scheduled active account sleep = %v, want 15s", d)
+	}
+}

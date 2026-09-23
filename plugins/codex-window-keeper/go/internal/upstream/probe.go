@@ -18,7 +18,7 @@ type StatusError struct{ Code int }
 func (e StatusError) Error() string   { return fmt.Sprintf("upstream status %d", e.Code) }
 func (e StatusError) StatusCode() int { return e.Code }
 
-func ProbeUsage(ctx context.Context, do Doer, baseURL, managementKey, authIndex, accountID string, now time.Time) (usage.Snapshot, error) {
+func ProbeUsage(ctx context.Context, do Doer, baseURL, managementKey, authIndex, accountID, userAgent string, now time.Time) (usage.Snapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return usage.Snapshot{}, err
 	}
@@ -28,7 +28,10 @@ func ProbeUsage(ctx context.Context, do Doer, baseURL, managementKey, authIndex,
 	if do == nil {
 		return usage.Snapshot{}, fmt.Errorf("http client is not configured")
 	}
-	header := map[string]string{"Authorization": "Bearer $TOKEN$", "Content-Type": "application/json", "User-Agent": "codex_cli_rs/0.76.0"}
+	if strings.TrimSpace(userAgent) == "" {
+		userAgent = "codex_cli_rs/0.76.0"
+	}
+	header := map[string]string{"Authorization": "Bearer $TOKEN$", "Content-Type": "application/json", "User-Agent": userAgent}
 	if strings.TrimSpace(accountID) != "" {
 		header["Chatgpt-Account-Id"] = accountID
 	}

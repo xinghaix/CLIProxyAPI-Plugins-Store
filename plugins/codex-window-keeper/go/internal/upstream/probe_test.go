@@ -39,7 +39,7 @@ func TestProbeUsageUsesCPARequestAndDecodesBodyVariants(t *testing.T) {
 					t.Fatalf("upstream header = %#v", request["header"])
 				}
 				return 200, []byte(tc.body), nil
-			}, "http://127.0.0.1:8317", "management-key", "idx-1", "acct-1", time.Date(2026, 9, 23, 0, 0, 0, 0, time.UTC))
+			}, "http://127.0.0.1:8317", "management-key", "idx-1", "acct-1", "codex_cli_rs/0.76.0", time.Date(2026, 9, 23, 0, 0, 0, 0, time.UTC))
 			if err != nil {
 				t.Fatal(err)
 			}

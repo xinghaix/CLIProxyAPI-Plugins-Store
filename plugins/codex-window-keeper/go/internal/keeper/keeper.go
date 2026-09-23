@@ -107,6 +107,13 @@ func (k *Keeper) sleepFor(ctx context.Context) time.Duration {
 	now := k.now()
 	wait := poll
 	for _, account := range accounts {
+		if account.Disabled || account.Unavailable || account.PauseReason != "" {
+			continue
+		}
+		override := decodeOverride(account.OverrideJSON)
+		if override.Enabled == "off" {
+			continue
+		}
 		if account.NotBefore.IsZero() {
 			return time.Second
 		}
@@ -148,9 +155,30 @@ func (k *Keeper) Process(ctx context.Context, now time.Time) error {
 	for _, ref := range refs {
 		known[ref.AuthID] = ref
 	}
+	poll := time.Duration(settings.PollSeconds) * time.Second
 	for _, account := range accounts {
 		ref, ok := known[account.AuthID]
-		if !ok || ref.Disabled || ref.Unavailable || ref.NextRetryAfter.After(now) || account.NotBefore.After(now) {
+		if !ok {
+			continue
+		}
+		if ref.Disabled || ref.Unavailable {
+			_ = k.Store.SetNotBefore(ctx, ref.AuthID, now.Add(poll))
+			continue
+		}
+		if ref.NextRetryAfter.After(now) {
+			_ = k.Store.SetNotBefore(ctx, ref.AuthID, ref.NextRetryAfter)
+			continue
+		}
+		override := decodeOverride(account.OverrideJSON)
+		if override.Enabled == "off" {
+			_ = k.Store.SetNotBefore(ctx, ref.AuthID, now.Add(poll))
+			continue
+		}
+		if account.PauseReason != "" {
+			_ = k.Store.SetNotBefore(ctx, ref.AuthID, now.Add(poll))
+			continue
+		}
+		if account.NotBefore.After(now) {
 			continue
 		}
 		if err := k.processOne(ctx, ref, settings, now); err != nil {

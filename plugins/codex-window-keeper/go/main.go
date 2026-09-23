@@ -353,17 +353,21 @@ func (hostProber) Probe(ctx context.Context, ref keeper.AccountRef) (usage.Snaps
 	if err != nil {
 		return usage.Snapshot{}, err
 	}
-	return upstream.ProbeUsage(ctx, hostDo, settings.BaseURL, key, ref.AuthIndex, ref.AccountID, time.Now().UTC())
+	return upstream.ProbeUsage(ctx, hostDo, settings.BaseURL, key, ref.AuthIndex, ref.AccountID, settings.UserAgent, time.Now().UTC())
 }
 
 type hostSender struct{}
 
 func (hostSender) Send(ctx context.Context, ref keeper.AccountRef, settings config.Settings) (keeper.SendResult, error) {
-	body, _ := json.Marshal(map[string]any{
+	requestBody := map[string]any{
 		"model": settings.Model, "store": false,
 		"input":     []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": settings.Prompt}}}},
 		"reasoning": map[string]any{"effort": settings.Effort},
-	})
+	}
+	if strings.TrimSpace(settings.ServiceTier) != "" {
+		requestBody["service_tier"] = strings.TrimSpace(settings.ServiceTier)
+	}
+	body, _ := json.Marshal(requestBody)
 	raw, err := callHost(pluginabi.MethodHostModelExecuteStream, pluginapi.HostModelExecutionRequest{
 		EntryProtocol: "openai-response", ExitProtocol: "codex", Model: settings.Model, Stream: true,
 		Body: body, ForcedProvider: "codex", AuthID: ref.AuthID,

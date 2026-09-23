@@ -9,7 +9,10 @@ type Settings struct {
 	Enabled               bool     `json:"enabled"`
 	Model                 string   `json:"model"`
 	Effort                string   `json:"effort"`
+	ServiceTier           string   `json:"service_tier"`
 	Prompt                string   `json:"prompt"`
+	UserAgent             string   `json:"user_agent"`
+	WindowMode            string   `json:"window_mode"`
 	Kinds                 []string `json:"kinds"`
 	IncludeCodeReview     bool     `json:"include_code_review"`
 	IncludeAdditional     string   `json:"include_additional"`
@@ -29,7 +32,10 @@ type File struct {
 	Enabled               *bool    `yaml:"enabled"`
 	Model                 string   `yaml:"model"`
 	ReasoningEffort       string   `yaml:"reasoning_effort"`
+	ServiceTier           string   `yaml:"service_tier"`
 	Prompt                string   `yaml:"prompt"`
+	UserAgent             string   `yaml:"user_agent"`
+	WindowMode            string   `yaml:"window_mode"`
 	WindowKinds           []string `yaml:"window_kinds"`
 	IncludeCodeReview     *bool    `yaml:"include_code_review"`
 	IncludeAdditional     string   `yaml:"include_additional"`
@@ -45,7 +51,8 @@ type File struct {
 
 func Default() Settings {
 	return Settings{
-		Model: "gpt-5.4", Effort: "low", Prompt: "Reply with exactly OK.",
+		Model: "gpt-5.4", Effort: "low", ServiceTier: "", Prompt: "Reply with exactly OK.",
+		UserAgent: "codex_cli_rs/0.76.0", WindowMode: "auto",
 		IncludeAdditional: "fill_gaps", PollSeconds: 20, SkewSeconds: 3,
 		MaxAttempts: 5, RetryBaseSeconds: 2, RetryMaxSeconds: 300,
 		RequestTimeoutSeconds: 90, MaxConcurrentSends: 1, MaxConcurrentProbes: 2,
@@ -64,8 +71,17 @@ func FromFile(file File) Settings {
 	if strings.TrimSpace(file.ReasoningEffort) != "" {
 		settings.Effort = strings.TrimSpace(file.ReasoningEffort)
 	}
+	if strings.TrimSpace(file.ServiceTier) != "" {
+		settings.ServiceTier = strings.TrimSpace(file.ServiceTier)
+	}
 	if strings.TrimSpace(file.Prompt) != "" {
 		settings.Prompt = file.Prompt
+	}
+	if strings.TrimSpace(file.UserAgent) != "" {
+		settings.UserAgent = strings.TrimSpace(file.UserAgent)
+	}
+	if strings.TrimSpace(file.WindowMode) != "" {
+		settings.WindowMode = strings.TrimSpace(file.WindowMode)
 	}
 	if file.WindowKinds != nil {
 		settings.Kinds = file.WindowKinds
@@ -94,7 +110,10 @@ func FromFile(file File) Settings {
 func Normalize(settings Settings) (Settings, error) {
 	settings.Model = strings.TrimSpace(settings.Model)
 	settings.Effort = strings.TrimSpace(settings.Effort)
+	settings.ServiceTier = strings.TrimSpace(settings.ServiceTier)
 	settings.Prompt = strings.TrimSpace(settings.Prompt)
+	settings.UserAgent = strings.TrimSpace(settings.UserAgent)
+	settings.WindowMode = strings.TrimSpace(settings.WindowMode)
 	settings.BaseURL = strings.TrimRight(strings.TrimSpace(settings.BaseURL), "/")
 	if settings.Model == "" {
 		return settings, fmt.Errorf("model is required")
@@ -104,8 +123,21 @@ func Normalize(settings Settings) (Settings, error) {
 	default:
 		return settings, fmt.Errorf("invalid reasoning effort")
 	}
+	switch settings.ServiceTier {
+	case "", "default", "standard", "flex":
+	default:
+		return settings, fmt.Errorf("invalid service tier: %s", settings.ServiceTier)
+	}
 	if settings.Prompt == "" || len([]rune(settings.Prompt)) > 500 {
 		return settings, fmt.Errorf("prompt must be 1 to 500 characters")
+	}
+	if settings.UserAgent == "" {
+		settings.UserAgent = "codex_cli_rs/0.76.0"
+	}
+	if settings.WindowMode == "" {
+		settings.WindowMode = "auto"
+	} else if settings.WindowMode != "auto" {
+		return settings, fmt.Errorf("invalid window mode: %s (only auto supported)", settings.WindowMode)
 	}
 	if settings.PollSeconds < 5 || settings.PollSeconds > 600 {
 		return settings, fmt.Errorf("poll interval must be 5 to 600 seconds")
@@ -113,8 +145,17 @@ func Normalize(settings Settings) (Settings, error) {
 	if settings.SkewSeconds < 0 || settings.SkewSeconds > 120 {
 		return settings, fmt.Errorf("skew must be 0 to 120 seconds")
 	}
+	if settings.RequestTimeoutSeconds < 15 || settings.RequestTimeoutSeconds > 300 {
+		return settings, fmt.Errorf("request timeout must be 15 to 300 seconds")
+	}
 	if settings.MaxAttempts < 1 || settings.MaxAttempts > 8 {
 		return settings, fmt.Errorf("max attempts must be 1 to 8")
+	}
+	if settings.RetryBaseSeconds < 1 || settings.RetryBaseSeconds > 60 {
+		return settings, fmt.Errorf("retry base must be 1 to 60 seconds")
+	}
+	if settings.RetryMaxSeconds < 10 || settings.RetryMaxSeconds > 3600 {
+		return settings, fmt.Errorf("retry max must be 10 to 3600 seconds")
 	}
 	switch settings.IncludeAdditional {
 	case "fill_gaps", "all", "none":

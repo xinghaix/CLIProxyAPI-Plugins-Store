@@ -32,13 +32,21 @@ func (s Service) Handle(ctx context.Context, method, path string, body []byte) (
 	case method == http.MethodGet && path == "/codex-window-keeper/accounts":
 		return s.accounts(ctx)
 	case method == http.MethodPut && path == "/codex-window-keeper/accounts/override":
-		return s.putOverride(ctx, body)
+		return s.putOverride(ctx, "", body)
+	case method == http.MethodPut && strings.HasPrefix(path, "/codex-window-keeper/accounts/") && !strings.Contains(strings.TrimPrefix(path, "/codex-window-keeper/accounts/"), "/"):
+		return s.putOverride(ctx, strings.TrimPrefix(path, "/codex-window-keeper/accounts/"), body)
 	case method == http.MethodPost && path == "/codex-window-keeper/accounts/probe":
-		return s.act(ctx, body, false)
+		return s.act(ctx, "", body, false)
+	case method == http.MethodPost && strings.HasPrefix(path, "/codex-window-keeper/accounts/") && strings.HasSuffix(path, "/probe"):
+		return s.act(ctx, strings.TrimSuffix(strings.TrimPrefix(path, "/codex-window-keeper/accounts/"), "/probe"), body, false)
 	case method == http.MethodPost && path == "/codex-window-keeper/accounts/activate":
-		return s.act(ctx, body, true)
+		return s.act(ctx, "", body, true)
+	case method == http.MethodPost && strings.HasPrefix(path, "/codex-window-keeper/accounts/") && strings.HasSuffix(path, "/activate"):
+		return s.act(ctx, strings.TrimSuffix(strings.TrimPrefix(path, "/codex-window-keeper/accounts/"), "/activate"), body, true)
 	case method == http.MethodPost && path == "/codex-window-keeper/accounts/resume":
-		return s.resume(ctx, body)
+		return s.resume(ctx, "", body)
+	case method == http.MethodPost && strings.HasPrefix(path, "/codex-window-keeper/accounts/") && strings.HasSuffix(path, "/resume"):
+		return s.resume(ctx, strings.TrimSuffix(strings.TrimPrefix(path, "/codex-window-keeper/accounts/"), "/resume"), body)
 	case method == http.MethodGet && path == "/codex-window-keeper/attempts":
 		return s.attempts(ctx)
 	default:
@@ -133,13 +141,19 @@ func (s Service) accounts(ctx context.Context) (int, []byte) {
 	return jsonStatus(http.StatusOK, map[string]any{"accounts": out})
 }
 
-func (s Service) putOverride(ctx context.Context, body []byte) (int, []byte) {
+func (s Service) putOverride(ctx context.Context, pathAuthID string, body []byte) (int, []byte) {
 	var request struct {
 		AuthID  string `json:"auth_id"`
 		Enabled string `json:"enabled"`
 		Model   string `json:"model"`
 	}
-	if err := json.Unmarshal(body, &request); err != nil || strings.TrimSpace(request.AuthID) == "" {
+	if len(body) > 0 {
+		_ = json.Unmarshal(body, &request)
+	}
+	if strings.TrimSpace(request.AuthID) == "" {
+		request.AuthID = pathAuthID
+	}
+	if strings.TrimSpace(request.AuthID) == "" {
 		return jsonStatus(http.StatusBadRequest, map[string]any{"error": "auth_id is required"})
 	}
 	switch request.Enabled {
@@ -158,11 +172,17 @@ func (s Service) putOverride(ctx context.Context, body []byte) (int, []byte) {
 	return jsonStatus(http.StatusOK, map[string]any{"ok": true})
 }
 
-func (s Service) act(ctx context.Context, body []byte, activate bool) (int, []byte) {
+func (s Service) act(ctx context.Context, pathAuthID string, body []byte, activate bool) (int, []byte) {
 	var request struct {
 		AuthID string `json:"auth_id"`
 	}
-	if err := json.Unmarshal(body, &request); err != nil || strings.TrimSpace(request.AuthID) == "" {
+	if len(body) > 0 {
+		_ = json.Unmarshal(body, &request)
+	}
+	if strings.TrimSpace(request.AuthID) == "" {
+		request.AuthID = pathAuthID
+	}
+	if strings.TrimSpace(request.AuthID) == "" {
 		return jsonStatus(http.StatusBadRequest, map[string]any{"error": "auth_id is required"})
 	}
 	var err error
@@ -177,11 +197,17 @@ func (s Service) act(ctx context.Context, body []byte, activate bool) (int, []by
 	return jsonStatus(http.StatusOK, map[string]any{"ok": true})
 }
 
-func (s Service) resume(ctx context.Context, body []byte) (int, []byte) {
+func (s Service) resume(ctx context.Context, pathAuthID string, body []byte) (int, []byte) {
 	var request struct {
 		AuthID string `json:"auth_id"`
 	}
-	if err := json.Unmarshal(body, &request); err != nil || strings.TrimSpace(request.AuthID) == "" {
+	if len(body) > 0 {
+		_ = json.Unmarshal(body, &request)
+	}
+	if strings.TrimSpace(request.AuthID) == "" {
+		request.AuthID = pathAuthID
+	}
+	if strings.TrimSpace(request.AuthID) == "" {
 		return jsonStatus(http.StatusBadRequest, map[string]any{"error": "auth_id is required"})
 	}
 	if err := s.Keeper.Store.SetPause(ctx, request.AuthID, ""); err != nil {
