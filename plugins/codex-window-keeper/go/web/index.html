@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>额度窗口</title>
+<style>
+  :root { --bg:#efeae1; --surface:#f7f4ee; --muted:#e7e1d6; --ink:#1c1915; --sub:#5c564c; --faint:#8a8376; --line:#d5cfc3; --ok:#1f7a4d; --warn:#b45309; --bad:#b42318; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Noto Sans SC", "PingFang SC", sans-serif; color: var(--ink); background: var(--bg); }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  main { padding: 28px clamp(20px, 3vw, 48px) 48px; display: grid; gap: 12px; }
+  .head, .spread { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; }
+  h1 { font-size: 22px; margin: 0; }
+  .eyebrow { font-size: 12px; letter-spacing: .04em; color: var(--faint); }
+  .sub { color: var(--sub); font-size: 13px; }
+  .card { background: var(--surface); border: 1px solid var(--line); padding: 12px; }
+  .alert { padding: 10px 12px; background: #f8e4e2; color: var(--bad); border: 1px solid #e2b8b4; }
+  .split { display: grid; grid-template-columns: minmax(420px, 1.25fr) minmax(320px, .75fr); gap: 12px; align-items: start; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--faint); font-weight: 500; }
+  tr.sel { background: #e7efe8; } tr.click { cursor: pointer; }
+  .btn { border: 1px solid var(--ink); background: var(--surface); padding: 6px 10px; }
+  .btn.primary { background: var(--ink); color: var(--surface); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .pill { font-size: 11px; border: 1px solid var(--line); padding: 1px 5px; }
+  .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .pill.dim { opacity: .5; }
+  .status { font-size: 12px; padding: 1px 6px; border: 1px solid var(--line); }
+  .decision { padding: 12px; border: 1px solid var(--line); display: grid; gap: 4px; }
+  .times { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .time-box { background: var(--muted); padding: 6px 8px; }
+  .time-box b { display: block; font-family: ui-monospace, monospace; font-size: 13px; font-weight: 500; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  label { display: grid; gap: 4px; font-size: 12px; color: var(--sub); }
+  input, select { border: 1px solid var(--line); background: #fff; padding: 6px 8px; }
+  .switch { width: 42px; height: 24px; border: 1px solid var(--ink); background: var(--surface); padding: 2px; }
+  .switch.on { background: var(--ink); }
+  .switch i { display: block; width: 18px; height: 18px; background: var(--ink); }
+  .switch.on i { background: var(--surface); margin-left: 18px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  @media (max-width: 860px) { .split, .times { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+const base = "/v0/management/codex-window-keeper";
+const state = { settings: null, keySet: false, accounts: [], attempts: [], selected: "", policyOpen: false, notice: "" };
+function esc(value) { return String(value == null ? "" : value).replace(/[&<>"]/g, function (ch) { return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[ch]; }); }
+function fmt(value) { if (!value || value.startsWith("0001")) return "—"; const d = new Date(value); if (Number.isNaN(d.getTime())) return "—"; const p = function (n) { return String(n).padStart(2, "0"); }; return p(d.getMonth()+1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()); }
+function kindLabel(kind) { return {five_hour:"5 小时", weekly:"周", monthly:"月"}[kind] || kind; }
+async function call(method, path, body) {
+  const response = await fetch(base + path, {method: method, headers: {"Content-Type": "application/json"}, body: body ? JSON.stringify(body) : undefined});
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || response.statusText);
+  return payload;
+}
+async function refresh() {
+  const settings = await call("GET", "/settings");
+  state.settings = settings.settings;
+  state.keySet = !!settings.management_key_set;
+  const accounts = await call("GET", "/accounts");
+  state.accounts = accounts.accounts || [];
+  if (!state.selected && state.accounts[0]) state.selected = state.accounts[0].auth_id;
+  const attempts = await call("GET", "/attempts");
+  state.attempts = attempts.attempts || [];
+}
+function selected() { return state.accounts.filter(function (account) { return account.auth_id === state.selected; })[0]; }
+function render() {
+  const account = selected();
+  const settings = state.settings || {};
+  const alert = state.keySet ? "" : '<div class="alert">未检测到管理密钥，暂时无法读取账号额度。</div>';
+  const rows = state.accounts.map(function (item) {
+    const windows = (item.windows || []).filter(function (window) { return !window.absent; });
+    const pills = windows.map(function (window) {
+      const full = window.phase === "blocked" || window.used_percent >= 100;
+      return '<span class="pill' + (full && window.gating ? " warn" : "") + (window.gating ? "" : " dim") + '">' + esc(kindLabel(window.kind)) + " " + (full ? "满" : Math.round(window.used_percent) + "%") + '</span>';
+    }).join(" ");
+    return '<tr class="click ' + (item.auth_id === state.selected ? "sel" : "") + '" data-id="' + esc(item.auth_id) + '"><td><b>' + esc(item.email || item.auth_id) + '</b><div class="sub">' + esc(item.plan_type || "—") + (item.pause_reason ? " · " + esc(item.pause_reason) : "") + '</div></td><td>' + pills + '</td><td class="sub">' + esc(item.shape_mismatch || item.phase || "") + '</td></tr>';
+  }).join("");
+  const windows = account ? (account.windows || []).filter(function (window) { return !window.absent; }) : [];
+  const cards = windows.map(function (window) {
+    return '<article class="card"><div class="spread"><b>' + esc(kindLabel(window.kind)) + '</b><span class="sub">' + esc(window.phase) + (window.gating ? "" : " · 不参与发信") + '</span></div><div class="times"><div class="time-box"><span class="sub">开始</span><b>' + fmt(window.starts_at) + '</b></div><div class="time-box"><span class="sub">结束</span><b>' + fmt(window.ends_at) + '</b></div></div><div class="sub">' + esc(window.time_source || "") + '</div></article>';
+  }).join("");
+  const attempts = state.attempts.filter(function (item) { return account && item.AccountID === account.auth_id || account && item.account_id === account.auth_id; }).slice(0, 6);
+  document.getElementById("app").innerHTML = alert +
+    '<div class="head"><div><div class="eyebrow">CODEX</div><h1>额度窗口</h1></div><button id="toggle" class="switch ' + (settings.enabled ? "on" : "") + '" type="button" aria-label="启用"><i></i></button></div>' +
+    (state.notice ? '<p class="sub">' + esc(state.notice) + '</p>' : '') +
+    '<section class="card"><div class="spread"><div><b>全局策略</b><div class="sub">' + esc(settings.model || "") + " · " + esc(settings.effort || "") + '</div></div><button class="btn" id="policy" type="button">' + (state.policyOpen ? "收起" : "调整") + '</button></div>' +
+    (state.policyOpen ? '<form id="settings" class="grid"><label>模型<input name="model" value="' + esc(settings.model) + '"></label><label>思考级别<select name="effort">' + ["minimal","low","medium","high","xhigh"].map(function (item) { return '<option' + (item === settings.effort ? " selected" : "") + '>' + item + '</option>'; }).join("") + '</select></label><label>提示词<input name="prompt" value="' + esc(settings.prompt) + '"></label><label>额外限额<select name="include_additional">' + [["fill_gaps","补上缺少的周期"],["all","全部额外限额"],["none","不看额外限额"]].map(function (item) { return '<option value="' + item[0] + '"' + (item[0] === settings.include_additional ? " selected" : "") + '>' + item[1] + '</option>'; }).join("") + '</select></label><label>管理地址<input name="base_url" value="' + esc(settings.base_url) + '"></label><label>管理密钥<input name="management_key" type="password" placeholder="' + (state.keySet ? "已保存，留空则不修改" : "未配置") + '"></label><div class="row"><button class="btn primary" type="submit">保存</button></div></form>' : '') +
+    '</section><div class="split"><div class="card"><table><thead><tr><th>账号</th><th>窗口</th><th>对照</th></tr></thead><tbody>' + (rows || '<tr><td colspan="3" class="sub">还没有 Codex OAuth 账号。</td></tr>') + '</tbody></table></div><aside class="card" style="display:grid;gap:10px">' +
+    (account ? '<div class="decision"><b>' + esc(account.email || account.auth_id) + '</b><span class="sub">' + esc(account.plan_type || "") + (account.shape_mismatch ? " · " + esc(account.shape_mismatch) : "") + '</span></div>' + cards + '<div class="row"><button class="btn" id="probe" type="button">重新读取额度</button><button class="btn primary" id="activate" type="button">按规则发一条</button>' + (account.pause_reason ? '<button class="btn" id="resume" type="button">恢复账号</button>' : '') + '</div>' + attempts.map(function (item) { return '<div class="sub">' + esc(item.Status || item.status) + ' · ' + esc(item.Excerpt || item.output_excerpt || "") + '</div>'; }).join("") : '<p class="sub">选择一个账号。</p>') +
+    '</aside></div>';
+  bind();
+}
+function bind() {
+  document.querySelectorAll("tr.click").forEach(function (row) { row.onclick = function () { state.selected = row.dataset.id; render(); }; });
+  const toggle = document.getElementById("toggle");
+  if (toggle) toggle.onclick = async function () { state.settings.enabled = !state.settings.enabled; await saveSettings(); };
+  const policy = document.getElementById("policy");
+  if (policy) policy.onclick = function () { state.policyOpen = !state.policyOpen; render(); };
+  const form = document.getElementById("settings");
+  if (form) form.onsubmit = async function (event) {
+    event.preventDefault();
+    state.settings.model = form.model.value.trim();
+    state.settings.effort = form.effort.value;
+    state.settings.prompt = form.prompt.value;
+    state.settings.include_additional = form.include_additional.value;
+    state.settings.base_url = form.base_url.value.trim();
+    const key = form.management_key.value.trim();
+    await saveSettings();
+    if (key) await call("PUT", "/connection", {base_url: state.settings.base_url, management_key: key});
+    state.notice = "已保存";
+    await refresh(); render();
+  };
+  const probe = document.getElementById("probe");
+  if (probe) probe.onclick = async function () { await call("POST", "/accounts/probe", {auth_id: state.selected}); state.notice = "已重新读取额度"; await refresh(); render(); };
+  const activate = document.getElementById("activate");
+  if (activate) {
+    activate.disabled = !state.settings.enabled;
+    activate.onclick = async function () { await call("POST", "/accounts/activate", {auth_id: state.selected}); state.notice = "已按当前窗口状态判断"; await refresh(); render(); };
+  }
+  const resume = document.getElementById("resume");
+  if (resume) resume.onclick = async function () { await call("POST", "/accounts/resume", {auth_id: state.selected}); state.notice = "账号已恢复"; await refresh(); render(); };
+}
+async function saveSettings() {
+  await call("PUT", "/settings", state.settings);
+  await refresh();
+  render();
+}
+refresh().then(render).catch(function (error) { document.getElementById("app").innerHTML = '<div class="alert">' + esc(error.message) + '</div>'; });
+</script>
+</body>
+</html>

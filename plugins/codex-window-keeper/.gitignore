@@ -1,0 +1,5 @@
+/go/.cache/
+/codex-window-keeper-v*.so
+/codex-window-keeper-v*.dylib
+/codex-window-keeper-v*.dll
+/codex-window-keeper-v*.h

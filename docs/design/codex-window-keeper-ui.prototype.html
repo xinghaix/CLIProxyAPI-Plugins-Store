@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>额度窗口</title>
+<style>
+  :root {
+    --bg: #efeae1; --surface: #f7f4ee; --muted: #e7e1d6; --ink: #1c1915;
+    --sub: #5c564c; --faint: #8a8376; --line: #d5cfc3; --blue: #2563eb;
+    --ok: #1f7a4d; --warn: #b45309; --bad: #b42318;
+    --font: "Noto Sans SC", "PingFang SC", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); color: var(--ink); background: var(--bg); }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
+  .banner { padding: 10px 20px; background: #1c1915; color: #f7f4ee; font-size: 13px; display: flex; gap: 16px; align-items: center; }
+  .banner b { font-weight: 600; }
+  .banner button, .switcher button { background: transparent; color: inherit; border: 1px solid currentColor; padding: 4px 8px; }
+  #app { padding: 28px clamp(20px, 3vw, 48px) 48px; }
+  .page-alert { margin: 0 0 16px; padding: 10px 12px; background: #f8e4e2; color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--line)); }
+  .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+  .eyebrow { font-size: 12px; letter-spacing: .04em; color: var(--faint); }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .spread { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; }
+  h1 { font-size: 22px; margin: 0; font-weight: 600; }
+  h2 { font-size: 15px; margin: 0; }
+  .sub { color: var(--sub); font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); padding: 2px 7px; font-size: 12px; background: var(--surface); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  .btn { border: 1px solid var(--ink); background: var(--surface); padding: 6px 10px; }
+  .btn.primary { background: var(--ink); color: var(--surface); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .grid { display: grid; gap: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--faint); font-weight: 500; font-size: 12px; }
+  tr.sel { background: #e7efe8; }
+  tr.click { cursor: pointer; }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .bar { height: 6px; background: var(--muted); margin-top: 4px; }
+  .bar > span { display: block; height: 100%; background: var(--ink); }
+  .card { background: var(--surface); border: 1px solid var(--line); padding: 12px; }
+  label { display: grid; gap: 4px; font-size: 12px; color: var(--sub); }
+  input, select { border: 1px solid var(--line); background: #fff; padding: 6px 8px; min-width: 0; }
+  .split { display: grid; grid-template-columns: minmax(280px, 1.1fr) minmax(320px, .9fr); gap: 16px; }
+  .ledger { display: grid; gap: 12px; }
+  .split-a { display: grid; grid-template-columns: minmax(420px, 1.25fr) minmax(340px, .75fr); gap: 12px; align-items: start; }
+  .detail { position: sticky; top: 12px; display: grid; gap: 10px; }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filters button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  .pill { font-size: 11px; border: 1px solid var(--line); padding: 1px 5px; background: var(--surface); }
+  .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .pill.dim { opacity: .5; }
+  .status { font-size: 12px; padding: 1px 6px; border: 1px solid var(--line); white-space: nowrap; }
+  .status.send, .decision.send { background: #e5f2ea; color: var(--ok); }
+  .status.wait, .decision.wait { background: #f8ecd9; color: var(--warn); }
+  .status.pause, .status.fixed, .decision.pause, .decision.fixed { background: #f8e4e2; color: var(--bad); }
+  .decision { padding: 12px; border: 1px solid var(--line); display: grid; gap: 4px; }
+  .decision strong { font-size: 16px; color: var(--ink); }
+  .window-card { display: grid; gap: 6px; padding: 8px; }
+  .window-card.blocking { border-color: var(--warn); }
+  .times { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .time-box { background: var(--muted); padding: 6px 8px; }
+  .time-box b { display: block; font-family: var(--mono); font-weight: 500; font-size: 13px; }
+  .switch-ui { width: 42px; height: 24px; border: 1px solid var(--ink); background: var(--surface); padding: 2px; }
+  .switch-ui.on { background: var(--ink); }
+  .switch-ui i { display: block; width: 18px; height: 18px; background: var(--ink); }
+  .switch-ui.on i { background: var(--surface); margin-left: 18px; }
+  .stack { display: grid; gap: 8px; }
+  .window { display: grid; grid-template-columns: 92px 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .agenda { display: grid; gap: 0; border-top: 1px solid var(--ink); }
+  .event { display: grid; grid-template-columns: 148px 1fr auto; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--line); align-items: center; }
+  .event time { font-family: var(--mono); font-size: 18px; }
+  .inbox { max-width: 820px; margin: 0 auto; display: grid; gap: 12px; }
+  .exception { border-left: 4px solid var(--warn); }
+  .exception.send { border-left-color: var(--ok); }
+  .exception.bad { border-left-color: var(--bad); }
+  .notice { min-height: 20px; font-size: 13px; }
+  .state { margin-top: 16px; }
+  pre { white-space: pre-wrap; font-family: var(--mono); font-size: 11px; background: var(--surface); border: 1px solid var(--line); padding: 8px; max-height: 180px; overflow: auto; }
+  .switcher { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; background: #1c1915; color: #f7f4ee; padding: 8px 10px; border-radius: 999px; z-index: 5; box-shadow: 0 10px 30px rgb(0 0 0 / .25); }
+  .switcher span { min-width: 180px; text-align: center; font-size: 13px; }
+  @media (max-width: 860px) { .split, .split-a, .event, .window, .times { grid-template-columns: 1fr; } .detail { position: static; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const HOUR = 3600000;
+const DAY = 24 * HOUR;
+const now0 = Date.parse("2026-09-23T08:00:00+08:00");
+const VARIANTS = [
+  { id: "A", name: "账号台账" },
+  { id: "B", name: "下一次动作" },
+  { id: "C", name: "例外收件箱" }
+];
+
+function win(partial) {
+  return Object.assign({
+    limitId: "codex", slot: "primary", kind: "weekly", period: 604800,
+    start: now0 - DAY, end: now0 + 3 * DAY, timeSource: "derived",
+    used: 10, blocked: false, seenBlocked: true, gating: true,
+    phase: "clear", hypothesis: "", otherModel: false
+  }, partial);
+}
+
+const state = {
+  now: now0,
+  enabled: true,
+  notice: "",
+  selectedId: "ada",
+  filter: "all",
+  policyOpen: false,
+  settings: {
+    model: "gpt-5.4", effort: "low", prompt: "Reply with exactly OK.",
+    kindsText: "", includeCodeReview: false, includeAdditional: "fill_gaps",
+    poll: 20, skew: 3
+  },
+  connection: { baseUrl: "http://127.0.0.1:8317", keySet: true },
+  attempts: [],
+  accounts: [
+    { id: "ada", email: "ada@example", plan: "plus", group: "plus_team", pause: "", override: { enabled: "inherit", model: "" }, windows: [
+      win({ slot: "primary", kind: "five_hour", period: 18000, start: now0 - HOUR, end: now0 + 4 * HOUR, used: 22 }),
+      win({ slot: "secondary", kind: "weekly", period: 604800, start: now0 - 5 * DAY, end: now0 + 2 * HOUR, used: 100, blocked: true, phase: "blocked" }),
+      win({ limitId: "additional:codex", slot: "primary", kind: "monthly", period: 2592000, start: now0 - 10 * DAY, end: now0 + 20 * DAY, used: 41 }),
+      win({ limitId: "code_review", slot: "primary", kind: "five_hour", period: 18000, start: now0 - 2 * HOUR, end: now0 + 3 * HOUR, used: 80, blocked: true, phase: "blocked", gating: false })
+    ]},
+    { id: "bo", email: "bo@example", plan: "pro", group: "pro_and_above", pause: "", override: { enabled: "inherit", model: "" }, windows: [
+      win({ slot: "primary", kind: "weekly", end: now0 + 4 * DAY, used: 8 }),
+      win({ slot: "secondary", kind: "monthly", period: 2592000, start: now0 - 12 * DAY, end: now0 + 18 * DAY, used: 15 })
+    ]},
+    { id: "chen", email: "chen@example", plan: "free", group: "free", pause: "", override: { enabled: "inherit", model: "" }, windows: [
+      win({ slot: "primary", kind: "monthly", period: 2592000, start: now0 - 2 * DAY, end: now0 + 28 * DAY, used: 4, seenBlocked: false, phase: "baseline" })
+    ]},
+    { id: "dai", email: "dai@example", plan: "pro", group: "pro_and_above", pause: "", override: { enabled: "inherit", model: "" }, windows: [
+      win({ slot: "primary", kind: "five_hour", period: 18000, start: now0 - 4 * HOUR, end: now0 + 40 * 60000, used: 100, blocked: true, phase: "blocked" }),
+      win({ slot: "secondary", kind: "weekly", end: now0 + 2 * DAY, used: 30 }),
+      win({ limitId: "codex", slot: "extra", kind: "monthly", period: 2592000, start: now0 - 6 * DAY, end: now0 + 24 * DAY, used: 12 })
+    ]},
+    { id: "erin", email: "erin@example", plan: "plus", group: "plus_team", pause: "", override: { enabled: "inherit", model: "gpt-5.5" }, windows: [
+      win({ kind: "five_hour", period: 18000, end: now0 + 3 * HOUR, used: 2, hypothesis: "fixed" }),
+      win({ slot: "secondary", kind: "weekly", hypothesis: "fixed", used: 6 }),
+      win({ limitId: "additional:codex", slot: "primary", kind: "monthly", period: 2592000, end: now0 + 15 * DAY, hypothesis: "fixed", used: 9 })
+    ]},
+    { id: "fei", email: "fei@example", plan: "team", group: "plus_team", pause: "需要重新登录", override: { enabled: "inherit", model: "" }, windows: [
+      win({ kind: "five_hour", period: 18000, end: now0 + HOUR, used: 0, seenBlocked: false, phase: "baseline" })
+    ]}
+  ]
+};
+
+function esc(value) {
+  return String(value).replace(/[&<>"]/g, function (ch) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
+  });
+}
+function fmt(ts) {
+  const d = new Date(ts);
+  const p = function (n) { return String(n).padStart(2, "0"); };
+  return p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function kindLabel(kind) {
+  return { five_hour: "5 小时", weekly: "周", monthly: "月" }[kind] || kind;
+}
+function kinds() {
+  return state.settings.kindsText.split(/[,，\s]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+}
+function mainHas(account, kind, self) {
+  return account.windows.some(function (w) { return w !== self && w.limitId === "codex" && w.kind === kind; });
+}
+function refreshGating() {
+  const selected = kinds();
+  state.accounts.forEach(function (account) {
+    account.windows.forEach(function (w) {
+      let gate = true;
+      if (w.limitId === "code_review") gate = state.settings.includeCodeReview;
+      else if (w.limitId.indexOf("additional:") === 0) {
+        if (state.settings.includeAdditional === "none" || w.otherModel) gate = false;
+        else if (state.settings.includeAdditional === "fill_gaps") gate = !mainHas(account, w.kind, w);
+      }
+      if (selected.length) gate = gate && selected.indexOf(w.kind) >= 0;
+      w.gating = gate;
+    });
+  });
+}
+function expected(account) {
+  return { free: ["monthly"], plus_team: ["five_hour", "weekly", "monthly"], pro_and_above: ["weekly", "monthly"] }[account.group] || [];
+}
+function observed(account) {
+  const set = {};
+  account.windows.forEach(function (w) { if (w.limitId !== "code_review") set[w.kind] = true; });
+  return Object.keys(set);
+}
+function mismatch(account) {
+  const want = expected(account);
+  const got = observed(account);
+  if (!want.length) return "";
+  const extra = got.filter(function (k) { return want.indexOf(k) < 0; });
+  const missing = want.filter(function (k) { return got.indexOf(k) < 0; });
+  if (!extra.length && !missing.length) return "";
+  return "对照差异：多 " + (extra.map(kindLabel).join("、") || "无") + "，少 " + (missing.map(kindLabel).join("、") || "无");
+}
+function tick() {
+  state.accounts.forEach(function (account) {
+    account.windows.forEach(function (w) {
+      if (w.blocked && w.end <= state.now) {
+        w.blocked = false; w.used = 0; w.phase = "due";
+      }
+    });
+  });
+}
+function modelOf(account) {
+  return account.override.model || state.settings.model;
+}
+function decide(account) {
+  if (!state.enabled) return { action: "idle", text: "总开关关闭，只记录不发信" };
+  if (account.override.enabled === "off") return { action: "idle", text: "此账号单独停用" };
+  if (account.pause) return { action: "pause", text: account.pause + "，停止这一轮" };
+  const gates = account.windows.filter(function (w) { return w.gating; });
+  if (!gates.length) return { action: "idle", text: "当前选择下没有参与判断的窗口" };
+  const blocked = gates.filter(function (w) { return w.blocked && w.end > state.now; });
+  if (blocked.length) {
+    const at = Math.max.apply(null, blocked.map(function (w) { return w.end; })) + state.settings.skew * 1000;
+    const names = blocked.map(function (w) { return limitLabel(w.limitId) + kindLabel(w.kind); });
+    return { action: "wait", text: names.join("、") + " 仍在阻断，" + fmt(at) + " 后再判断", at: at };
+  }
+  const fresh = gates.filter(function (w) { return !w.seenBlocked; });
+  if (fresh.length) return { action: "baseline", text: "有窗口还没被见过耗尽，先建立基线" };
+  if (gates.every(function (w) { return w.hypothesis === "fixed"; })) return { action: "fixed", text: "这些窗口不由首条消息起算，不再发信" };
+  return { action: "send", text: "选中的窗口都已解除，发一条 " + modelOf(account) };
+}
+function selectedAccount() {
+  return state.accounts.filter(function (a) { return a.id === state.selectedId; })[0] || state.accounts[0];
+}
+function record(account, decision, result) {
+  state.attempts.unshift({ at: state.now, email: account.email, action: decision.action, result: result });
+  state.attempts = state.attempts.slice(0, 8);
+}
+function activate(account) {
+  const decision = decide(account);
+  if (decision.action !== "send") {
+    record(account, decision, "未发送：" + decision.text);
+    state.notice = account.email + " 未发送。" + decision.text;
+    return;
+  }
+  account.windows.forEach(function (w) {
+    if (!w.gating) return;
+    w.hypothesis = "anchored"; w.phase = "anchored"; w.seenBlocked = true;
+    w.start = state.now; w.end = state.now + w.period * 1000; w.timeSource = "derived"; w.used = 1; w.blocked = false;
+  });
+  record(account, decision, "已发送，并把开始时间记到刚才");
+  state.notice = account.email + " 已模拟发送。新窗口从 " + fmt(state.now) + " 起算。";
+}
+function probe(account) {
+  state.notice = account.email + " 已重新读取 usage。开始/结束时间来自 reset_at 和窗口长度，没有另发消息。";
+}
+function saveSettings(form) {
+  const prompt = form.prompt.value.trim();
+  const poll = Number(form.poll.value);
+  const skew = Number(form.skew.value);
+  const known = ["five_hour", "weekly", "monthly", "custom"];
+  const parsed = form.kinds.value.split(/[,，\s]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+  const bad = parsed.filter(function (k) { return known.indexOf(k) < 0; });
+  if (!prompt) { state.notice = "提示词不能为空。"; return; }
+  if (poll < 5 || poll > 600 || skew < 0 || skew > 120) { state.notice = "轮询需在 5–600 秒，提前量需在 0–120 秒。"; return; }
+  if (bad.length) { state.notice = "无法识别的窗口类型：" + bad.join("、"); return; }
+  state.settings.model = form.model.value.trim() || "gpt-5.4";
+  state.settings.effort = form.effort.value;
+  state.settings.prompt = prompt;
+  state.settings.kindsText = parsed.join(",");
+  state.settings.includeCodeReview = form.review.checked;
+  state.settings.includeAdditional = form.additional.value;
+  state.settings.poll = poll; state.settings.skew = skew;
+  state.notice = "全局设置已更新。套餐对照没有改变实际窗口。";
+}
+function saveOverride(form) {
+  const account = selectedAccount();
+  account.override.enabled = form.enabled.value;
+  account.override.model = form.model.value.trim();
+  state.notice = account.email + " 的覆盖已保存。空模型表示跟随全局。";
+}
+function nextWait() {
+  let at = null;
+  state.accounts.forEach(function (account) {
+    const decision = decide(account);
+    if (decision.at && (at === null || decision.at < at)) at = decision.at;
+  });
+  return at;
+}
+function variant() {
+  const value = new URLSearchParams(location.search).get("variant") || "A";
+  return VARIANTS.some(function (v) { return v.id === value; }) ? value : "A";
+}
+function setVariant(id) {
+  const url = new URL(location.href);
+  url.searchParams.set("variant", id);
+  history.replaceState(null, "", url);
+  render();
+}
+function cycle(step) {
+  const ids = VARIANTS.map(function (v) { return v.id; });
+  const index = ids.indexOf(variant());
+  setVariant(ids[(index + step + ids.length) % ids.length]);
+}
+function settingsFields() {
+  const s = state.settings;
+  return '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">' +
+    '<label>模型<input name="model" value="' + esc(s.model) + '"></label>' +
+    '<label>思考级别<select name="effort">' + ["minimal","low","medium","high","xhigh"].map(function (x) {
+      return '<option ' + (x === s.effort ? "selected" : "") + '>' + x + '</option>';
+    }).join("") + '</select></label>' +
+    '<label>提示词<input name="prompt" value="' + esc(s.prompt) + '"></label>' +
+    '<label>只看这些类型，空为自动<input name="kinds" value="' + esc(s.kindsText) + '" placeholder="weekly,monthly"></label>' +
+    '<label>额外限额<select name="additional">' + [["fill_gaps", "补上缺少的周期"], ["all", "全部额外限额"], ["none", "不看额外限额"]].map(function (x) {
+      return '<option value="' + x[0] + '" ' + (x[0] === s.includeAdditional ? "selected" : "") + '>' + x[1] + '</option>';
+    }).join("") + '</select></label>' +
+    '<label>轮询秒<input name="poll" type="number" value="' + s.poll + '"></label>' +
+    '<label>结束后再等秒<input name="skew" type="number" value="' + s.skew + '"></label>' +
+    '<label>代码审查参与判断<input name="review" type="checkbox" ' + (s.includeCodeReview ? "checked" : "") + '></label>' +
+    '</div><div class="row"><button class="btn" type="submit">保存</button></div>';
+}
+function windowLine(w) {
+  return '<div class="window"><div><b>' + esc(kindLabel(w.kind)) + '</b><div class="sub">' + esc(w.limitId) + '</div></div>' +
+    '<div><div class="mono">' + fmt(w.start) + ' → ' + fmt(w.end) + ' · ' + esc(w.timeSource) + '</div>' +
+    '<div class="bar"><span style="width:' + w.used + '%"></span></div>' +
+    '<div class="sub">' + (w.gating ? "参与判断" : "只展示") + ' · ' + esc(w.phase) + (w.blocked ? " · 阻断" : "") + (w.hypothesis ? " · " + esc(w.hypothesis) : "") + '</div></div>' +
+    '<div class="mono">' + w.used + '%</div></div>';
+}
+function accountMeta(account) {
+  const decision = decide(account);
+  const diff = mismatch(account);
+  return { decision: decision, diff: diff };
+}
+function statusOf(action) {
+  return { send: ["可发", "send"], wait: ["等待", "wait"], baseline: ["观察", ""], fixed: ["已停", "fixed"], pause: ["暂停", "pause"], idle: ["关闭", ""] }[action] || ["其他", ""];
+}
+function bucket(account) {
+  const action = decide(account).action;
+  if (action === "send") return "send";
+  if (action === "wait") return "wait";
+  if (action === "pause" || action === "fixed" || action === "baseline" || mismatch(account)) return "attention";
+  return "quiet";
+}
+function limitLabel(id) {
+  if (id === "code_review") return "代码审查";
+  if (id.indexOf("additional:") === 0) return "额外限额";
+  return "主限额";
+}
+function sourceLabel(source) {
+  return { derived: "开始时间由结束时间减去窗口长度", explicit: "接口直接给出起止", probe_relative: "结束时间按这次探测推算" }[source] || source;
+}
+function phaseLabel(w) {
+  if (w.blocked) return "阻断中";
+  if (w.hypothesis === "fixed") return "固定周期";
+  if (w.hypothesis === "anchored") return "已起算";
+  if (!w.seenBlocked) return "还没见过耗尽";
+  if (w.phase === "due") return "刚刚解除";
+  return "有余量";
+}
+function pills(account) {
+  return account.windows.map(function (w) {
+    const text = kindLabel(w.kind) + " " + (w.blocked ? "满" : w.used + "%");
+    return '<span class="pill' + (w.blocked && w.gating ? " warn" : "") + (w.gating ? "" : " dim") + '">' + esc(text) + '</span>';
+  }).join(" ");
+}
+function windowCard(w, blocking) {
+  return '<article class="card window-card' + (blocking ? " blocking" : "") + '"><div class="spread"><b>' + esc(kindLabel(w.kind)) + " · " + esc(limitLabel(w.limitId)) + '</b><span class="sub">' + esc(phaseLabel(w)) + " " + w.used + '%</span></div><div class="bar"><span style="width:' + w.used + '%"></span></div><div class="times"><div class="time-box"><span class="sub">开始</span><b>' + fmt(w.start) + '</b></div><div class="time-box"><span class="sub">结束</span><b>' + fmt(w.end) + '</b></div></div><div class="sub">' + esc(sourceLabel(w.timeSource)) + (w.gating ? "" : " · 不参与发信") + '</div></article>';
+}
+function renderA() {
+  const account = selectedAccount();
+  const meta = accountMeta(account);
+  const counts = { all: state.accounts.length, send: 0, wait: 0, attention: 0 };
+  state.accounts.forEach(function (item) { const key = bucket(item); if (counts[key] !== undefined) counts[key] += 1; });
+  const visible = state.accounts.filter(function (item) { return state.filter === "all" || bucket(item) === state.filter; });
+  const rows = visible.map(function (item) {
+    const info = accountMeta(item);
+    const status = statusOf(info.decision.action);
+    return '<tr class="click ' + (item.id === account.id ? "sel" : "") + '" data-act="select" data-id="' + item.id + '"><td><b>' + esc(item.email) + '</b><div class="sub">' + esc(item.plan) + (item.override.model ? " · " + esc(item.override.model) : "") + (info.diff ? '<div class="warn">对照不同</div>' : "") + '</div></td><td>' + pills(item) + '</td><td><span class="status ' + status[1] + '">' + status[0] + '</span><div class="sub">' + esc(info.decision.at ? fmt(info.decision.at) : "") + '</div></td></tr>';
+  }).join("");
+  const gates = account.windows.filter(function (w) { return w.gating; });
+  const shown = account.windows.filter(function (w) { return !w.gating; });
+  const blocking = {};
+  gates.forEach(function (w) { if (w.blocked && w.end > state.now) blocking[w.kind + w.limitId] = true; });
+  const s = state.settings;
+  const summary = esc(s.model) + " · " + esc(s.effort) + " · 额外限额 " + esc({ fill_gaps: "补缺口", all: "全看", none: "不看" }[s.includeAdditional]) + (s.includeCodeReview ? " · 含代码审查" : "");
+  const canSend = meta.decision.action === "send";
+  const filters = [["all", "全部"], ["send", "可发"], ["wait", "等待"], ["attention", "需处理"]].map(function (item) {
+    return '<button class="btn" type="button" data-act="filter" data-id="' + item[0] + '" aria-pressed="' + (state.filter === item[0]) + '">' + item[1] + " " + (counts[item[0]] || 0) + '</button>';
+  }).join("");
+  const alert = state.connection.keySet ? "" : '<div class="page-alert">未检测到管理密钥，暂时无法读取账号额度。</div>';
+  return alert + '<div class="ledger"><div class="page-head"><div><div class="eyebrow">CODEX</div><h1>额度窗口</h1></div><div class="row"><span class="sub">启用</span><button class="switch-ui ' + (state.enabled ? "on" : "") + '" type="button" data-act="toggle" aria-pressed="' + state.enabled + '" aria-label="启用"><i></i></button></div></div>' +
+    '<section class="card stack"><div class="policy-line spread"><div><b>全局策略</b><div class="sub">' + summary + '</div></div><button class="btn" type="button" data-act="policy">' + (state.policyOpen ? "收起" : "调整") + '</button></div>' + (state.policyOpen ? '<form class="stack" data-act="settings">' + settingsFields() + '</form>' : "") + '</section>' +
+    '<div class="split-a"><div class="card stack"><div class="filters">' + filters + '</div><table><thead><tr><th>账号</th><th>窗口</th><th>状态</th></tr></thead><tbody>' + (rows || '<tr><td colspan="3" class="sub">这个筛选下没有账号。</td></tr>') + '</tbody></table></div>' +
+    '<aside class="detail"><div class="decision ' + esc(meta.decision.action) + '"><span class="sub">' + esc(account.email) + " · " + esc(account.plan) + '</span><strong>' + esc(statusOf(meta.decision.action)[0]) + '</strong><span>' + esc(meta.decision.text) + '</span></div>' +
+    (meta.diff ? '<p class="warn">' + esc(meta.diff) + '。发信仍按实际窗口，不按套餐补造。</p>' : '<p class="sub">窗口和这个套餐的常见组合一致。</p>') +
+    '<div class="group-title">参与判断 · ' + gates.length + '</div>' + gates.map(function (w) { return windowCard(w, blocking[w.kind + w.limitId]); }).join("") +
+    (shown.length ? '<div class="group-title">只记录 · ' + shown.length + '</div>' + shown.map(function (w) { return windowCard(w, false); }).join("") : "") +
+    '<div class="row"><button class="btn" type="button" data-act="probe" data-id="' + account.id + '">重新读取额度</button><button class="btn primary" type="button" data-act="activate" data-id="' + account.id + '" ' + (canSend ? "" : "disabled") + '>' + (canSend ? "现在发一条" : "现在不能发") + '</button></div>' +
+    '<form class="card stack" data-act="override"><b>只改这个账号</b><div class="row"><label>开关<select name="enabled">' + [["inherit", "跟随全局"], ["on", "强制开启"], ["off", "此账号停用"]].map(function (x) { return '<option value="' + x[0] + '" ' + (account.override.enabled === x[0] ? "selected" : "") + '>' + x[1] + '</option>'; }).join("") + '</select></label><label>模型<input name="model" value="' + esc(account.override.model) + '" placeholder="空则跟随全局"></label></div><button class="btn" type="submit">保存覆盖</button><span class="sub">实际将使用 ' + esc(modelOf(account)) + " / " + esc(state.settings.effort) + '</span></form>' +
+    accountAttempts(account) + '</aside></div></div>';
+}
+function accountAttempts(account) {
+  const rows = state.attempts.filter(function (item) { return item.email === account.email; });
+  if (!rows.length) return '<p class="sub">这个账号还没有判断记录。</p>';
+  return '<table><thead><tr><th>时间</th><th>结果</th></tr></thead><tbody>' + rows.map(function (item) {
+    return '<tr><td class="mono">' + fmt(item.at) + '</td><td>' + esc(item.result) + '</td></tr>';
+  }).join("") + '</tbody></table>';
+}
+function renderB() {
+  const events = state.accounts.map(function (account) {
+    const info = accountMeta(account);
+    return { account: account, info: info, at: info.decision.at || state.now };
+  }).sort(function (a, b) {
+    if (a.info.decision.action === "send" && b.info.decision.action !== "send") return -1;
+    if (b.info.decision.action === "send" && a.info.decision.action !== "send") return 1;
+    return a.at - b.at;
+  });
+  return '<div class="spread"><div><h1>下一次动作</h1><p class="sub">时间是主角。能发的排在最上面，还要等的按结束时间排列。</p></div>' +
+    '<button class="btn primary" type="button" data-act="toggle">' + (state.enabled ? "保活开" : "保活关") + '</button></div>' +
+    '<div class="agenda">' + events.map(function (item) {
+      const when = item.info.decision.action === "send" ? "现在" : (item.info.decision.at ? fmt(item.info.decision.at) : "不排程");
+      return '<article class="event"><time>' + esc(when) + '</time><div><b>' + esc(item.account.email) + '</b> · ' + esc(item.account.plan) + '<div class="sub">' + esc(item.info.decision.text) + '</div></div><button class="btn" type="button" data-act="activate" data-id="' + item.account.id + '">执行判断</button></article>';
+    }).join("") + '</div><form class="card stack" data-act="settings"><h2>全局策略</h2>' + settingsFields() + '</form>' + attempts();
+}
+function renderC() {
+  const cards = [];
+  state.accounts.forEach(function (account) {
+    const info = accountMeta(account);
+    if (info.decision.action === "send") cards.push({ tone: "send", title: "可以发信", account: account, text: info.decision.text });
+    if (info.diff) cards.push({ tone: "", title: "窗口和套餐对照不同", account: account, text: info.diff + "。仍按实际窗口判断。" });
+    if (info.decision.action === "pause" || info.decision.action === "fixed") cards.push({ tone: "bad", title: info.decision.action === "pause" ? "账号暂停" : "已停止保活", account: account, text: info.decision.text });
+  });
+  const hidden = state.accounts.length - new Set(cards.map(function (c) { return c.account.id; })).size;
+  return '<div class="inbox"><div class="spread"><div><h1>例外收件箱</h1><p class="sub">平时只看需要人处理的账号。' + hidden + ' 个账号没有例外。</p></div>' +
+    '<button class="btn primary" type="button" data-act="toggle">' + (state.enabled ? "保活开" : "保活关") + '</button></div>' +
+    (cards.length ? cards.map(function (card) {
+      return '<article class="card exception ' + card.tone + '"><div class="spread"><h2>' + esc(card.title) + '</h2><span class="chip">' + esc(card.account.email) + '</span></div><p>' + esc(card.text) + '</p><div class="row"><button class="btn" type="button" data-act="probe" data-id="' + card.account.id + '">重读</button><button class="btn primary" type="button" data-act="activate" data-id="' + card.account.id + '">执行判断</button></div></article>';
+    }).join("") : '<div class="card">现在没有需要处理的例外。</div>') +
+    '<form class="card stack" data-act="settings"><h2>改全局策略</h2>' + settingsFields() + '</form></div>';
+}
+function attempts() {
+  if (!state.attempts.length) return '<p class="sub">还没有操作记录。</p>';
+  return '<table><thead><tr><th>时间</th><th>账号</th><th>结果</th></tr></thead><tbody>' + state.attempts.map(function (item) {
+    return '<tr><td class="mono">' + fmt(item.at) + '</td><td>' + esc(item.email) + '</td><td>' + esc(item.result) + '</td></tr>';
+  }).join("") + '</tbody></table>';
+}
+function render() {
+  refreshGating(); tick();
+  const notice = state.notice ? '<p class="notice">' + esc(state.notice) + '</p>' : "";
+  document.getElementById("app").innerHTML = renderA() + notice;
+}
+document.getElementById("app").addEventListener("click", function (event) {
+  const node = event.target.closest("[data-act]");
+  if (!node || node.tagName === "FORM") return;
+  if (node.dataset.act === "policy") { state.policyOpen = !state.policyOpen; render(); return; }
+  if (node.dataset.act === "filter") { state.filter = node.dataset.id; render(); return; }
+  const account = state.accounts.filter(function (a) { return a.id === node.dataset.id; })[0];
+  if (node.dataset.act === "toggle") state.enabled = !state.enabled;
+  if (node.dataset.act === "select") state.selectedId = node.dataset.id;
+  if (node.dataset.act === "probe") probe(account);
+  if (node.dataset.act === "activate") activate(account);
+  render();
+});
+document.getElementById("app").addEventListener("submit", function (event) {
+  event.preventDefault();
+  if (event.target.dataset.act === "settings") saveSettings(event.target);
+  if (event.target.dataset.act === "override") saveOverride(event.target);
+  render();
+});
+render();
+</script>
+</body>
+</html>
