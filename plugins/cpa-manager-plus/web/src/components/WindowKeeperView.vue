@@ -346,20 +346,20 @@ async function refreshAll() {
   loading.value = true;
   error.value = '';
   try {
-    const sResp = await props.proxyCall('GET', '/v0/management/window-keeper/settings');
+    const sResp = await props.proxyCall({ method: 'GET', path: '/v0/management/window-keeper/settings' });
     if (sResp?.settings) {
       Object.assign(settings, sResp.settings);
       Object.assign(form, sResp.settings);
     }
     hasManagementKey.value = !!sResp?.management_key_set;
 
-    const aResp = await props.proxyCall('GET', '/v0/management/window-keeper/accounts');
+    const aResp = await props.proxyCall({ method: 'GET', path: '/v0/management/window-keeper/accounts' });
     accounts.value = aResp?.accounts || [];
     if (!selectedAuthId.value && accounts.value.length > 0) {
       selectedAuthId.value = accounts.value[0].auth_id;
     }
 
-    const attResp = await props.proxyCall('GET', '/v0/management/window-keeper/attempts');
+    const attResp = await props.proxyCall({ method: 'GET', path: '/v0/management/window-keeper/attempts' });
     attempts.value = attResp?.attempts || [];
   } catch (err) {
     error.value = err.message || String(err);
@@ -374,7 +374,7 @@ async function toggleGlobalSwitch() {
   error.value = '';
   try {
     const payload = { ...settings, enabled: next };
-    await props.proxyCall('PUT', '/v0/management/window-keeper/settings', '', payload);
+    await props.proxyCall({ method: 'PUT', path: '/v0/management/window-keeper/settings', body: payload });
     settings.enabled = next;
     form.enabled = next;
     noticeMessage.value = t('windowKeeper.policy.saved');
@@ -391,7 +391,7 @@ async function savePolicy() {
   error.value = '';
   try {
     const payload = { ...settings, ...form };
-    const res = await props.proxyCall('PUT', '/v0/management/window-keeper/settings', '', payload);
+    const res = await props.proxyCall({ method: 'PUT', path: '/v0/management/window-keeper/settings', body: payload });
     if (res?.settings) {
       Object.assign(settings, res.settings);
       Object.assign(form, res.settings);
@@ -412,7 +412,7 @@ async function probeAccount(authId) {
   actionPending.value = true;
   error.value = '';
   try {
-    await props.proxyCall('POST', '/v0/management/window-keeper/accounts/' + authId + '/probe', '', {});
+    await props.proxyCall({ method: 'POST', path: '/v0/management/window-keeper/accounts/' + authId + '/probe' });
     noticeMessage.value = t('windowKeeper.actions.probed');
     setTimeout(() => { noticeMessage.value = ''; }, 3000);
     await refreshAll();
@@ -428,7 +428,7 @@ async function activateAccount(authId) {
   actionPending.value = true;
   error.value = '';
   try {
-    await props.proxyCall('POST', '/v0/management/window-keeper/accounts/' + authId + '/activate', '', {});
+    await props.proxyCall({ method: 'POST', path: '/v0/management/window-keeper/accounts/' + authId + '/activate' });
     noticeMessage.value = t('windowKeeper.actions.activated');
     setTimeout(() => { noticeMessage.value = ''; }, 3000);
     await refreshAll();
@@ -444,7 +444,7 @@ async function resumeAccount(authId) {
   actionPending.value = true;
   error.value = '';
   try {
-    await props.proxyCall('POST', '/v0/management/window-keeper/accounts/' + authId + '/resume', '', {});
+    await props.proxyCall({ method: 'POST', path: '/v0/management/window-keeper/accounts/' + authId + '/resume' });
     noticeMessage.value = t('windowKeeper.actions.resumed');
     setTimeout(() => { noticeMessage.value = ''; }, 3000);
     await refreshAll();

@@ -18,14 +18,15 @@ describe('WindowKeeperView controller', () => {
   let proxyCallMock;
 
   beforeEach(() => {
-    proxyCallMock = vi.fn().mockImplementation((method, path) => {
-      if (path.endsWith('/settings')) {
+    proxyCallMock = vi.fn().mockImplementation((payloadOrMethod, maybePath) => {
+      const path = typeof payloadOrMethod === 'object' ? payloadOrMethod.path : maybePath;
+      if (path && path.endsWith('/settings')) {
         return Promise.resolve({
           settings: { enabled: true, model: 'gpt-5.4', effort: 'low', poll_seconds: 20 },
           management_key_set: true,
         });
       }
-      if (path.endsWith('/accounts')) {
+      if (path && path.endsWith('/accounts')) {
         return Promise.resolve({
           accounts: [
             {
@@ -47,7 +48,7 @@ describe('WindowKeeperView controller', () => {
           ],
         });
       }
-      if (path.endsWith('/attempts')) {
+      if (path && path.endsWith('/attempts')) {
         return Promise.resolve({ attempts: [] });
       }
       return Promise.resolve({});
@@ -69,8 +70,8 @@ describe('WindowKeeperView controller', () => {
     await nextTick();
     await new Promise(r => setTimeout(r, 50));
 
-    expect(proxyCallMock).toHaveBeenCalledWith('GET', '/v0/management/window-keeper/settings');
-    expect(proxyCallMock).toHaveBeenCalledWith('GET', '/v0/management/window-keeper/accounts');
+    expect(proxyCallMock).toHaveBeenCalledWith(expect.objectContaining({ method: 'GET', path: '/v0/management/window-keeper/settings' }));
+    expect(proxyCallMock).toHaveBeenCalledWith(expect.objectContaining({ method: 'GET', path: '/v0/management/window-keeper/accounts' }));
     expect(state.accounts.length).toBe(1);
     expect(state.accounts[0].email).toBe('ada@example.com');
     expect(state.settings.enabled).toBe(true);
@@ -82,7 +83,7 @@ describe('WindowKeeperView controller', () => {
     await new Promise(r => setTimeout(r, 50));
 
     await state.toggleGlobalSwitch();
-    expect(proxyCallMock).toHaveBeenCalledWith('PUT', '/v0/management/window-keeper/settings', '', expect.objectContaining({ enabled: false }));
+    expect(proxyCallMock).toHaveBeenCalledWith(expect.objectContaining({ method: 'PUT', path: '/v0/management/window-keeper/settings', body: expect.objectContaining({ enabled: false }) }));
     expect(state.settings.enabled).toBe(false);
   });
 });

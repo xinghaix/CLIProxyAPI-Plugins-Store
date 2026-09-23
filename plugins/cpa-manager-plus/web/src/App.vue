@@ -275,8 +275,19 @@ function formatError(status, body) {
   return t('errors.http', {status});
 }
 
-async function proxyCall(payload) {
+async function proxyCall(payloadOrMethod, maybePath, maybeQuery, maybeBody) {
   if (!resolvedCPAKey.value) throw new Error(t('errors.missingManagementKey'));
+  let payload;
+  if (typeof payloadOrMethod === 'string') {
+    payload = {
+      method: payloadOrMethod,
+      path: maybePath,
+      query: typeof maybeQuery === 'string' ? maybeQuery : '',
+      body: maybeBody !== undefined ? maybeBody : (typeof maybeQuery === 'object' && maybeQuery !== null ? maybeQuery : undefined),
+    };
+  } else {
+    payload = payloadOrMethod;
+  }
   const res = await fetch(PROXY, {method: 'POST', headers: authHeaders(true), body: JSON.stringify(payload)});
   const body = await readJSONResponse(res);
   if (!res.ok) throw new Error(formatError(res.status, body));
