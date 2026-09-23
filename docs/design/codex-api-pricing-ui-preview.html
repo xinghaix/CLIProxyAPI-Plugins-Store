@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>监控</title>
+<style>
+  :root {
+    --cpa-page-bg:#efeae1; --cpa-surface:#f7f4ee; --cpa-surface-muted:#e7e1d6;
+    --cpa-text-primary:#1c1915; --cpa-text-secondary:#5c564c; --cpa-text-tertiary:#8a8376;
+    --cpa-ink:#1c1915; --cpa-paper:#efeae1; --cpa-rule:#d5cfc3;
+    --cpa-success:#1f7a4d; --cpa-error:#b42318;
+    --cpa-control-height:36px;
+    --cpa-font-ui:"Noto Sans SC","PingFang SC","Hiragino Sans GB",sans-serif;
+    --cpa-font-mono:"IBM Plex Mono","SFMono-Regular",ui-monospace,monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--cpa-page-bg); color:var(--cpa-ink); font-family:var(--cpa-font-ui); }
+  .page { width:min(1440px, calc(100% - 48px)); margin:28px auto 48px; }
+  .monitoring-page { display:flex; flex-direction:column; gap:22px; }
+  .monitoring-filterbar { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"primary actions" "secondary secondary"; gap:8px 10px; align-items:center; }
+  .filterbar-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; min-width:0; }
+  .primary-filters { grid-area:primary; }
+  .secondary-filters { grid-area:secondary; }
+  .filterbar-actions { grid-area:actions; display:inline-flex; gap:8px; }
+  .btn, .control { min-height:var(--cpa-control-height); border:1px solid var(--cpa-rule); background:transparent; color:var(--cpa-text-secondary); border-radius:0; font:inherit; }
+  .btn { display:inline-flex; align-items:center; padding:0 13px; font-size:13px; }
+  .btn.primary { background:var(--cpa-ink); border-color:var(--cpa-ink); color:var(--cpa-paper); }
+  .control { padding:0 10px; font-size:13px; color:var(--cpa-text-primary); background:color-mix(in srgb, var(--cpa-surface) 70%, transparent); }
+  .control.compact { width:168px; }
+  .control.wide { min-width:0; flex:1 1 220px; }
+  select.control { appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='none' stroke='%238a8376' stroke-width='1.2' d='M1 1l4 4 4-4'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 10px center; padding-right:28px; }
+  .metric-grid { display:flex; border-top:1px solid var(--cpa-rule); }
+  .metric { flex:1 1 0; min-width:0; padding:12px 14px; border-right:1px solid var(--cpa-rule); }
+  .metric:first-child { padding-left:0; }
+  .metric:last-child { border-right:0; padding-right:0; }
+  .metric-label { font-family:var(--cpa-font-mono); color:var(--cpa-text-secondary); font-size:11px; font-weight:500; letter-spacing:.04em; text-transform:uppercase; margin-bottom:6px; }
+  .metric-value { font-family:var(--cpa-font-mono); font-size:26px; font-weight:600; line-height:1; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
+  .metric-sub { margin-top:6px; color:var(--cpa-text-tertiary); font-size:11px; }
+  .cost-estimate-note { display:flex; align-items:center; gap:12px; padding:10px 14px; border:1px solid color-mix(in srgb, var(--cpa-ink) 13%, var(--cpa-rule)); border-radius:12px; background:color-mix(in srgb, var(--cpa-ink) 3%, var(--cpa-surface)); }
+  .cost-estimate-note-icon { display:grid; place-items:center; width:30px; height:30px; flex:0 0 30px; border-radius:9px; background:color-mix(in srgb, var(--cpa-ink) 9%, var(--cpa-surface)); font-size:18px; font-weight:750; }
+  .cost-estimate-note > div { display:grid; gap:2px; }
+  .cost-estimate-note strong { font-size:12px; }
+  .cost-estimate-note div span { color:var(--cpa-text-secondary); font-size:11px; line-height:1.4; }
+  .monitor-tabs { display:flex; align-items:baseline; justify-content:space-between; gap:16px; border-bottom:1px solid var(--cpa-rule); }
+  .monitor-tabs-list { display:flex; gap:18px; }
+  .monitor-tabs .tab { border:0; background:transparent; color:var(--cpa-text-tertiary); font:inherit; font-size:13px; padding:0 0 9px; min-height:34px; cursor:pointer; }
+  .monitor-tabs .tab.active { color:var(--cpa-ink); font-weight:700; box-shadow:inset 0 -2px 0 var(--cpa-ink); }
+  .monitor-tabs .tab span { opacity:.55; font-size:10px; font-family:var(--cpa-font-mono); margin-left:6px; }
+  .monitor-tabs-note { margin-left:auto; padding-bottom:9px; color:var(--cpa-text-tertiary); font-size:12px; }
+  .table-wrap { overflow-x:auto; border-top:1px solid var(--cpa-rule); border-bottom:1px solid var(--cpa-rule); }
+  table { width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }
+  th, td { padding:11px 14px 11px 0; border-bottom:1px solid color-mix(in srgb, var(--cpa-rule) 75%, transparent); text-align:left; vertical-align:top; }
+  th { color:var(--cpa-text-tertiary); font-family:var(--cpa-font-mono); font-size:10px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; }
+  tr:last-child td { border-bottom:0; }
+  .provider-cell { display:flex; align-items:center; gap:6px; margin-top:6px; }
+  .provider-chip { display:inline-flex; padding:1px 8px; border-radius:999px; box-shadow:inset 0 0 0 1px var(--provider-border, var(--cpa-rule)); font-family:var(--cpa-font-mono); font-size:11px; font-weight:600; }
+  .provider-chip.is-codex { --provider-border:#7eae86; color:#163222; background:#cde8d1; }
+  .provider-chip.is-api { --provider-border:#7aa4d4; color:#1e3a5f; background:#c5daf0; }
+  .event-metric-label, .muted, .small-text { color:var(--cpa-text-secondary); }
+  .small-text { font-size:11px; }
+  .good-text { color:var(--cpa-success); }
+  .event-status-grid { display:grid; grid-template-columns:auto auto; gap:4px 8px; align-items:center; }
+  .event-status-kicker { font-size:12px; }
+  .event-status-marks, .recent-status { display:flex; align-items:center; gap:3px; }
+  .pattern-bar { width:6px; height:6px; background:var(--cpa-text-tertiary); }
+  .pattern-bar.good { background:var(--cpa-success); }
+  .event-protocol-tag { display:inline-flex; gap:4px; padding:1px 8px; border-radius:999px; font-family:var(--cpa-font-mono); font-size:11px; font-weight:600; }
+  .event-protocol-tag.is-http { color:#163222; background:#cde8d1; box-shadow:inset 0 0 0 1px #7eae86; }
+  .event-protocol-code { color:var(--cpa-text-tertiary); font-weight:500; }
+  .event-cost-cell { min-width:210px; font-variant-numeric:tabular-nums; }
+  .event-cost-cell strong { display:block; }
+  .cost-estimate-meta, .cost-reasoning-meta, .cost-aggregate-meta { display:block; margin-top:3px; font-size:10px; line-height:1.35; }
+  .cost-estimate-meta, .cost-aggregate-meta { color:var(--cpa-text-tertiary); }
+  .cost-reasoning-meta { color:var(--cpa-text-secondary); }
+  .pager { display:flex; justify-content:flex-end; padding-top:12px; color:var(--cpa-text-tertiary); font-size:12px; font-family:var(--cpa-font-mono); }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<div class="page">
+  <section class="monitoring-page">
+    <div class="monitoring-filterbar">
+      <div class="filterbar-controls primary-filters">
+        <select class="control compact"><option>今天</option></select>
+        <select class="control compact"><option>关闭自动刷新</option></select>
+        <input class="control wide" placeholder="搜索模型、来源、API Key">
+      </div>
+      <div class="filterbar-actions">
+        <button class="btn primary">刷新</button>
+        <button class="btn">导出 CSV</button>
+        <button class="btn">重置</button>
+      </div>
+      <div class="filterbar-controls secondary-filters">
+        <select class="control compact"><option>全部状态</option></select>
+        <select class="control compact"><option>全部提供商</option></select>
+        <select class="control compact"><option>全部模型</option></select>
+        <select class="control compact"><option>全部账号</option></select>
+        <select class="control compact"><option>全部 API Key</option></select>
+      </div>
+    </div>
+
+    <div class="metric-grid">
+      <article class="metric"><div class="metric-label">总调用</div><div class="metric-value">5</div><div class="metric-sub">2 账号</div></article>
+      <article class="metric"><div class="metric-label">调用成功率</div><div class="metric-value">100%</div><div class="metric-sub">失败总数 0</div></article>
+      <article class="metric"><div class="metric-label">预估花费</div><div class="metric-value">$1.1840</div><div class="metric-sub">已估价 3 · 未定价 2</div></article>
+      <article class="metric"><div class="metric-label">总 Tokens</div><div class="metric-value">491.1K</div><div class="metric-sub">推理 27</div></article>
+    </div>
+
+    <div class="monitor-tabs">
+      <div class="monitor-tabs-list">
+        <button class="tab active" data-tab="events">事件流 <span>5</span></button>
+        <button class="tab" data-tab="accounts">账号汇总 <span>2</span></button>
+        <button class="tab" data-tab="models">模型 <span>4</span></button>
+        <button class="tab" data-tab="timeline">时间线 <span>5</span></button>
+      </div>
+      <span class="monitor-tabs-note">最近 24 小时</span>
+    </div>
+
+    <div data-panel="events">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>来源 / API KEY</th><th>模型</th><th>强度 / 等级</th><th>请求状态</th><th>成功率 / 调用</th><th>耗时</th><th>TPS</th><th>时间</th><th>本次用量</th><th>缓存</th><th>本次花费</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>oauth@example.com</strong><div class="provider-cell"><span class="provider-chip is-codex">CODEX</span></div></td>
+              <td>gpt-5.6-sol</td>
+              <td><div><span class="event-metric-label">强度</span> xhigh</div><div><span class="event-metric-label">等级</span> auto</div></td>
+              <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span><span class="pattern-bar good"></span><span class="pattern-bar good"></span></div></div></td>
+              <td><strong class="good-text">100%</strong><div class="muted small-text">1 / 1</div></td>
+              <td><div><span class="event-metric-label">首字</span> 1.2s</div><div><span class="event-metric-label">耗时</span> 8.4s</div></td>
+              <td><strong>18.4</strong></td>
+              <td><div>09-23</div><div>14:21</div></td>
+              <td><strong>100.8K</strong><div class="muted small-text">入 100.0K · 出 800</div></td>
+              <td><strong>0%</strong></td>
+              <td class="event-cost-cell" title="Fast 加速 · 短上下文 · 输入 ≤272K · 实际响应档位 · 请求档位 auto">
+                <strong>$0.8320</strong>
+                <span class="cost-estimate-meta">Fast 加速 · 短上下文 · 输入 ≤272K · 实际响应档位 · 请求档位 auto</span>
+              </td>
+            </tr>
+            <tr>
+              <td><strong>oauth@example.com</strong><div class="provider-cell"><span class="provider-chip is-codex">CODEX</span></div></td>
+              <td>gpt-5.4</td>
+              <td><div><span class="event-metric-label">强度</span> high</div><div><span class="event-metric-label">等级</span> auto</div></td>
+              <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span><span class="pattern-bar good"></span></div></div></td>
+              <td><strong class="good-text">100%</strong><div class="muted small-text">1 / 1</div></td>
+              <td><div><span class="event-metric-label">首字</span> 0.8s</div><div><span class="event-metric-label">耗时</span> 4.1s</div></td>
+              <td><strong>22.0</strong></td>
+              <td><div>09-23</div><div>14:18</div></td>
+              <td><strong>100.0K</strong><div class="muted small-text">入 100.0K · 出 0</div></td>
+              <td><strong>0%</strong></td>
+              <td class="event-cost-cell">
+                <strong>$0.2500</strong>
+                <span class="cost-estimate-meta">Standard 标准 · 短上下文 · 输入 ≤272K · 按 Standard 假设 · 请求档位 auto</span>
+              </td>
+            </tr>
+            <tr>
+              <td><strong>oauth@example.com</strong><div class="provider-cell"><span class="provider-chip is-codex">CODEX</span></div></td>
+              <td>gpt-6-sol</td>
+              <td><div><span class="event-metric-label">强度</span> xhigh</div><div><span class="event-metric-label">等级</span> auto</div></td>
+              <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span></div></div></td>
+              <td><strong class="good-text">100%</strong><div class="muted small-text">1 / 1</div></td>
+              <td><div><span class="event-metric-label">首字</span> 1.6s</div><div><span class="event-metric-label">耗时</span> 11.2s</div></td>
+              <td><strong>16.8</strong></td>
+              <td><div>09-23</div><div>14:11</div></td>
+              <td><strong>102.0K</strong><div class="muted small-text">入 100.0K · 出 2.0K</div></td>
+              <td><strong>0%</strong></td>
+              <td class="event-cost-cell">
+                <strong>$0.1020</strong>
+                <span class="cost-estimate-meta">自定义模型单价 · 请求档位 auto · 平面单价未按服务档位或上下文调整</span>
+              </td>
+            </tr>
+            <tr>
+              <td><strong>sk-live-…92af</strong><div class="provider-cell"><span class="provider-chip is-api">API</span></div></td>
+              <td>gpt-5.5</td>
+              <td><div><span class="event-metric-label">强度</span> medium</div><div><span class="event-metric-label">等级</span> fast</div></td>
+              <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span><span class="pattern-bar good"></span></div></div></td>
+              <td><strong class="good-text">100%</strong><div class="muted small-text">1 / 1</div></td>
+              <td><div><span class="event-metric-label">首字</span> 2.4s</div><div><span class="event-metric-label">耗时</span> 19.6s</div></td>
+              <td><strong>9.1</strong></td>
+              <td><div>09-23</div><div>13:58</div></td>
+              <td><strong>280.1K</strong><div class="muted small-text">入 280.0K · 出 100</div></td>
+              <td><strong>0%</strong></td>
+              <td class="event-cost-cell">
+                <strong>—</strong>
+                <span class="cost-estimate-meta">无公开价格，无法估价</span>
+              </td>
+            </tr>
+            <tr>
+              <td><strong>sk-live-…92af</strong><div class="provider-cell"><span class="provider-chip is-api">API</span></div></td>
+              <td>gpt-5.5</td>
+              <td><div><span class="event-metric-label">强度</span> low</div><div><span class="event-metric-label">等级</span> priority</div></td>
+              <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span></div></div></td>
+              <td><strong class="good-text">100%</strong><div class="muted small-text">1 / 1</div></td>
+              <td><div><span class="event-metric-label">首字</span> 0.6s</div><div><span class="event-metric-label">耗时</span> 3.2s</div></td>
+              <td><strong>31.2</strong></td>
+              <td><div>09-23</div><div>13:42</div></td>
+              <td><strong>10.1K</strong><div class="muted small-text">入 10.0K · 出 100</div></td>
+              <td><strong>12%</strong></td>
+              <td class="event-cost-cell">
+                <strong>—</strong>
+                <span class="cost-estimate-meta">无公开价格，无法估价</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pager">1 / 1</div>
+    </div>
+
+    <div data-panel="accounts" hidden>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>账号 / API KEY</th><th>提供商</th><th>请求</th><th>成功率</th><th>Token</th><th>费用</th><th>耗时</th><th>最近出现</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>oauth@example.com</strong></td>
+              <td><span class="provider-cell"><span class="provider-chip is-codex">CODEX</span></span></td>
+              <td>3</td>
+              <td><strong class="good-text">100%</strong></td>
+              <td>302.8K</td>
+              <td><strong>$1.1840</strong></td>
+              <td>7.9s</td>
+              <td>09-23 14:21</td>
+              <td><button class="btn">筛选</button></td>
+            </tr>
+            <tr>
+              <td><strong>sk-live-…92af</strong></td>
+              <td><span class="provider-cell"><span class="provider-chip is-api">API</span></span></td>
+              <td>2</td>
+              <td><strong class="good-text">100%</strong></td>
+              <td>290.2K</td>
+              <td><strong>—</strong><small class="cost-aggregate-meta">2 次未定价</small></td>
+              <td>11.4s</td>
+              <td>09-23 13:58</td>
+              <td><button class="btn">筛选</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div data-panel="models" hidden>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>模型</th><th>调用</th><th>Token</th><th>费用</th></tr></thead>
+          <tbody>
+            <tr><td>gpt-5.6-sol</td><td>1</td><td>100.8K</td><td><strong>$0.8320</strong></td></tr>
+            <tr><td>gpt-5.4</td><td>1</td><td>100.0K</td><td><strong>$0.2500</strong></td></tr>
+            <tr><td>gpt-6-sol</td><td>1</td><td>102.0K</td><td><strong>$0.1020</strong><small class="cost-aggregate-meta">自定义模型单价</small></td></tr>
+            <tr><td>gpt-5.5</td><td>2</td><td>290.2K</td><td><strong>—</strong><small class="cost-aggregate-meta">2 次未定价</small></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div data-panel="timeline" hidden>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>时间</th><th>调用</th><th>费用</th></tr></thead>
+          <tbody>
+            <tr><td>14:00</td><td>3</td><td>$1.1840</td></tr>
+            <tr><td>13:00</td><td>2</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+<script>
+document.querySelector(".monitor-tabs-list").addEventListener("click", (event) => {
+  const tab = event.target.closest("[data-tab]");
+  if (!tab) return;
+  document.querySelectorAll(".monitor-tabs .tab").forEach((item) => item.classList.toggle("active", item === tab));
+  document.querySelectorAll("[data-panel]").forEach((panel) => { panel.hidden = panel.dataset.panel !== tab.dataset.panel; });
+});
+</script>
+</body>
+</html>
