@@ -117,6 +117,7 @@ func (r *Runtime) SyncPrices(ctx context.Context) (pricesync.Result, error) {
 	if do == nil {
 		return r.finishPriceSync(ctx, pricesync.Result{}, fmt.Errorf("host HTTP callback is unavailable"))
 	}
+	_ = r.refreshOfficialPricing(ctx)
 	result, err := pricesync.Run(ctx, targets, func(ctx context.Context, target string, headers http.Header) (pricesync.HTTPResponse, error) {
 		return do(ctx, http.MethodGet, target, headers, nil)
 	})

@@ -67,10 +67,6 @@
     <section v-if="!ready" class="notice">{{ t('monitoring.missingKey') }}</section>
 
     <MetricGrid :cards="summaryCards"/>
-    <div class="cost-estimate-note" role="note">
-      <span class="cost-estimate-note-icon" aria-hidden="true">≈</span>
-      <div><strong>{{ t('monitoring.costEstimate.apiEquivalent') }}</strong><span>{{ t('monitoring.costEstimate.subscriptionNote') }}</span><span>{{ t('monitoring.costEstimate.recalculated') }}</span></div>
-    </div>
 
     <div class="monitor-tabs card">
       <div class="monitor-tabs-list">
@@ -203,7 +199,6 @@
             <td class="event-cost-cell" :title="row.costTooltip">
               <strong>{{ row.costText }}</strong>
               <span class="cost-estimate-meta">{{ row.costMeta }}</span>
-              <span v-if="row.reasoningMeta" class="cost-reasoning-meta">{{ row.reasoningMeta }}</span>
             </td>
           </tr>
           </tbody>
@@ -466,7 +461,7 @@ import { EMPTY_VALUE, formatDate, formatDateTime, formatInt, formatTime } from '
 import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
 import { requestProtocol, requestProtocolLabel } from '../utils/requestProtocol.js';
 import { buildUsageIOC } from '../utils/usageBreakdown.js';
-import { aggregateCostCoverage as formatAggregateCostCoverage, aggregateCostText as formatAggregateCostText, eventCostAmount as formatEventCostAmount, eventCostMeta as formatEventCostMeta, eventCostTooltip as formatEventCostTooltip, eventReasoningMeta as formatEventReasoningMeta } from '../utils/costEstimateDisplay.js';
+import { aggregateCostCoverage as formatAggregateCostCoverage, aggregateCostText as formatAggregateCostText, eventCostAmount as formatEventCostAmount, eventCostMeta as formatEventCostMeta, eventCostTooltip as formatEventCostTooltip } from '../utils/costEstimateDisplay.js';
 import { canApplySelectedFilter, rowIdentity } from '../utils/rowFilter.js';
 import { buildEventHints, buildModelMeta, formatCacheSub, formatCallsSub, formatTpsSub, hasModelRouteDetails, hasResponseModelConflict, hasResponseModelDifference, hasResponseModelMismatch, mappedModelName, requestedModelName, responseModelName, responseModelSource } from '../utils/eventStreamDisplay.js';
 import {
@@ -596,7 +591,7 @@ const eventDetailCards = computed(() => selectedEvent.value ? [
   {label: t('monitoring.labels.status'), value: selectedEvent.value.failed ? t('monitoring.labels.failed') : t('monitoring.labels.success')},
   {label: t('monitoring.labels.token'), value: selectedEvent.value.total_tokens ?? 0},
   {label: t('monitoring.labels.latency'), value: fmtMs(selectedEvent.value.latency_ms)},
-  {label: t('monitoring.labels.cost'), value: fmtMoney(eventCostAmount(selectedEvent.value)), sub: [t('monitoring.costEstimate.apiEquivalent'), eventCostMeta(selectedEvent.value), eventReasoningMeta(selectedEvent.value)].filter(Boolean).join(' · ')},
+  {label: t('monitoring.labels.cost'), value: fmtMoney(eventCostAmount(selectedEvent.value)), sub: eventCostMeta(selectedEvent.value)},
 ] : []);
 const eventBaseDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['request_id', 'event_hash', 'timestamp_ms', 'model', 'alias', 'requested_model', 'resolved_model', 'response_model', 'host_response_model', 'observed_response_model', 'response_model_source', 'response_model_conflict', 'endpoint', 'method', 'path', 'protocol', 'executor_type', 'auth_index', 'source', 'source_hash', 'api_key_hash', 'account_snapshot', 'auth_label_snapshot', 'auth_provider_snapshot', 'auth_project_id_snapshot', 'input_tokens', 'output_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'cache_input_mode', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'reasoning_effort', 'service_tier', 'response_service_tier', 'cost_estimate', 'reasoning_tokens', 'total_tokens', 'latency_ms', 'ttft_ms', 'failed', 'fail_status_code', 'fail_summary'])) : {});
 const eventHeaderDetail = computed(() => selectedEvent.value ? decodeDetailObject(pickObject(selectedEvent.value, ['header_quota_recover_at_ms', 'header_quota_used_percent', 'header_quota_plan_type', 'header_error_kind', 'header_error_code', 'header_trace_id'])) : {});
@@ -1443,7 +1438,6 @@ function buildEventTableRow(row, groupMap) {
     cacheHitRate: computeCacheHitRate(row),
     cost: eventCostAmount(row),
     costMeta: eventCostMeta(row),
-    reasoningMeta: eventReasoningMeta(row),
     costTooltip: eventCostTooltip(row),
     failStatusCode: numberOrNull(row.fail_status_code),
     failSummary: row.fail_summary || '',
@@ -1497,12 +1491,8 @@ function eventCostMeta(row) {
   return formatEventCostMeta(row, t);
 }
 
-function eventReasoningMeta(row) {
-  return formatEventReasoningMeta(row, t, fmtCompact);
-}
-
 function eventCostTooltip(row) {
-  return formatEventCostTooltip(row, t, fmtCompact);
+  return formatEventCostTooltip(row, t);
 }
 
 function aggregateCostCoverage(row) {

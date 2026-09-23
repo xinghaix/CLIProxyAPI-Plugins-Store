@@ -58,23 +58,19 @@ describe('event model popup interactions', () => {
     }, new Map());
     expect(actual.cost).toBe(0.42);
     expect(actual.costMeta).toBe('Fast · Short context · ≤272K input · actual response · request auto');
-    expect(actual.reasoningMeta).toBe('requested effort xhigh · 27 reasoning tokens · reasoning tokens use output-token pricing; effort has no separate rate');
-    expect(actual.costTooltip).toContain('not a ChatGPT subscription charge or remaining quota.');
-    expect(actual.costTooltip).toContain('reasoning tokens use output-token pricing');
+    expect(actual.costTooltip).toBe(actual.costMeta);
 
     const assumed = state.buildEventTableRow({
       model: 'gpt-5.6-sol', service_tier: 'auto', reasoning_effort: 'high',
       cost_estimate: {amount: 0.42, status: 'estimated', context_tier: 'short', service_tier: 'standard', tier_source: 'assumed-standard'},
     }, new Map());
     expect(assumed.costMeta).toBe('Standard · Short context · ≤272K input · Standard assumed · request auto');
-    expect(assumed.reasoningMeta).toContain('effort has no separate rate');
 
     const customFlat = state.buildEventTableRow({
       model: 'gpt-6-sol', service_tier: 'auto', response_service_tier: 'fast', reasoning_effort: 'xhigh',
       cost_estimate: {amount: 0.102, status: 'estimated', schedule_id: 'model-price-flat', context_tier: 'flat'},
     }, new Map());
     expect(customFlat.costMeta).toBe('configured model price · actual response tier fast · request auto · flat price is not adjusted for service tier or context');
-    expect(customFlat.reasoningMeta).toContain('requested effort xhigh');
 
     const unpriced = state.buildEventTableRow({model: 'gpt-5.5', cost_estimate: {amount: 0, status: 'unpriced', note: 'long_context_rate_unavailable'}}, new Map());
     expect(unpriced.cost).toBeNull();

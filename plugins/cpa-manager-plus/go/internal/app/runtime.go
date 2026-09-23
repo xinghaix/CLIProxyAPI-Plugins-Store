@@ -48,6 +48,7 @@ type Runtime struct {
 	authGet            func(string) (pluginapi.HostAuthGetResponse, error)
 	httpDo             func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)
 	syncMu             sync.Mutex
+	officialMu         sync.Mutex
 	priceMu            sync.Mutex
 	priceSettings      PriceSyncSettings
 	priceStatus        PriceSyncStatus
@@ -88,6 +89,10 @@ func New(rawConfig []byte) (*Runtime, error) {
 		_ = database.Close()
 		return nil, err
 	}
+	if err := runtime.loadOfficialPricing(context.Background()); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	if err := runtime.loadInspectionSettings(context.Background()); err != nil {
 		_ = database.Close()
 		return nil, err
@@ -102,6 +107,8 @@ func New(rawConfig []byte) (*Runtime, error) {
 	go func() { defer runtime.wait.Done(); runtime.writer.Run(ctx) }()
 	runtime.wait.Add(1)
 	go func() { defer runtime.wait.Done(); runtime.priceSyncLoop(ctx) }()
+	runtime.wait.Add(1)
+	go func() { defer runtime.wait.Done(); runtime.officialPriceLoop(ctx) }()
 	// Always run the inspection scheduler loop so runtime config updates can enable it without restart.
 	runtime.wait.Add(1)
 	go func() { defer runtime.wait.Done(); runtime.scheduleInspections(ctx) }()

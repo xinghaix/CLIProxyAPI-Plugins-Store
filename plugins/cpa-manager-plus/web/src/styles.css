@@ -562,24 +562,9 @@ pre {
 .loading { color: var(--cpa-text-secondary); font-size: 13px; }
 
 .monitoring-page { display: flex; flex-direction: column; gap: 22px; }
-.cost-estimate-note {
-  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
-  border: 1px solid color-mix(in srgb, var(--cpa-ink) 13%, var(--cpa-rule));
-  border-radius: 12px; background: color-mix(in srgb, var(--cpa-ink) 3%, var(--cpa-surface));
-}
-.cost-estimate-note-icon {
-  display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px;
-  border-radius: 9px; background: color-mix(in srgb, var(--cpa-ink) 9%, var(--cpa-surface));
-  color: var(--cpa-ink); font-size: 18px; font-weight: 750;
-}
-.cost-estimate-note > div { display: grid; gap: 2px; min-width: 0; }
-.cost-estimate-note strong { color: var(--cpa-text-primary); font-size: 12px; }
-.cost-estimate-note div span { color: var(--cpa-text-secondary); font-size: 11px; line-height: 1.4; }
 .event-cost-cell { min-width: 190px; font-variant-numeric: tabular-nums; }
 .event-cost-cell strong { display: block; }
-.cost-estimate-meta, .cost-reasoning-meta { display: block; margin-top: 3px; font-size: 10px; line-height: 1.35; white-space: normal; }
-.cost-estimate-meta { color: var(--cpa-text-tertiary); }
-.cost-reasoning-meta { color: var(--cpa-text-secondary); }
+.cost-estimate-meta { display: block; margin-top: 3px; color: var(--cpa-text-tertiary); font-size: 10px; line-height: 1.35; white-space: normal; }
 .cost-aggregate-cell { display: inline-grid; gap: 2px; line-height: 1.25; font-variant-numeric: tabular-nums; }
 .cost-aggregate-cell strong { font-weight: 650; }
 .cost-aggregate-meta { display: block; color: var(--cpa-text-tertiary); font-size: 10px; white-space: nowrap; }

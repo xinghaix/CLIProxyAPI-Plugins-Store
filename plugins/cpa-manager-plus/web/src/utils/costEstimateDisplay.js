@@ -66,14 +66,12 @@ export function eventCostNote(note, t) {
   return key ? t(`monitoring.costEstimate.${key}`) : t('monitoring.costEstimate.estimateUnavailable');
 }
 
-export function eventCostTooltip(row, t, formatCompact) {
+export function eventCostTooltip(row, t) {
   const estimate = row?.cost_estimate;
-  const reasoning = eventReasoningMeta(row, t, formatCompact);
-  const basis = [t('monitoring.costEstimate.apiEquivalent'), t('monitoring.costEstimate.recalculated')];
   if (!estimate || estimate.status !== 'estimated') {
-    return [`${t('monitoring.costEstimate.estimateUnavailable')} · ${eventCostNote(estimate?.note, t)}`, reasoning, ...basis.slice(1)].filter(Boolean).join(' · ');
+    return [t('monitoring.costEstimate.estimateUnavailable'), eventCostNote(estimate?.note, t)].filter(Boolean).join(' · ');
   }
-  return [...basis, eventCostMeta(row, t), reasoning, t('monitoring.costEstimate.subscriptionNote')].filter(Boolean).join(' · ');
+  return eventCostMeta(row, t);
 }
 
 export function aggregateCostCoverage(row, t, formatInt) {

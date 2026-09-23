@@ -135,6 +135,16 @@ func (s *Store) migrate(ctx context.Context) error {
 			synced_at_ms integer,
 			updated_at_ms integer not null
 		)`,
+		`create table if not exists official_price_schedule (
+			id integer primary key check (id = 1),
+			schedule_id text not null default '',
+			source text not null default '',
+			rates_json text not null default '',
+			fetched_at_ms integer not null default 0,
+			next_refresh_at_ms integer not null default 0,
+			last_error text not null default '',
+			updated_at_ms integer not null
+		)`,
 		`create table if not exists account_action_candidates (
 			id integer primary key autoincrement,
 			action_type text not null,

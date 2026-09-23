@@ -151,8 +151,8 @@ func EstimateCost(usage Usage, flat *FlatRates) Estimate {
 	if model == "" {
 		return unavailable(model, NoteMissingModel)
 	}
-	if schedule, ok := lookupSchedule(model); ok {
-		return estimateOfficial(usage, model, schedule)
+	if schedule, scheduleID, ok := lookupSchedule(model); ok {
+		return estimateOfficial(usage, model, scheduleID, schedule)
 	}
 	if flat == nil {
 		return unavailable(model, NoteMissingPrice)
@@ -167,8 +167,8 @@ type tierChoice struct {
 	OK           bool
 }
 
-func estimateOfficial(usage Usage, model string, schedule ModelSchedule) Estimate {
-	result := Estimate{Currency: CurrencyUSD, Basis: BasisAPICost, Status: StatusUnpriced, Model: model, ScheduleID: ScheduleID}
+func estimateOfficial(usage Usage, model, scheduleID string, schedule ModelSchedule) Estimate {
+	result := Estimate{Currency: CurrencyUSD, Basis: BasisAPICost, Status: StatusUnpriced, Model: model, ScheduleID: scheduleID}
 	if negativeTokens(usage) {
 		result.Status, result.Note = StatusInvalid, NoteInvalidTokenCounts
 		return result
@@ -278,23 +278,24 @@ func flatCachedRate(usage Usage, flat FlatRates) float64 {
 	return flat.CacheRead
 }
 
-func lookupSchedule(model string) (ModelSchedule, bool) {
-	if schedule, ok := officialRates[model]; ok {
-		return schedule, true
+func lookupSchedule(model string) (ModelSchedule, string, bool) {
+	catalog := activeCatalog()
+	if schedule, ok := catalog.rates[model]; ok {
+		return schedule, catalog.id, true
 	}
 	// Date-pinned model IDs share the base schedule. Other suffixes are not
 	// guessed; variants with different rates have their own longer key.
-	keys := make([]string, 0, len(officialRates))
-	for key := range officialRates {
+	keys := make([]string, 0, len(catalog.rates))
+	for key := range catalog.rates {
 		keys = append(keys, key)
 	}
 	sort.Slice(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
 	for _, key := range keys {
 		if strings.HasPrefix(model, key+"-") && numericDateSuffix(strings.TrimPrefix(model, key+"-")) {
-			return officialRates[key], true
+			return catalog.rates[key], catalog.id, true
 		}
 	}
-	return ModelSchedule{}, false
+	return ModelSchedule{}, "", false
 }
 
 func numericDateSuffix(value string) bool {
