@@ -10,4 +10,5 @@ checksums_fragment.txt
 node_modules/
 plugins/*/go/web-dist/
 plugins/*/release/
+plugins/*/go/.cache/
 __pycache__/
