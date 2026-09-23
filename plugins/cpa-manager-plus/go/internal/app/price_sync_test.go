@@ -87,7 +87,6 @@ func TestPriceSyncSettingsValidateAndPersist(t *testing.T) {
 	}
 }
 
-
 func TestConfirmPriceSyncCandidateRemovesFromLastResultAndPersists(t *testing.T) {
 	runtime, err := New([]byte("data_dir: " + t.TempDir()))
 	if err != nil {

@@ -22,9 +22,10 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/ingest"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/store"
+	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/windowkeeper"
 )
 
-const runtimeVersion = "0.5.32"
+const runtimeVersion = "0.5.33"
 
 type connection struct {
 	BaseURL       string `json:"cpaBaseUrl"`
@@ -33,37 +34,44 @@ type connection struct {
 
 // Runtime owns all local resources that must stop before the plugin is unloaded.
 type Runtime struct {
-	mu                 sync.Mutex
-	config             config.Config
-	store              *store.Store
-	writer             *ingest.Writer
-	responseObserver   *responseObserver
-	cancel             context.CancelFunc
-	wait               sync.WaitGroup
-	closed             atomic.Bool
-	started            time.Time
-	masterKey          []byte
-	connection         connection
-	authList           func() ([]pluginapi.HostAuthFileEntry, error)
-	authGet            func(string) (pluginapi.HostAuthGetResponse, error)
-	httpDo             func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)
-	syncMu             sync.Mutex
-	officialMu         sync.Mutex
-	priceMu            sync.Mutex
-	priceSettings      PriceSyncSettings
-	priceStatus        PriceSyncStatus
-	priceWake          chan struct{}
-	inspectionMu       sync.Mutex
-	inspectionSettings CodexInspectionSettings
-	inspectionWake     chan struct{}
-	inspectionRunMu    sync.Mutex
-	inspectionCancel   context.CancelFunc
-	autoBanMu          sync.Mutex
-	autoBanSettings    AutoBanSettings
-	autoBanWake        chan struct{}
-	autoBanActionMu    sync.Mutex
-	usageSeen          atomic.Int64
-	lastUsageMS        atomic.Int64
+	mu                   sync.Mutex
+	config               config.Config
+	store                *store.Store
+	writer               *ingest.Writer
+	responseObserver     *responseObserver
+	cancel               context.CancelFunc
+	wait                 sync.WaitGroup
+	closed               atomic.Bool
+	started              time.Time
+	masterKey            []byte
+	connection           connection
+	authList             func() ([]pluginapi.HostAuthFileEntry, error)
+	authGet              func(string) (pluginapi.HostAuthGetResponse, error)
+	httpDo               func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)
+	syncMu               sync.Mutex
+	officialMu           sync.Mutex
+	priceMu              sync.Mutex
+	priceSettings        PriceSyncSettings
+	priceStatus          PriceSyncStatus
+	priceWake            chan struct{}
+	inspectionMu         sync.Mutex
+	inspectionSettings   CodexInspectionSettings
+	inspectionWake       chan struct{}
+	inspectionRunMu      sync.Mutex
+	inspectionCancel     context.CancelFunc
+	autoBanMu            sync.Mutex
+	autoBanSettings      AutoBanSettings
+	autoBanWake          chan struct{}
+	autoBanActionMu      sync.Mutex
+	windowKeeperMu       sync.Mutex
+	windowKeeperSettings windowkeeper.Settings
+	windowKeeperWake     chan struct{}
+	windowKeeper         *windowkeeper.Keeper
+	modelExecuteStream   func(pluginapi.HostModelExecutionRequest) (pluginapi.HostModelStreamResponse, error)
+	modelStreamRead      func(pluginapi.HostModelStreamReadRequest) (pluginapi.HostModelStreamReadResponse, error)
+	modelStreamClose     func(pluginapi.HostModelStreamCloseRequest) error
+	usageSeen            atomic.Int64
+	lastUsageMS          atomic.Int64
 }
 
 func New(rawConfig []byte) (*Runtime, error) {
@@ -80,7 +88,7 @@ func New(rawConfig []byte) (*Runtime, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	runtime := &Runtime{config: cfg, store: database, cancel: cancel, started: time.Now(), masterKey: masterKey, priceWake: make(chan struct{}, 1), inspectionWake: make(chan struct{}, 1), autoBanWake: make(chan struct{}, 1)}
+	runtime := &Runtime{config: cfg, store: database, cancel: cancel, started: time.Now(), masterKey: masterKey, priceWake: make(chan struct{}, 1), inspectionWake: make(chan struct{}, 1), autoBanWake: make(chan struct{}, 1), windowKeeperWake: make(chan struct{}, 1)}
 	if err := runtime.loadConnection(context.Background()); err != nil {
 		_ = database.Close()
 		return nil, err
@@ -101,6 +109,11 @@ func New(rawConfig []byte) (*Runtime, error) {
 		_ = database.Close()
 		return nil, err
 	}
+	if err := runtime.loadWindowKeeperSettings(context.Background()); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	runtime.initWindowKeeper()
 	runtime.startResponseObserver(ctx)
 	runtime.writer = ingest.NewWriter(database, cfg.QueueCapacity, cfg.BatchSize, runtime.handleCommittedUsageEvents)
 	runtime.wait.Add(1)
@@ -115,6 +128,9 @@ func New(rawConfig []byte) (*Runtime, error) {
 	// Auto-Ban is disabled by default, but its scheduler stays ready for settings updates.
 	runtime.wait.Add(1)
 	go func() { defer runtime.wait.Done(); runtime.scheduleAutoBan(ctx) }()
+	// Window Keeper scheduler
+	runtime.wait.Add(1)
+	go func() { defer runtime.wait.Done(); runtime.scheduleWindowKeeper(ctx) }()
 	return runtime, nil
 }
 

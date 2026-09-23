@@ -162,8 +162,20 @@ Auto-Ban state and history never persist tokens or full authentication headers. 
 | Model prices | `GET/PUT /v0/management/model-prices`, `GET /v0/management/model-prices/source-lookup` |
 | Auth exceptions | `GET/POST/DELETE .../account-action-candidates...` |
 | Account inspection | `GET/POST .../codex-inspection/...` |
+| Quota windows | `GET/PUT /v0/management/window-keeper/...` |
 | Settings | `GET/PUT /usage-service/config` |
 | Health | `GET /v0/management/cpa-manager-plus/health` |
+
+
+## Codex Quota Window Keeper
+
+The plugin includes built-in dynamic tracking and recovery messaging for Codex OAuth quota windows:
+
+- Dynamically discovers primary, secondary, and additional rate limits (filling missing periods via fill_gaps) as well as Code Review windows.
+- Only triggers after an observed gating window was exhausted and all monitored gates become available, sending a pinned message through CPA's host model callback (forced_provider=codex + exact auth_id).
+- Full streaming verification: consumes complete SSE streams, counting success only when response.completed is received with non-empty output text; follows up with re-probing to verify window movement.
+- Data and scheduling are stored in the local SQLite database (WAL transactions) with restart and crash recovery; pauses accounts on 401/403/400 with one-click resume in UI.
+- Features a dedicated 'Quota Windows' tab with complete i18n localization (EN/ZH-CN/ZH-TW/RU), live quota pills, global policy drawer, and per-account overrides.
 
 ## Price sync sources
 

@@ -41,7 +41,7 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
 )
 
-var pluginVersion = "0.5.32"
+var pluginVersion = "0.5.33"
 
 const (
 	// supportedPluginSchemaVersion 保持为 1，确保插件可加载于 schema 1 和 schema 2 host。
@@ -206,6 +206,9 @@ func configure(raw []byte) error {
 		runtime.SetAuthList(listHostAuth)
 		runtime.SetAuthGet(getHostAuth)
 		runtime.SetHTTPDo(hostHTTPDo)
+		runtime.SetModelExecuteStream(hostModelExecuteStream)
+		runtime.SetModelStreamRead(hostModelStreamRead)
+		runtime.SetModelStreamClose(hostModelStreamClose)
 		runtimeState.runtime = runtime
 		return nil
 	}
@@ -328,6 +331,35 @@ func getHostAuth(authIndex string) (pluginapi.HostAuthGetResponse, error) {
 		return pluginapi.HostAuthGetResponse{}, fmt.Errorf("decode host.auth.get response: %w", err)
 	}
 	return response, nil
+}
+
+func hostModelExecuteStream(req pluginapi.HostModelExecutionRequest) (pluginapi.HostModelStreamResponse, error) {
+	raw, err := callHost(pluginabi.MethodHostModelExecuteStream, req)
+	if err != nil {
+		return pluginapi.HostModelStreamResponse{}, err
+	}
+	var response pluginapi.HostModelStreamResponse
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return pluginapi.HostModelStreamResponse{}, fmt.Errorf("decode host.model.execute_stream response: %w", err)
+	}
+	return response, nil
+}
+
+func hostModelStreamRead(req pluginapi.HostModelStreamReadRequest) (pluginapi.HostModelStreamReadResponse, error) {
+	raw, err := callHost(pluginabi.MethodHostModelStreamRead, req)
+	if err != nil {
+		return pluginapi.HostModelStreamReadResponse{}, err
+	}
+	var response pluginapi.HostModelStreamReadResponse
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return pluginapi.HostModelStreamReadResponse{}, fmt.Errorf("decode host.model.stream_read response: %w", err)
+	}
+	return response, nil
+}
+
+func hostModelStreamClose(req pluginapi.HostModelStreamCloseRequest) error {
+	_, err := callHost(pluginabi.MethodHostModelStreamClose, req)
+	return err
 }
 
 func decodeHostAuthList(raw json.RawMessage) ([]pluginapi.HostAuthFileEntry, error) {

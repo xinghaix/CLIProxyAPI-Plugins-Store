@@ -162,8 +162,20 @@ Auto-Ban 默认关闭。启用后，插件会使用已落库的 usage 失败事�
 | 模型单价 | `GET/PUT /v0/management/model-prices`、`GET /v0/management/model-prices/source-lookup` |
 | 认证异常 | `GET/POST/DELETE .../account-action-candidates...` |
 | 账号巡检 | `GET/POST .../codex-inspection/...` |
+| 额度窗口 | `GET/PUT /v0/management/window-keeper/...` |
 | 配置 | `GET/PUT /usage-service/config` |
 | 健康 | `GET /v0/management/cpa-manager-plus/health` |
+
+
+## Codex 额度窗口保活（Window Keeper）
+
+插件内置 Codex OAuth 额度窗口动态跟踪与恢复发信能力：
+
+- 自动识别每个账号 ChatGPT 上游实际返回的主窗口、额外限额（按 fill_gaps 补齐缺失周期）与 Code Review 窗口。
+- 仅当门控窗口曾耗尽并重新恢复可用时，通过 CPA 模型执行回调（锁定 forced_provider=codex 与精确 auth_id）发送一条短消息，避免额度在恢复后一直空转等待。
+- 完整流式校验：必须消费完整 SSE 事件且收到 response.completed 且含非空文本才记为成功；发信后复测判定窗口是否锚定或属于固定周期，固定窗口不重复发信。
+- 数据与调度直接集成在本地同一 SQLite（WAL 事务），支持断电与重启接续；401/403/400 自动安全暂停账号，支持在界面一键恢复。
+- 提供独立「额度窗口」Tab，支持中/英/繁/俄四语切换、动态额度胶囊展示、全局策略抽屉与单账号覆盖。
 
 ## 价格同步来源
 

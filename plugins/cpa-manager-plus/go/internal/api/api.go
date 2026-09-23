@@ -271,6 +271,8 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 		return handleInspectionRoute(ctx, runtime, method, path, request.Body)
 	case strings.HasPrefix(path, "/v0/management/codex-inspection"):
 		return jsonResponse(http.StatusNotFound, map[string]any{"error": "inspection operation not found"})
+	case strings.HasPrefix(path, "/v0/management/window-keeper"):
+		return handleWindowKeeperRoute(ctx, runtime, method, path, rawBody(request.Body))
 	default:
 		return jsonResponse(http.StatusNotFound, map[string]any{"error": "local plugin operation not found", "path": path})
 	}

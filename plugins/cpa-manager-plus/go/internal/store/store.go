@@ -230,6 +230,9 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.ensureAutoBanSchema(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureWindowKeeperSchema(ctx); err != nil {
+		return err
+	}
 	now := time.Now().UnixMilli()
 	if _, err := s.db.ExecContext(ctx, `insert or ignore into schema_migrations(version, applied_at_ms) values(3, ?)`, now); err != nil {
 		return err

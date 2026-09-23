@@ -128,6 +128,9 @@
     <section class="panel" v-if="activeTab === 'account-actions'">
       <AccountActionsView ref="accountActionsView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
+    <section class="panel" v-if="activeTab === 'window-keeper'">
+      <WindowKeeperView ref="windowKeeperView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
+    </section>
   </main>
 </template>
 
@@ -140,6 +143,7 @@ import DashboardView from './components/DashboardView.vue';
 import ModelPricesView from './components/ModelPricesView.vue';
 import AccountActionsView from './components/AccountActionsView.vue';
 import InspectionView from './components/InspectionView.vue';
+import WindowKeeperView from './components/WindowKeeperView.vue';
 import {formatHealthText, HEALTH, LEGACY_SESSION_KEY, PROXY, readCPAAuthStoreKey, SESSION_KEY} from './utils/data.js';
 import {buildManagerConfigSaveBody} from './utils/managerConfigSave.js';
 import {initThemeBridge} from './themeBridge.js';
@@ -161,6 +165,7 @@ const tabs = computed(() => [
   {key: 'model-prices', label: t('tabs.modelPrices')},
   {key: 'account-actions', label: t('tabs.accountActions')},
   {key: 'inspection', label: t('tabs.inspection')},
+  {key: 'window-keeper', label: t('tabs.windowKeeper')},
   {key: 'config', label: t('tabs.config')},
 ]);
 const activeTab = ref('dashboard');
@@ -185,6 +190,7 @@ const monitoringView = ref(null);
 const modelPricesView = ref(null);
 const accountActionsView = ref(null);
 const inspectionView = ref(null);
+const windowKeeperView = ref(null);
 
 // Local runtime config state
 const mgrSaving = ref(false);

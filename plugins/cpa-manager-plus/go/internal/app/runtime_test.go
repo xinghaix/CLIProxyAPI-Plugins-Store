@@ -37,7 +37,7 @@ func TestRuntimePersistsUsageAndStops(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	health := runtime.Health(context.Background())
-	if health["runtime"] != "local" || health["version"] != "0.5.32" || health["event_count"] != int64(1) {
+	if health["runtime"] != "local" || health["version"] != "0.5.33" || health["event_count"] != int64(1) {
 		t.Fatalf("health = %#v", health)
 	}
 	if health["usage_handle_calls"] != int64(1) || health["collector_enabled"] != true {
