@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatWindowRemainingText, remainingPercentFromUsed } from './windowKeeperDisplay.js';
+import { formatAttemptText, formatWindowRemainingText, remainingPercentFromUsed } from './windowKeeperDisplay.js';
 
 describe('remainingPercentFromUsed', () => {
   it('converts used to remaining', () => {
@@ -25,5 +25,17 @@ describe('formatWindowRemainingText', () => {
 
   it('formats English remaining badge', () => {
     expect(formatWindowRemainingText('5h', 2, ' remaining')).toBe('5h remaining 98%');
+  });
+});
+
+describe('formatAttemptText', () => {
+  it('unescapes HTML entities in attempt JSON bodies', () => {
+    expect(formatAttemptText('{&#34;model&#34;:&#34;gpt-5.4&#34;}')).toBe('{"model":"gpt-5.4"}');
+    expect(formatAttemptText('{"model":"gpt-5.4"}')).toBe('{"model":"gpt-5.4"}');
+  });
+
+  it('handles empty values', () => {
+    expect(formatAttemptText('')).toBe('');
+    expect(formatAttemptText(null)).toBe('');
   });
 });

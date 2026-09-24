@@ -1,3 +1,5 @@
+import { decodeHtmlEntities } from './quotaDisplay.js';
+
 /** Convert used_percent (0–100) to remaining percent for window-keeper badges. */
 export function remainingPercentFromUsed(usedPercent) {
   const used = Number(usedPercent);
@@ -16,4 +18,13 @@ export function formatWindowRemainingText(label, usedPercent, remainingWord = '�
   // Chinese locales use no space before the word: 5小时限额剩余 98%
   // English uses a leading space in remainingWord: " remaining"
   return `${label || ''}${word} ${remaining}%`;
+}
+
+/**
+ * Attempt detail text for UI: unescape HTML entities once so req/resp bodies
+ * show normal JSON quotes instead of &#34;. Raw JSON is unchanged.
+ */
+export function formatAttemptText(value) {
+  if (value == null || value === '') return '';
+  return decodeHtmlEntities(String(value));
 }

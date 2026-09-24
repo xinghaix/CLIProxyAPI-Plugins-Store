@@ -137,7 +137,20 @@ func (r *Runtime) ResumeWindowKeeperAccount(ctx context.Context, authID string) 
 }
 
 func (r *Runtime) WindowKeeperAttempts(ctx context.Context, limit int) ([]windowkeeper.Attempt, error) {
-	return r.store.ListWindowKeeperAttempts(ctx, limit)
+	attempts, err := r.store.ListWindowKeeperAttempts(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	// Unescape once for legacy rows / upstream HTML-escaped payloads so API
+	// clients see normal JSON quotes in req_body/resp_body/output_excerpt.
+	for i := range attempts {
+		attempts[i].ReqHeaders = windowkeeper.NormalizeDetailText(attempts[i].ReqHeaders)
+		attempts[i].ReqBody = windowkeeper.NormalizeDetailText(attempts[i].ReqBody)
+		attempts[i].RespHeaders = windowkeeper.NormalizeDetailText(attempts[i].RespHeaders)
+		attempts[i].RespBody = windowkeeper.NormalizeDetailText(attempts[i].RespBody)
+		attempts[i].Excerpt = windowkeeper.NormalizeDetailText(attempts[i].Excerpt)
+	}
+	return attempts, nil
 }
 
 // buildWindowKeeperRequestBody builds the OpenAI Responses JSON for window-keeper keepalive.
@@ -343,13 +356,17 @@ func (s runtimeSender) Send(ctx context.Context, ref windowkeeper.AccountRef, se
 			break
 		}
 	}
-	ok, outText := windowkeeper.Completion(chunks)
+	bodyText := windowkeeper.NormalizeDetailText(string(chunks))
+	ok, outText := windowkeeper.Completion([]byte(bodyText))
 	base.OK = ok
 	base.Status = opened.StatusCode
 	base.Excerpt = outText
-	base.RespBody = string(chunks)
+	base.RespBody = bodyText
 	if !ok {
-		base.Kind = windowkeeper.ErrKindRetry
+		base.Kind = windowkeeper.ClassifyStreamFailure(opened.StatusCode, []byte(bodyText), outText)
+		if strings.TrimSpace(base.Excerpt) == "" {
+			base.Excerpt = windowkeeper.ExcerptFromUpstream(bodyText)
+		}
 	}
 	return base, nil
 }

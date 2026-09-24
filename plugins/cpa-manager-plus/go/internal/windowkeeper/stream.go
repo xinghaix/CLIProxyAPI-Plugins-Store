@@ -8,6 +8,11 @@ import (
 )
 
 func Completion(chunks []byte) (bool, string) {
+	// Host/stream payloads may arrive HTML-escaped (&#34;); unescape so JSON
+	// events parse and successful completed+text streams are not false failures.
+	if len(chunks) > 0 {
+		chunks = []byte(NormalizeDetailText(string(chunks)))
+	}
 	completed := false
 	failed := false
 	var deltas, final strings.Builder
@@ -86,7 +91,7 @@ func collectOutputText(value any, out *strings.Builder) {
 // Prefers JSON "detail", then nested error.message / top-level "message"/"error" strings,
 // otherwise a trimmed raw snippet (max 120 runes).
 func ExcerptFromUpstream(raw string) string {
-	raw = strings.TrimSpace(raw)
+	raw = strings.TrimSpace(NormalizeDetailText(raw))
 	if raw == "" {
 		return ""
 	}
@@ -164,11 +169,53 @@ func FinishFromSend(status string, sent SendResult, kind, excerpt string) Attemp
 		Status:      status,
 		HTTPStatus:  sent.Status,
 		Kind:        kind,
-		Excerpt:     excerpt,
+		Excerpt:     NormalizeDetailText(excerpt),
 		ResponseID:  sent.ResponseID,
-		ReqHeaders:  clipDetail(sent.ReqHeaders, maxHeaderRunes),
-		ReqBody:     clipDetail(sent.ReqBody, maxDetailRunes),
-		RespHeaders: clipDetail(sent.RespHeaders, maxHeaderRunes),
-		RespBody:    clipDetail(sent.RespBody, maxDetailRunes),
+		ReqHeaders:  clipDetail(NormalizeDetailText(sent.ReqHeaders), maxHeaderRunes),
+		ReqBody:     clipDetail(NormalizeDetailText(sent.ReqBody), maxDetailRunes),
+		RespHeaders: clipDetail(NormalizeDetailText(sent.RespHeaders), maxHeaderRunes),
+		RespBody:    clipDetail(NormalizeDetailText(sent.RespBody), maxDetailRunes),
+	}
+}
+
+// ClassifyStreamFailure picks error_kind when Completion is false.
+// Prefer status-based auth/quota/config; otherwise inspect SSE failure events
+// and body hints so we do not always blanket-retry.
+func ClassifyStreamFailure(status int, chunks []byte, excerpt string) string {
+	switch status {
+	case 401, 403:
+		return ErrKindAuth
+	case 429:
+		return ErrKindQuota
+	case 400:
+		return ErrKindConfig
+	}
+	raw := NormalizeDetailText(string(chunks))
+	sawFailed := false
+	sawIncomplete := false
+	forEachSSEDataJSON([]byte(raw), func(event map[string]any) {
+		eventType, _ := event["type"].(string)
+		switch eventType {
+		case "response.failed", "error":
+			sawFailed = true
+		case "response.incomplete":
+			sawIncomplete = true
+		}
+	})
+	blob := strings.ToLower(excerpt + "\n" + raw)
+	switch {
+	case strings.Contains(blob, "usage limit") || strings.Contains(blob, "rate limit") ||
+		strings.Contains(blob, "insufficient_quota") || strings.Contains(blob, "quota_exceeded"):
+		return ErrKindQuota
+	case strings.Contains(blob, "unauthorized") || strings.Contains(blob, "authentication") ||
+		strings.Contains(blob, "invalid_api_key") || strings.Contains(blob, "forbidden"):
+		return ErrKindAuth
+	case strings.Contains(blob, "invalid_request") || strings.Contains(blob, "unsupported_model") ||
+		strings.Contains(blob, "model_not_found"):
+		return ErrKindConfig
+	case sawFailed || sawIncomplete:
+		return ErrKindRetry
+	default:
+		return Classify(status, ErrKindRetry)
 	}
 }
