@@ -118,3 +118,49 @@ func TestWindowKeeperAPIEndpoints(t *testing.T) {
 		t.Fatalf("get attempts status = %d: %s", resp.StatusCode, resp.Body)
 	}
 }
+
+func TestWindowKeeperSettingsManagementKeySet(t *testing.T) {
+	dir := t.TempDir()
+	r, err := app.New([]byte("data_dir: " + dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	ctx := context.Background()
+	reqBody, _ := json.Marshal(Request{
+		Method: http.MethodGet,
+		Path:   "/v0/management/window-keeper/settings",
+	})
+
+	resp := Handle(ctx, r, reqBody)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get settings (empty key) status = %d: %s", resp.StatusCode, resp.Body)
+	}
+	var emptyResp map[string]any
+	if err := json.Unmarshal(resp.Body, &emptyResp); err != nil {
+		t.Fatal(err)
+	}
+	if emptyResp["management_key_set"] != false {
+		t.Fatalf("expected management_key_set=false without connection, got %#v", emptyResp["management_key_set"])
+	}
+
+	if err := r.UpdateConnection(ctx, "http://127.0.0.1:8317", "secret-key"); err != nil {
+		t.Fatal(err)
+	}
+
+	resp = Handle(ctx, r, reqBody)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get settings (with key) status = %d: %s", resp.StatusCode, resp.Body)
+	}
+	var keyedResp map[string]any
+	if err := json.Unmarshal(resp.Body, &keyedResp); err != nil {
+		t.Fatal(err)
+	}
+	if keyedResp["management_key_set"] != true {
+		t.Fatalf("expected management_key_set=true after UpdateConnection, got %#v", keyedResp["management_key_set"])
+	}
+	if keyedResp["settings"] == nil {
+		t.Fatal("expected settings in response")
+	}
+}

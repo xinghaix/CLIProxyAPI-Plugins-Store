@@ -870,6 +870,7 @@ export default {
     attempts: {
       title: 'Недавние попытки',
       empty: 'Нет записей о попытках отправки.',
+      httpStatus: 'HTTP {status}',
     },
   },
 };

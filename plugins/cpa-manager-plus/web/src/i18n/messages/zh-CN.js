@@ -870,6 +870,7 @@ export default {
     attempts: {
       title: '最近尝试记录',
       empty: '暂无发信尝试记录。',
+      httpStatus: 'HTTP {status}',
     },
   },
 };
