@@ -58,6 +58,10 @@ describe('WindowKeeperView controller', () => {
               started_at: '2026-09-24T06:00:00Z',
               error_kind: 'retry',
               http_status: 429,
+              req_headers: '{"Content-Type":["application/json"]}',
+              req_body: '{"model":"gpt-5.4"}',
+              resp_headers: '{"Content-Type":["application/json"]}',
+              resp_body: '{"error":"rate limited"}',
             },
           ],
         });
@@ -92,6 +96,50 @@ describe('WindowKeeperView controller', () => {
     expect(state.attempts[0].http_status).toBe(429);
     expect(state.attemptErrorMeta(state.attempts[0])).toContain('retry');
     expect(state.attemptErrorMeta(state.attempts[0])).toContain('429');
+    expect(state.attemptHasHttpDetail(state.attempts[0])).toBe(true);
+    expect(state.formatWindowRemaining(state.accounts[0].windows[0])).toContain('剩余');
+    expect(state.formatWindowRemaining(state.accounts[0].windows[0])).toContain('55%');
+  });
+
+  it('activates and refreshes attempts', async () => {
+    await nextTick();
+    await new Promise(r => setTimeout(r, 50));
+    proxyCallMock.mockImplementation((payloadOrMethod, maybePath) => {
+      const path = typeof payloadOrMethod === 'object' ? payloadOrMethod.path : maybePath;
+      if (path && path.includes('/activate')) {
+        return Promise.resolve({ ok: true });
+      }
+      if (path && path.endsWith('/settings')) {
+        return Promise.resolve({
+          settings: { enabled: true, model: 'gpt-5.4', effort: 'none', poll_seconds: 20 },
+          management_key_set: true,
+        });
+      }
+      if (path && path.endsWith('/accounts')) {
+        return Promise.resolve({ accounts: state.accounts });
+      }
+      if (path && path.endsWith('/attempts')) {
+        return Promise.resolve({
+          attempts: [
+            {
+              id: 2,
+              account_id: 'ada-1',
+              status: 'succeeded',
+              started_at: '2026-09-24T08:00:00Z',
+            },
+            ...state.attempts,
+          ],
+        });
+      }
+      return Promise.resolve({});
+    });
+    await state.activateAccount('ada-1');
+    expect(proxyCallMock).toHaveBeenCalledWith(expect.objectContaining({
+      method: 'POST',
+      path: '/v0/management/window-keeper/accounts/ada-1/activate',
+    }));
+    expect(state.attempts[0].id).toBe(2);
+    expect(state.attempts[0].status).toBe('succeeded');
   });
 
   it('toggles global switch', async () => {

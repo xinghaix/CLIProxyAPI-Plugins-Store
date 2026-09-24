@@ -3,6 +3,7 @@ package windowkeeper
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -96,4 +97,57 @@ func clipExcerpt(text string) string {
 		return string(runes[:120])
 	}
 	return string(runes)
+}
+
+const (
+	maxDetailRunes  = 8192
+	maxHeaderRunes  = 4096
+)
+
+// clipDetail truncates large request/response payloads for attempt storage.
+func clipDetail(text string, maxRunes int) string {
+	if maxRunes <= 0 {
+		maxRunes = maxDetailRunes
+	}
+	runes := []rune(strings.TrimSpace(text))
+	if len(runes) <= maxRunes {
+		return string(runes)
+	}
+	return string(runes[:maxRunes]) + "…(truncated)"
+}
+
+// FormatHeadersJSON serializes headers for attempt detail, redacting secrets.
+func FormatHeadersJSON(headers map[string][]string) string {
+	if len(headers) == 0 {
+		return ""
+	}
+	safe := make(map[string][]string, len(headers))
+	for k, vals := range headers {
+		lk := strings.ToLower(k)
+		if lk == "authorization" || lk == "cookie" || lk == "set-cookie" || lk == "x-api-key" || strings.Contains(lk, "token") {
+			safe[k] = []string{"[redacted]"}
+			continue
+		}
+		safe[k] = vals
+	}
+	raw, err := json.Marshal(safe)
+	if err != nil {
+		return clipDetail(fmt.Sprintf("%v", safe), maxHeaderRunes)
+	}
+	return clipDetail(string(raw), maxHeaderRunes)
+}
+
+// FinishFromSend builds AttemptFinish from a SendResult (and optional overrides).
+func FinishFromSend(status string, sent SendResult, kind, excerpt string) AttemptFinish {
+	return AttemptFinish{
+		Status:      status,
+		HTTPStatus:  sent.Status,
+		Kind:        kind,
+		Excerpt:     excerpt,
+		ResponseID:  sent.ResponseID,
+		ReqHeaders:  clipDetail(sent.ReqHeaders, maxHeaderRunes),
+		ReqBody:     clipDetail(sent.ReqBody, maxDetailRunes),
+		RespHeaders: clipDetail(sent.RespHeaders, maxHeaderRunes),
+		RespBody:    clipDetail(sent.RespBody, maxDetailRunes),
+	}
 }

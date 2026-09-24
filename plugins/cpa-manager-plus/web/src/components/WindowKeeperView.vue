@@ -136,7 +136,7 @@
                       :key="w.limit_id + w.slot + w.period_seconds"
                       :class="['window-pill', { warn: isWindowBlocking(w), dim: !w.gating }]"
                     >
-                      {{ formatKindLabel(w.kind) }} {{ isWindowBlocking(w) ? t('windowKeeper.windows.full') : Math.round(w.used_percent) + '%' }}
+                      {{ isWindowBlocking(w) ? (formatKindLabel(w.kind) + ' ' + t('windowKeeper.windows.full')) : formatWindowRemaining(w) }}
                     </span>
                   </div>
                 </td>
@@ -187,7 +187,7 @@
                 </div>
               </div>
               <div class="muted small-text" style="margin-top:4px">
-                {{ t('windowKeeper.windows.timeSource') }}: {{ w.time_source || '—' }} · {{ Math.round(w.used_percent) }}%
+                {{ t('windowKeeper.windows.timeSource') }}: {{ w.time_source || '—' }} · {{ formatWindowRemaining(w) }}
               </div>
             </article>
           </div>
@@ -239,6 +239,25 @@
                 <div v-if="att.output_excerpt" class="muted small-text mono excerpt">
                   {{ att.output_excerpt }}
                 </div>
+                <details v-if="attemptHasHttpDetail(att)" class="attempt-detail">
+                  <summary class="muted small-text">{{ t('windowKeeper.attempts.detail') }}</summary>
+                  <div v-if="att.req_headers" class="attempt-detail-block">
+                    <div class="muted small-text">{{ t('windowKeeper.attempts.reqHeaders') }}</div>
+                    <pre class="mono excerpt">{{ att.req_headers }}</pre>
+                  </div>
+                  <div v-if="att.req_body" class="attempt-detail-block">
+                    <div class="muted small-text">{{ t('windowKeeper.attempts.reqBody') }}</div>
+                    <pre class="mono excerpt">{{ att.req_body }}</pre>
+                  </div>
+                  <div v-if="att.resp_headers" class="attempt-detail-block">
+                    <div class="muted small-text">{{ t('windowKeeper.attempts.respHeaders') }}</div>
+                    <pre class="mono excerpt">{{ att.resp_headers }}</pre>
+                  </div>
+                  <div v-if="att.resp_body" class="attempt-detail-block">
+                    <div class="muted small-text">{{ t('windowKeeper.attempts.respBody') }}</div>
+                    <pre class="mono excerpt">{{ att.resp_body }}</pre>
+                  </div>
+                </details>
               </div>
             </div>
             <p v-else class="muted small-text">{{ t('windowKeeper.attempts.empty') }}</p>
@@ -256,6 +275,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import DataCard from './DataCard.vue';
+import { formatWindowRemainingText } from '../utils/windowKeeperDisplay.js';
 
 const props = defineProps({
   ready: { type: Boolean, default: false },
@@ -325,6 +345,19 @@ function formatKindLabel(kind) {
     case 'monthly': return t('windowKeeper.windows.monthly');
     default: return kind || t('windowKeeper.windows.custom');
   }
+}
+
+function formatWindowRemaining(window) {
+  return formatWindowRemainingText(
+    formatKindLabel(window?.kind),
+    window?.used_percent,
+    t('windowKeeper.windows.remainingWord'),
+  );
+}
+
+function attemptHasHttpDetail(att) {
+  if (!att) return false;
+  return !!(att.req_headers || att.req_body || att.resp_headers || att.resp_body);
 }
 
 function formatEffort(effort) {
@@ -630,6 +663,28 @@ onMounted(() => {
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.attempt-detail {
+  margin-top: 4px;
+}
+
+.attempt-detail summary {
+  cursor: pointer;
+}
+
+.attempt-detail-block {
+  margin-top: 6px;
+}
+
+.attempt-detail-block pre {
+  margin: 2px 0 0;
+  max-height: 160px;
+  overflow: auto;
+  padding: 6px;
+  background: var(--cpa-surface);
+  border: 1px solid var(--cpa-rule);
+  border-radius: 4px;
 }
 
 @media (max-width: 960px) {

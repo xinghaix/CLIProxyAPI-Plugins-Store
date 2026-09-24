@@ -23,6 +23,6 @@ type Store interface {
 	AttemptCount(ctx context.Context, authID, generation string) (int, error)
 	HasSuccess(ctx context.Context, authID, generation string) (bool, error)
 	StartAttempt(ctx context.Context, attempt Attempt) (int64, error)
-	FinishAttempt(ctx context.Context, id int64, status string, httpStatus int, kind, excerpt, responseID string) error
+	FinishAttempt(ctx context.Context, id int64, finish AttemptFinish) error
 	ListAttempts(ctx context.Context, limit int) ([]Attempt, error)
 }
