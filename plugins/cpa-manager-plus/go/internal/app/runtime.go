@@ -25,7 +25,7 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/windowkeeper"
 )
 
-const runtimeVersion = "0.5.33"
+const runtimeVersion = "0.5.34"
 
 type connection struct {
 	BaseURL       string `json:"cpaBaseUrl"`
