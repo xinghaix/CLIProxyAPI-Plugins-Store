@@ -247,9 +247,6 @@ func (r *Runtime) loadInspectionSettings(ctx context.Context) error {
 		seed.AutoActionMode = host.AutoActionMode
 	}
 
-	if !accountOpsEnginesAllowed() {
-		seed.Enabled = false
-	}
 	r.inspectionMu.Lock()
 	r.inspectionSettings = seed
 	r.inspectionMu.Unlock()
@@ -271,9 +268,6 @@ func (r *Runtime) loadInspectionSettings(ctx context.Context) error {
 	if err != nil {
 		// Keep host seed rather than failing plugin boot on bad saved data.
 		return nil
-	}
-	if !accountOpsEnginesAllowed() {
-		normalized.Enabled = false
 	}
 	r.inspectionMu.Lock()
 	r.inspectionSettings = normalized
@@ -322,9 +316,6 @@ func (r *Runtime) UpdateCodexInspectionSettings(ctx context.Context, settings Co
 	if err != nil {
 		return err
 	}
-	if !accountOpsEnginesAllowed() {
-		normalized.Enabled = false
-	}
 	raw, err := json.Marshal(normalized)
 	if err != nil {
 		return err
@@ -354,7 +345,7 @@ func (r *Runtime) scheduleInspections(ctx context.Context) {
 	var lastTimePointKey string
 	for {
 		settings := r.CodexInspectionSettings()
-		delay, fireKey := nextInspectionDelay(settings, time.Now(), lastTimePointKey)
+		delay, fireKey := nextInspectionDelay(settings, r.inspectionEngineAllowed(), time.Now(), lastTimePointKey)
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
@@ -364,7 +355,7 @@ func (r *Runtime) scheduleInspections(ctx context.Context) {
 			timer.Stop()
 			continue
 		case <-timer.C:
-			if !accountOpsEnginesAllowed() || !settings.Enabled {
+			if !r.inspectionEngineAllowed() || !settings.Enabled {
 				continue
 			}
 			if settings.Schedule.Mode == "time_points" {
@@ -378,8 +369,8 @@ func (r *Runtime) scheduleInspections(ctx context.Context) {
 	}
 }
 
-func nextInspectionDelay(settings CodexInspectionSettings, now time.Time, lastTimePointKey string) (time.Duration, string) {
-	if !accountOpsEnginesAllowed() || !settings.Enabled {
+func nextInspectionDelay(settings CodexInspectionSettings, engineAllowed bool, now time.Time, lastTimePointKey string) (time.Duration, string) {
+	if !engineAllowed || !settings.Enabled {
 		return 24 * time.Hour, ""
 	}
 	switch settings.Schedule.Mode {

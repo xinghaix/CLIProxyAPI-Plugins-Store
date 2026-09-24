@@ -1,29 +1,19 @@
 package app
 
-// LegacyAccountOpsEnginesEnabled gates Auto-Ban and Codex Inspection scheduled
-// engines (and Auto-Ban signal processing). Official builds keep this false:
+// LegacyAccountOpsEnginesEnabled is an emergency compile-time kill-switch that
+// ANDs with the runtime masters in legacy_account_ops_masters_v1.
 //
-//   - Scheduler loops never start work even if SQLite still has enabled=true
-//     from an older install.
-//   - UpdateAutoBanSettings / UpdateCodexInspectionSettings clamp Enabled to
-//     false so saves cannot re-enable while the kill-switch is off.
-//   - Defaults for new installs already use enabled=false.
-//
-// Flip to true (and restore FEATURE_*_UI in web/src/features.js) to bring back
-// the legacy Account Actions / Inspection operator workflow. Engine code, APIs,
-// and SQLite schema remain in tree either way.
+// Prefer the settings-backed masters (Config UI 总控) for day-to-day control.
+// Keep this true in official builds; set false only for an emergency hard-stop
+// that cannot be overridden from the UI.
 //
 // Tests may temporarily override via SetLegacyAccountOpsEnginesEnabledForTest.
-var LegacyAccountOpsEnginesEnabled = false
+var LegacyAccountOpsEnginesEnabled = true
 
-// SetLegacyAccountOpsEnginesEnabledForTest overrides the kill-switch for tests.
+// SetLegacyAccountOpsEnginesEnabledForTest overrides the emergency kill-switch.
 // Always defer the returned restore function.
 func SetLegacyAccountOpsEnginesEnabledForTest(enabled bool) (restore func()) {
 	prev := LegacyAccountOpsEnginesEnabled
 	LegacyAccountOpsEnginesEnabled = enabled
 	return func() { LegacyAccountOpsEnginesEnabled = prev }
-}
-
-func accountOpsEnginesAllowed() bool {
-	return LegacyAccountOpsEnginesEnabled
 }

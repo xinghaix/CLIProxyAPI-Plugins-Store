@@ -55,6 +55,14 @@ export default {
       label: 'Record request usage',
       description: 'Usage records received by CPA Runtime are written directly to local SQLite for analytics, model prices, and account inspection. No new usage is recorded after disabling it.',
     },
+    legacyAccountOps: {
+      title: 'Legacy account ops masters',
+      subtitle: 'Master switches (总控)',
+      description: 'Off by default. Master OFF keeps the engine stopped even if tab-level settings say enabled, and hides that Tab. Master ON shows the Tab again and falls through to tab-level settings.',
+      autoBan: 'Account Actions (Auto-Ban) master',
+      inspection: 'Account Inspection master',
+      saved: 'Master switches saved',
+    },
     accountAuthorization: {
       title: 'Account action authorization',
       subtitle: 'Only for enabling, disabling, or deleting auth files',

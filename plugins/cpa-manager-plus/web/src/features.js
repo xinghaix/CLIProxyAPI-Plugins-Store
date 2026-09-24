@@ -1,19 +1,28 @@
 /**
  * UI feature flags for CPA Manager Plus.
- * Flip these to true to restore the legacy Account Actions / Inspection tabs.
- * Backend engines stay gated separately by Go LegacyAccountOpsEnginesEnabled.
+ *
+ * Compile-time emergency gates (keep true in official builds). Day-to-day
+ * visibility of Account Actions / Inspection tabs is driven by runtime masters
+ * in plugin settings key `legacy_account_ops_masters_v1` (Config UI 总控).
+ * Set a FEATURE_* constant to false only for an emergency hard-hide that
+ * cannot be overridden from the UI.
  */
-export const FEATURE_ACCOUNT_ACTIONS_UI = false;
-export const FEATURE_INSPECTION_UI = false;
+export const FEATURE_ACCOUNT_ACTIONS_UI = true;
+export const FEATURE_INSPECTION_UI = true;
 
-/** Tabs that must not appear in nav or be selectable while their feature flag is off. */
-export const HIDDEN_ACCOUNT_OPS_TABS = Object.freeze([
-  ...(FEATURE_ACCOUNT_ACTIONS_UI ? [] : ['account-actions']),
-  ...(FEATURE_INSPECTION_UI ? [] : ['inspection']),
-]);
-
-export function isAccountOpsTabVisible(tabKey) {
-  if (tabKey === 'account-actions') return FEATURE_ACCOUNT_ACTIONS_UI;
-  if (tabKey === 'inspection') return FEATURE_INSPECTION_UI;
+/**
+ * Tab visible iff compile-time FEATURE is on AND the corresponding runtime
+ * master is on. Engines run iff master ON AND tab-level settings.enabled.
+ */
+export function isAccountOpsTabVisible(tabKey, masters = {}) {
+  if (tabKey === 'account-actions') {
+    return FEATURE_ACCOUNT_ACTIONS_UI && Boolean(masters.autoBan);
+  }
+  if (tabKey === 'inspection') {
+    return FEATURE_INSPECTION_UI && Boolean(masters.inspection);
+  }
   return true;
 }
+
+/** @deprecated Prefer isAccountOpsTabVisible(tab, masters). Kept for older callers. */
+export const HIDDEN_ACCOUNT_OPS_TABS = Object.freeze(['account-actions', 'inspection']);

@@ -75,11 +75,9 @@ func (r *Runtime) loadAutoBanSettings(ctx context.Context) error {
 			}
 		}
 	}
-	if !accountOpsEnginesAllowed() {
-		// Keep stored SQLite enabled as-is for upgrades that flip the kill-switch
-		// back on later; only suppress runtime activation while the switch is off.
-		settings.Enabled = false
-	}
+	// Master/emergency gates are applied at engine run sites, not here, so
+	// upgraded installs keep their tab-level enabled flag in SQLite while the
+	// master stays off.
 	r.autoBanMu.Lock()
 	r.autoBanSettings = settings
 	r.autoBanMu.Unlock()
@@ -97,9 +95,8 @@ func (r *Runtime) UpdateAutoBanSettings(ctx context.Context, settings AutoBanSet
 	if err != nil {
 		return err
 	}
-	if !accountOpsEnginesAllowed() {
-		normalized.Enabled = false
-	}
+	// Do not clamp Enabled on save: master OFF stops the engine at runtime
+	// without rewriting tab-level settings.
 	raw, err := json.Marshal(normalized)
 	if err != nil {
 		return err

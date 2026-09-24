@@ -20,6 +20,9 @@ func TestAutoBanUsage429DisablesAndStartsCooldown(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer runtime.Close()
+	if err := runtime.UpdateLegacyAccountOpsMasters(ctx, LegacyAccountOpsMasters{AutoBan: true}); err != nil {
+		t.Fatal(err)
+	}
 	if err := runtime.UpdateConnection(ctx, "http://127.0.0.1:8317", "test-key"); err != nil {
 		t.Fatal(err)
 	}

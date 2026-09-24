@@ -18,10 +18,10 @@
     </section>
 
     <section class="panel" v-if="activeTab === 'monitoring'">
-      <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" @open-inspection="openInspectionTab"/>
+      <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" :inspection-tab-visible="showInspectionTab" @open-inspection="openInspectionTab"/>
     </section>
 
-    <section class="panel" v-if="FEATURE_INSPECTION_UI && activeTab === 'inspection'">
+    <section class="panel" v-if="showInspectionTab && activeTab === 'inspection'">
       <InspectionView ref="inspectionView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
 
@@ -69,6 +69,32 @@
           </label>
         </div>
         <p class="muted small-text" style="margin-top:8px">{{ $t('config.collector.description') }}</p>
+      </DataCard>
+
+      <DataCard :title="$t('config.legacyAccountOps.title')" :subtitle="$t('config.legacyAccountOps.subtitle')">
+        <p class="muted small-text">{{ $t('config.legacyAccountOps.description') }}</p>
+        <div class="config-form-grid" style="margin-top:8px">
+          <label class="config-field config-field-toggle">
+            <span class="config-field-label">{{ $t('config.legacyAccountOps.autoBan') }}</span>
+            <button :class="['toggle-switch', {on: mastersAutoBan}]"
+                    @click="toggleMaster('autoBan')"
+                    :disabled="mastersSaving || !resolvedCPAKey">
+              <span class="toggle-knob"></span>
+            </button>
+            <small class="muted">{{ mastersAutoBan ? $t('common.enabled') : $t('common.disabled') }}</small>
+          </label>
+          <label class="config-field config-field-toggle">
+            <span class="config-field-label">{{ $t('config.legacyAccountOps.inspection') }}</span>
+            <button :class="['toggle-switch', {on: mastersInspection}]"
+                    @click="toggleMaster('inspection')"
+                    :disabled="mastersSaving || !resolvedCPAKey">
+              <span class="toggle-knob"></span>
+            </button>
+            <small class="muted">{{ mastersInspection ? $t('common.enabled') : $t('common.disabled') }}</small>
+          </label>
+        </div>
+        <p v-if="mastersMessage" class="notice config-save-ok" style="margin-top:8px">{{ mastersMessage }}</p>
+        <p v-if="mastersError" class="notice" style="margin-top:8px;color:var(--cpa-danger, #c0392b)">{{ mastersError }}</p>
       </DataCard>
 
       <DataCard :title="$t('config.accountAuthorization.title')" :subtitle="$t('config.accountAuthorization.subtitle')">
@@ -125,7 +151,7 @@
     <section class="panel" v-if="activeTab === 'model-prices'">
       <ModelPricesView ref="modelPricesView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
-    <section class="panel" v-if="FEATURE_ACCOUNT_ACTIONS_UI && activeTab === 'account-actions'">
+    <section class="panel" v-if="showAccountActionsTab && activeTab === 'account-actions'">
       <AccountActionsView ref="accountActionsView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
     <section class="panel" v-if="activeTab === 'window-keeper'">
@@ -144,7 +170,8 @@ import ModelPricesView from './components/ModelPricesView.vue';
 import AccountActionsView from './components/AccountActionsView.vue';
 import InspectionView from './components/InspectionView.vue';
 import WindowKeeperView from './components/WindowKeeperView.vue';
-import {FEATURE_ACCOUNT_ACTIONS_UI, FEATURE_INSPECTION_UI, isAccountOpsTabVisible} from './features.js';
+import {isAccountOpsTabVisible} from './features.js';
+
 import {formatHealthText, HEALTH, LEGACY_SESSION_KEY, PROXY, readCPAAuthStoreKey, SESSION_KEY} from './utils/data.js';
 import {buildManagerConfigSaveBody} from './utils/managerConfigSave.js';
 import {initThemeBridge} from './themeBridge.js';
@@ -160,16 +187,28 @@ initThemeBridge();
 
 const {t} = useI18n();
 const localeKeys = {en: 'language.English', 'zh-CN': 'language.zhCN', 'zh-TW': 'language.zhTW', ru: 'language.Russian'};
+const mastersAutoBan = ref(false);
+const mastersInspection = ref(false);
+const mastersSaving = ref(false);
+const mastersMessageKey = ref('');
+const mastersError = ref('');
+const mastersMessage = computed(() => mastersMessageKey.value ? t(mastersMessageKey.value) : '');
+const accountOpsMasters = computed(() => ({
+  autoBan: mastersAutoBan.value,
+  inspection: mastersInspection.value,
+}));
+const showAccountActionsTab = computed(() => isAccountOpsTabVisible('account-actions', accountOpsMasters.value));
+const showInspectionTab = computed(() => isAccountOpsTabVisible('inspection', accountOpsMasters.value));
 const allTabs = computed(() => [
   {key: 'dashboard', label: t('tabs.dashboard')},
   {key: 'monitoring', label: t('tabs.monitoring')},
   {key: 'model-prices', label: t('tabs.modelPrices')},
-  ...(FEATURE_ACCOUNT_ACTIONS_UI ? [{key: 'account-actions', label: t('tabs.accountActions')}] : []),
-  ...(FEATURE_INSPECTION_UI ? [{key: 'inspection', label: t('tabs.inspection')}] : []),
+  ...(showAccountActionsTab.value ? [{key: 'account-actions', label: t('tabs.accountActions')}] : []),
+  ...(showInspectionTab.value ? [{key: 'inspection', label: t('tabs.inspection')}] : []),
   {key: 'window-keeper', label: t('tabs.windowKeeper')},
   {key: 'config', label: t('tabs.config')},
 ]);
-const tabs = computed(() => allTabs.value.filter((tab) => isAccountOpsTabVisible(tab.key)));
+const tabs = computed(() => allTabs.value);
 const activeTab = ref('dashboard');
 const languageSelection = computed({
   get: () => localeModeRef.value === 'follow' ? 'follow' : localeRef.value,
@@ -333,7 +372,7 @@ function fallbackVisibleTab() {
 }
 
 function selectTab(tab) {
-  if (!isAccountOpsTabVisible(tab)) {
+  if (!isAccountOpsTabVisible(tab, accountOpsMasters.value)) {
     activeTab.value = fallbackVisibleTab();
   } else {
     activeTab.value = tab;
@@ -342,7 +381,7 @@ function selectTab(tab) {
 }
 
 function openInspectionTab() {
-  if (!FEATURE_INSPECTION_UI) return;
+  if (!showInspectionTab.value) return;
   selectTab('inspection');
 }
 
@@ -381,7 +420,55 @@ async function loadConfig() {
   mgrCPAKeyInput.value = '';
   mgrCPAKeyVisible.value = false;
   mgrMonitoringEnabled.value = cfg.collector?.enabled !== false;
+  applyMastersFromConfig(cfg.legacyAccountOpsMasters);
   mgrConfigLoaded.value = true;
+}
+
+function applyMastersFromConfig(masters) {
+  const m = masters || {};
+  mastersAutoBan.value = Boolean(m.autoBan);
+  mastersInspection.value = Boolean(m.inspection);
+  // If current tab just became hidden, fall back.
+  if (!isAccountOpsTabVisible(activeTab.value, {autoBan: mastersAutoBan.value, inspection: mastersInspection.value})) {
+    activeTab.value = fallbackVisibleTab();
+  }
+}
+
+async function loadMasters() {
+  if (!resolvedCPAKey.value) return;
+  try {
+    const resp = await proxyCall({method: 'GET', path: '/v0/management/legacy-account-ops/masters'});
+    applyMastersFromConfig(resp?.masters || resp);
+  } catch (e) {
+    // Non-fatal on first paint; config tab reload will retry.
+    mastersError.value = e.message || String(e);
+  }
+}
+
+async function toggleMaster(which) {
+  if (!resolvedCPAKey.value || mastersSaving.value) return;
+  const next = {
+    autoBan: mastersAutoBan.value,
+    inspection: mastersInspection.value,
+  };
+  if (which === 'autoBan') next.autoBan = !next.autoBan;
+  if (which === 'inspection') next.inspection = !next.inspection;
+  mastersSaving.value = true;
+  mastersError.value = '';
+  mastersMessageKey.value = '';
+  try {
+    const resp = await proxyCall({
+      method: 'PUT',
+      path: '/v0/management/legacy-account-ops/masters',
+      body: next,
+    });
+    applyMastersFromConfig(resp?.masters || next);
+    mastersMessageKey.value = 'config.legacyAccountOps.saved';
+  } catch (e) {
+    mastersError.value = e.message || String(e);
+  } finally {
+    mastersSaving.value = false;
+  }
 }
 
 async function saveManagerConfig() {
@@ -440,7 +527,7 @@ function handleOpenMonitoring() {
 function handleOpenTab(event) {
   const tab = event?.detail?.tab;
   if (!tab) return;
-  selectTab(isAccountOpsTabVisible(tab) ? tab : fallbackVisibleTab());
+  selectTab(isAccountOpsTabVisible(tab, accountOpsMasters.value) ? tab : fallbackVisibleTab());
 }
 
 function passVerticalWheelToPage(event) {
@@ -471,6 +558,7 @@ watch(localeRef, () => {
 
 onMounted(() => {
   checkHealth();
+  loadMasters();
   refreshActive();
   window.addEventListener('cpa-manager-plus:open-monitoring', handleOpenMonitoring);
   window.addEventListener('cpa-manager-plus:open-tab', handleOpenTab);
