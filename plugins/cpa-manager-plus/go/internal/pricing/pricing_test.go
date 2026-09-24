@@ -22,7 +22,7 @@ func TestEstimateUsesOfficialTokenBuckets(t *testing.T) {
 		CachedTokens: 200, CacheReadTokens: 200, CacheWriteTokens: 100,
 		ServiceTier: "default",
 	}, nil)
-	if result.Status != StatusEstimated || result.ContextTier != ContextShort || result.ServiceTier != TierStandard {
+	if result.Status != StatusEstimated || result.ContextTier != ContextShort || result.ServiceTier != TierStandard || result.ContextThresholdTokens != LongContextTokens {
 		t.Fatalf("unexpected estimate metadata: %+v", result)
 	}
 	closeTo(t, result.UncachedInputCost, 0.0028)

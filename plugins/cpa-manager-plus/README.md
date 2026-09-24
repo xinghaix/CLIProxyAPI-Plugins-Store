@@ -84,7 +84,7 @@ cd go && CGO_ENABLED=1 go build -buildmode=c-shared -o ../cpa-manager-plus-v<ver
 
 ### 双链路来源与合并
 
-- **宿主上报（首选）**：官方 CPA 在 commit [`ac3849e5d981e85dd3f713aae0691d23d7b3a56c`](https://github.com/router-for-me/CLIProxyAPI/commit/ac3849e5d981e85dd3f713aae0691d23d7b3a56c) 为 `UsageRecord` 增加 `ResponseModel`，并由 usage adapter 传给插件。插件优先使用官方字段；旧宿主或字段为空时，兼容 `responseModel` / `response_model` 扩展，再回退到插件观察。
+- **网关采集（首选）**：官方 CPA 在 commit [`ac3849e5d981e85dd3f713aae0691d23d7b3a56c`](https://github.com/router-for-me/CLIProxyAPI/commit/ac3849e5d981e85dd3f713aae0691d23d7b3a56c) 为 `UsageRecord` 增加 `ResponseModel`，并由 usage adapter 传给插件。插件优先使用官方字段；旧版本或字段为空时，兼容 `responseModel` / `response_model` 扩展，再回退到流式捕获。
 - **插件观察**：只读注册 `response_before_translator`、`response_interceptor`、`response_stream_interceptor`。先读取翻译前原始模型，再用保留的响应 ID 连接到下游钩子的原生请求 ID 响应头，最后与同一凭据的 usage 精确关联。不读取 Usage queue、不抓取请求日志、不改写响应。
 - 宿主有值时优先采用；仅观察有可靠值时补充；两路相同标记“双路确认”；不同或关联有歧义时显示采集冲突。冲突本身不等同于模型降级，也不单独触发红色模型差异高亮。
 - API 返回 `response_model`（选定值）、`host_response_model`、`observed_response_model`、`response_model_source`（空／`host`／`observer`／`confirmed`）和 `response_model_conflict`。宿主原值与观察证据独立保存；晚到观察只补充监控信息，不重复入账。

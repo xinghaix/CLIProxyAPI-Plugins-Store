@@ -122,10 +122,12 @@ func applyTable(rates map[string]ModelSchedule, kind string, header []string, ro
 		}
 	}
 	for _, row := range rows {
-		model := normalizeOfficialModel(cell(row, columns["model"]))
+		rawModel := cell(row, columns["model"])
+		model := normalizeOfficialModel(rawModel)
 		if model == "" {
 			continue
 		}
+		threshold := parseContextThreshold(rawModel)
 		short, shortOK, err := ratesFrom(row, columns, "short context ")
 		if err != nil {
 			return err
@@ -146,6 +148,11 @@ func applyTable(rates map[string]ModelSchedule, kind string, header []string, ro
 			schedule.Fast = &bands
 		} else {
 			schedule.Standard = bands
+		}
+		if threshold > 0 {
+			schedule.ContextThresholdTokens = threshold
+		} else if schedule.ContextThresholdTokens <= 0 {
+			schedule.ContextThresholdTokens = LongContextTokens
 		}
 		rates[model] = schedule
 	}
@@ -187,6 +194,27 @@ func parsePriceCell(cell string) (float64, bool, error) {
 		return 0, false, errors.New("invalid official price cell " + cell)
 	}
 	return value, true, nil
+}
+
+func parseContextThreshold(cell string) int64 {
+	lower := strings.ToLower(cell)
+	idx := strings.Index(lower, "<")
+	if idx >= 0 {
+		sub := lower[idx+1:]
+		if mIdx := strings.Index(sub, "m"); mIdx >= 0 && (strings.Index(sub, "k") < 0 || mIdx < strings.Index(sub, "k")) {
+			numStr := strings.TrimSpace(sub[:mIdx])
+			if n, err := strconv.ParseInt(numStr, 10, 64); err == nil && n > 0 {
+				return n * 1_000_000
+			}
+		}
+		if kIdx := strings.Index(sub, "k"); kIdx >= 0 {
+			numStr := strings.TrimSpace(sub[:kIdx])
+			if n, err := strconv.ParseInt(numStr, 10, 64); err == nil && n > 0 {
+				return n * 1_000
+			}
+		}
+	}
+	return 0
 }
 
 func normalizeOfficialModel(cell string) string {

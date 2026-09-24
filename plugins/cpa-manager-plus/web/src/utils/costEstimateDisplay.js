@@ -23,6 +23,20 @@ export function eventCostAmount(row) {
   return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }
 
+export function formatContextThreshold(estimate) {
+  const tokens = Number(estimate?.context_threshold_tokens);
+  if (Number.isFinite(tokens) && tokens > 0) {
+    if (tokens % 1000000 === 0) {
+      return `${tokens / 1000000}M`;
+    }
+    if (tokens % 1000 === 0) {
+      return `${tokens / 1000}K`;
+    }
+    return `${tokens}`;
+  }
+  return '272K';
+}
+
 export function eventCostMeta(row, t) {
   if (!isCodexOAuth(row)) return '';
   const estimate = row?.cost_estimate;
@@ -31,14 +45,9 @@ export function eventCostMeta(row, t) {
     return t('monitoring.costEstimate.customPrice');
   }
   const tierName = estimate.service_tier === 'fast' ? t('monitoring.costEstimate.fast') : t('monitoring.costEstimate.standard');
-  let tierLabel = tierName;
-  if (estimate.tier_source === 'response') {
-    tierLabel = t('monitoring.costEstimate.tierActual', { tier: tierName });
-  } else if (estimate.tier_source === 'assumed-standard') {
-    tierLabel = t('monitoring.costEstimate.tierAssumed', { tier: tierName });
-  }
-  const context = estimate.context_tier === 'long' ? t('monitoring.costEstimate.longContext') : t('monitoring.costEstimate.shortContext');
-  return `${tierLabel} · ${context}`;
+  const threshold = formatContextThreshold(estimate);
+  const context = estimate.context_tier === 'long' ? `>${threshold}` : `≤${threshold}`;
+  return `${tierName} · ${context}`;
 }
 
 export function eventReasoningMeta(row, t, formatCompact) {
@@ -71,7 +80,10 @@ export function eventCostTooltip(row, t) {
   const meta = eventCostMeta(row, t);
   const requestedTier = String(row?.service_tier || '').trim();
   const request = requestedTier ? t('monitoring.costEstimate.requestTier', { tier: requestedTier }) : '';
-  return [meta, request].filter(Boolean).join(' · ');
+  const sourceDetail = estimate.tier_source === 'response'
+    ? t('monitoring.costEstimate.sourceActual')
+    : (estimate.tier_source === 'assumed-standard' ? t('monitoring.costEstimate.assumedStandard') : '');
+  return [meta, sourceDetail, request].filter(Boolean).join(' · ');
 }
 
 export function aggregateCostCoverage(row, t, formatInt) {

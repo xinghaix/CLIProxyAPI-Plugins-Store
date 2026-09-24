@@ -59,8 +59,8 @@ describe('event model popup interactions', () => {
       cost_estimate: {amount: 0.42, currency: 'USD', basis: 'openai_api_equivalent', status: 'estimated', schedule_id: 'openai-api-pricing-2026-09', context_tier: 'short', service_tier: 'fast', tier_source: 'response'},
     }, new Map());
     expect(actual.cost).toBe(0.42);
-    expect(actual.costMeta).toBe('Fast (actual) · Short context');
-    expect(actual.costTooltip).toBe('Fast (actual) · Short context · request auto');
+    expect(actual.costMeta).toBe('Fast · ≤272K');
+    expect(actual.costTooltip).toBe('Fast · ≤272K · actual response · request auto');
 
     const assumed = state.buildEventTableRow({
       provider: 'codex',
@@ -68,8 +68,16 @@ describe('event model popup interactions', () => {
       model: 'gpt-5.6-sol', service_tier: 'auto', reasoning_effort: 'high',
       cost_estimate: {amount: 0.42, status: 'estimated', context_tier: 'short', service_tier: 'standard', tier_source: 'assumed-standard'},
     }, new Map());
-    expect(assumed.costMeta).toBe('Standard (assumed) · Short context');
-    expect(assumed.costTooltip).toBe('Standard (assumed) · Short context · request auto');
+    expect(assumed.costMeta).toBe('Standard · ≤272K');
+    expect(assumed.costTooltip).toBe('Standard · ≤272K · Standard assumed · request auto');
+
+    const dynamicThreshold = state.buildEventTableRow({
+      provider: 'codex',
+      auth_type: 'oauth',
+      model: 'gpt-6',
+      cost_estimate: {amount: 1.0, status: 'estimated', context_tier: 'long', context_threshold_tokens: 500000, service_tier: 'standard'},
+    }, new Map());
+    expect(dynamicThreshold.costMeta).toBe('Standard · >500K');
 
     const customFlat = state.buildEventTableRow({
       provider: 'codex',

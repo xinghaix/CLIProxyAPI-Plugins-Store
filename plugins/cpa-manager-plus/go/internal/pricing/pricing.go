@@ -91,8 +91,9 @@ type PriceBands struct {
 }
 
 type ModelSchedule struct {
-	Standard PriceBands
-	Fast     *PriceBands
+	Standard               PriceBands  `json:"standard"`
+	Fast                   *PriceBands `json:"fast,omitempty"`
+	ContextThresholdTokens int64       `json:"context_threshold_tokens,omitempty"`
 }
 
 // Estimate is an API-price-equivalent estimate. A zero Amount is valid only
@@ -103,9 +104,10 @@ type Estimate struct {
 	Basis             string  `json:"basis"`
 	Status            string  `json:"status"`
 	Model             string  `json:"model,omitempty"`
-	ScheduleID        string  `json:"schedule_id,omitempty"`
-	ContextTier       string  `json:"context_tier,omitempty"`
-	ServiceTier       string  `json:"service_tier,omitempty"`
+	ScheduleID             string  `json:"schedule_id,omitempty"`
+	ContextTier            string  `json:"context_tier,omitempty"`
+	ContextThresholdTokens int64   `json:"context_threshold_tokens,omitempty"`
+	ServiceTier            string  `json:"service_tier,omitempty"`
 	TierSource        string  `json:"tier_source,omitempty"`
 	UncachedInputCost float64 `json:"uncached_input_cost,omitempty"`
 	CachedInputCost   float64 `json:"cached_input_cost,omitempty"`
@@ -117,6 +119,7 @@ type Estimate struct {
 // officialRates deliberately contains only schedules verified from primary pricing data.
 var officialRates = map[string]ModelSchedule{
 	"gpt-5.4": {
+		ContextThresholdTokens: LongContextTokens,
 		Standard: PriceBands{
 			Short: TokenRates{Input: 2.50, CachedInput: 0.25, Output: 15, HasCachedInput: true},
 			Long:  ratePtr(rates(5, 0.50, 0, 22.50, true, false)),
@@ -124,6 +127,7 @@ var officialRates = map[string]ModelSchedule{
 		Fast: &PriceBands{Short: TokenRates{Input: 5, CachedInput: 0.50, Output: 30, HasCachedInput: true}},
 	},
 	"gpt-5.5": {
+		ContextThresholdTokens: LongContextTokens,
 		Standard: PriceBands{
 			Short: TokenRates{Input: 5, CachedInput: 0.50, Output: 30, HasCachedInput: true},
 			Long:  ratePtr(rates(10, 1, 0, 45, true, false)),
@@ -131,6 +135,7 @@ var officialRates = map[string]ModelSchedule{
 		Fast: &PriceBands{Short: TokenRates{Input: 12.50, CachedInput: 1.25, Output: 75, HasCachedInput: true}},
 	},
 	"gpt-5.6-sol": {
+		ContextThresholdTokens: LongContextTokens,
 		Standard: bands(rates(4, 0.40, 5, 20, true, true), rates(8, 0.80, 10, 30, true, true)),
 		Fast:     &PriceBands{Short: rates(8, 0.80, 10, 40, true, true), Long: ratePtr(rates(16, 1.60, 20, 60, true, true))},
 	},
@@ -173,8 +178,13 @@ func estimateOfficial(usage Usage, model, scheduleID string, schedule ModelSched
 		result.Status, result.Note = StatusInvalid, NoteInvalidTokenCounts
 		return result
 	}
+	threshold := schedule.ContextThresholdTokens
+	if threshold <= 0 {
+		threshold = LongContextTokens
+	}
+	result.ContextThresholdTokens = threshold
 	contextTier := ContextShort
-	if usage.InputTokens > LongContextTokens {
+	if usage.InputTokens > threshold {
 		contextTier = ContextLong
 	}
 	result.ContextTier = contextTier

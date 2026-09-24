@@ -56,6 +56,9 @@ func TestParseOfficialMarkdownUsesFlagshipTablesOnly(t *testing.T) {
 	if rates["gpt-6-sol"].Standard.Short.Input != 2 {
 		t.Fatalf("new model was not imported: %+v", rates["gpt-6-sol"])
 	}
+	if rates["gpt-5.4"].ContextThresholdTokens != 272_000 {
+		t.Fatalf("gpt-5.4 context threshold not parsed: %+v", rates["gpt-5.4"].ContextThresholdTokens)
+	}
 }
 
 func TestParseOfficialMarkdownRejectsIncompleteDocument(t *testing.T) {
@@ -79,7 +82,7 @@ func TestSyncedCatalogPricesNewOfficialModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := EstimateCost(Usage{Model: "gpt-6-sol", InputTokens: 100_000, ServiceTier: "standard"}, nil)
-	if result.Status != StatusEstimated || result.ScheduleID != id || result.Amount != 0.2 {
+	if result.Status != StatusEstimated || result.ScheduleID != id || result.Amount != 0.2 || result.ContextThresholdTokens != 272_000 {
 		t.Fatalf("synced model was not priced from the fetched table: %+v", result)
 	}
 	fastLong := EstimateCost(Usage{Model: "gpt-5.4", InputTokens: LongContextTokens + 1, ServiceTier: "fast"}, nil)
