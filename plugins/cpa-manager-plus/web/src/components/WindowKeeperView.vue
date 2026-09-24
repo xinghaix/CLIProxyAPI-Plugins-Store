@@ -237,25 +237,25 @@
                   {{ attemptErrorMeta(att) }}
                 </div>
                 <div v-if="att.output_excerpt" class="muted small-text mono excerpt">
-                  {{ att.output_excerpt }}
+                  {{ formatAttemptText(att.output_excerpt) }}
                 </div>
                 <details v-if="attemptHasHttpDetail(att)" class="attempt-detail">
                   <summary class="muted small-text">{{ t('windowKeeper.attempts.detail') }}</summary>
                   <div v-if="att.req_headers" class="attempt-detail-block">
                     <div class="muted small-text">{{ t('windowKeeper.attempts.reqHeaders') }}</div>
-                    <pre class="mono excerpt">{{ att.req_headers }}</pre>
+                    <pre class="mono excerpt">{{ formatAttemptText(att.req_headers) }}</pre>
                   </div>
                   <div v-if="att.req_body" class="attempt-detail-block">
                     <div class="muted small-text">{{ t('windowKeeper.attempts.reqBody') }}</div>
-                    <pre class="mono excerpt">{{ att.req_body }}</pre>
+                    <pre class="mono excerpt">{{ formatAttemptText(att.req_body) }}</pre>
                   </div>
                   <div v-if="att.resp_headers" class="attempt-detail-block">
                     <div class="muted small-text">{{ t('windowKeeper.attempts.respHeaders') }}</div>
-                    <pre class="mono excerpt">{{ att.resp_headers }}</pre>
+                    <pre class="mono excerpt">{{ formatAttemptText(att.resp_headers) }}</pre>
                   </div>
                   <div v-if="att.resp_body" class="attempt-detail-block">
                     <div class="muted small-text">{{ t('windowKeeper.attempts.respBody') }}</div>
-                    <pre class="mono excerpt">{{ att.resp_body }}</pre>
+                    <pre class="mono excerpt">{{ formatAttemptText(att.resp_body) }}</pre>
                   </div>
                 </details>
               </div>
@@ -275,7 +275,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import DataCard from './DataCard.vue';
-import { formatWindowRemainingText } from '../utils/windowKeeperDisplay.js';
+import { formatAttemptText, formatWindowRemainingText } from '../utils/windowKeeperDisplay.js';
 
 const props = defineProps({
   ready: { type: Boolean, default: false },
