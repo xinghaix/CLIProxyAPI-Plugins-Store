@@ -1,5 +1,5 @@
 PLUGIN_ID := cpa-manager-plus
-VERSION := 0.5.37
+VERSION := 0.5.38
 
 .PHONY: build tidy web clean
 
