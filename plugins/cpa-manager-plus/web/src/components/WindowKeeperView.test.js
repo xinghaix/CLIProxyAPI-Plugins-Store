@@ -49,7 +49,18 @@ describe('WindowKeeperView controller', () => {
         });
       }
       if (path && path.endsWith('/attempts')) {
-        return Promise.resolve({ attempts: [] });
+        return Promise.resolve({
+          attempts: [
+            {
+              id: 1,
+              account_id: 'ada-1',
+              status: 'failed',
+              started_at: '2026-09-24T06:00:00Z',
+              error_kind: 'retry',
+              http_status: 429,
+            },
+          ],
+        });
       }
       return Promise.resolve({});
     });
@@ -76,6 +87,11 @@ describe('WindowKeeperView controller', () => {
     expect(state.accounts[0].email).toBe('ada@example.com');
     expect(state.settings.enabled).toBe(true);
     expect(state.hasManagementKey).toBe(true);
+    expect(state.attempts.length).toBe(1);
+    expect(state.attempts[0].error_kind).toBe('retry');
+    expect(state.attempts[0].http_status).toBe(429);
+    expect(state.attemptErrorMeta(state.attempts[0])).toContain('retry');
+    expect(state.attemptErrorMeta(state.attempts[0])).toContain('429');
   });
 
   it('toggles global switch', async () => {

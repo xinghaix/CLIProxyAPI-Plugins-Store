@@ -15,8 +15,7 @@ func handleWindowKeeperRoute(ctx context.Context, runtime *app.Runtime, method, 
 	switch {
 	case method == http.MethodGet && path == "/v0/management/window-keeper/settings":
 		settings := runtime.WindowKeeperSettings()
-		health := runtime.Health(ctx)
-		boundKey, _ := health["bound_cpa_management_key"].(bool)
+		_, boundKey := runtime.Connection()
 		return jsonResponse(http.StatusOK, map[string]any{
 			"settings":           settings,
 			"management_key_set": boundKey,

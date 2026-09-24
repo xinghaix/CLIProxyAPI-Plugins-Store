@@ -243,6 +243,9 @@
                   </span>
                   <span class="muted small-text mono">{{ formatTime(att.started_at) }}</span>
                 </div>
+                <div v-if="attemptErrorMeta(att)" class="muted small-text">
+                  {{ attemptErrorMeta(att) }}
+                </div>
                 <div v-if="att.output_excerpt" class="muted small-text mono excerpt">
                   {{ att.output_excerpt }}
                 </div>
@@ -339,6 +342,17 @@ function formatEffort(effort) {
     return 'none (' + t('windowKeeper.policy.efforts.noneShort') + ')';
   }
   return effort;
+}
+
+
+function attemptErrorMeta(att) {
+  if (!att) return '';
+  const kind = att.error_kind || att.errorKind || '';
+  const status = Number(att.http_status ?? att.httpStatus ?? 0) || 0;
+  const parts = [];
+  if (kind) parts.push(kind);
+  if (status) parts.push(t('windowKeeper.attempts.httpStatus', { status }));
+  return parts.join(' · ');
 }
 
 function formatTime(val) {

@@ -994,6 +994,7 @@ export default {
     attempts: {
       title: 'Recent Attempts',
       empty: 'No message attempts recorded yet.',
+      httpStatus: 'HTTP {status}',
     },
   },
 };
