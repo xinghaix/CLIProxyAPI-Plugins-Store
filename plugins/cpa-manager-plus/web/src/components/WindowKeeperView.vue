@@ -111,7 +111,6 @@
               <tr>
                 <th>{{ t('windowKeeper.table.account') }}</th>
                 <th>{{ t('windowKeeper.table.windows') }}</th>
-                <th>{{ t('windowKeeper.table.comparison') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -141,15 +140,9 @@
                     </span>
                   </div>
                 </td>
-                <td class="muted small-text">
-                  <span v-if="acc.shape_mismatch" class="status-badge warn" style="font-size:11px">
-                    {{ acc.shape_mismatch }}
-                  </span>
-                  <span v-else>{{ acc.plan_group || '—' }}</span>
-                </td>
               </tr>
               <tr v-if="!accounts.length">
-                <td colspan="3" class="muted small-text" style="text-align:center;padding:24px">
+                <td colspan="2" class="muted small-text" style="text-align:center;padding:24px">
                   {{ t('windowKeeper.noAccounts') }}
                 </td>
               </tr>
@@ -168,9 +161,6 @@
                 {{ selectedAccount.pause_reason }}
               </span>
             </div>
-            <span v-if="selectedAccount.shape_mismatch" class="muted small-text">
-              {{ selectedAccount.shape_mismatch }}
-            </span>
           </div>
 
           <!-- Window Timing Cards -->

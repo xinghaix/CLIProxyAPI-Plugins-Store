@@ -319,12 +319,23 @@ func (k *Keeper) processOne(ctx context.Context, ref AccountRef, settings Settin
 	}
 	sent, err := k.Sender.Send(ctx, ref, effective)
 	if err != nil || !sent.OK {
+		excerpt := sent.Excerpt
+		if err != nil && strings.TrimSpace(excerpt) == "" {
+			excerpt = err.Error()
+		}
 		kind := sent.Kind
 		if err != nil {
-			kind = ErrKindRetry
+			if sent.Status != 0 {
+				kind = Classify(sent.Status, "")
+			} else {
+				kind = ErrKindRetry
+			}
+		}
+		if kind == "" {
+			kind = Classify(sent.Status, "")
 		}
 		decision := Decide(sent.Status, kind, attemptNo, settings.MaxAttempts)
-		_ = k.Store.FinishAttempt(ctx, id, "failed", sent.Status, kind, trim(sent.Excerpt), sent.ResponseID)
+		_ = k.Store.FinishAttempt(ctx, id, "failed", sent.Status, kind, trim(excerpt), sent.ResponseID)
 		if decision.Action == PolicyActionPause {
 			reason := "reauth"
 			if kind == ErrKindConfig {
@@ -489,9 +500,5 @@ func loadOverride(ctx context.Context, k *Keeper, authID string) string {
 }
 
 func trim(text string) string {
-	runes := []rune(strings.TrimSpace(text))
-	if len(runes) > 120 {
-		return string(runes[:120])
-	}
-	return string(runes)
+	return clipExcerpt(text)
 }

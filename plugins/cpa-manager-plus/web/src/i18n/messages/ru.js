@@ -845,7 +845,6 @@ export default {
     table: {
       account: 'Аккаунт',
       windows: 'Наблюдаемые окна',
-      comparison: 'Сравнение с тарифом',
       status: 'Статус',
     },
     windows: {
