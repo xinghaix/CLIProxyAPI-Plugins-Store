@@ -247,6 +247,9 @@ func (r *Runtime) loadInspectionSettings(ctx context.Context) error {
 		seed.AutoActionMode = host.AutoActionMode
 	}
 
+	if !accountOpsEnginesAllowed() {
+		seed.Enabled = false
+	}
 	r.inspectionMu.Lock()
 	r.inspectionSettings = seed
 	r.inspectionMu.Unlock()
@@ -268,6 +271,9 @@ func (r *Runtime) loadInspectionSettings(ctx context.Context) error {
 	if err != nil {
 		// Keep host seed rather than failing plugin boot on bad saved data.
 		return nil
+	}
+	if !accountOpsEnginesAllowed() {
+		normalized.Enabled = false
 	}
 	r.inspectionMu.Lock()
 	r.inspectionSettings = normalized
@@ -316,6 +322,9 @@ func (r *Runtime) UpdateCodexInspectionSettings(ctx context.Context, settings Co
 	if err != nil {
 		return err
 	}
+	if !accountOpsEnginesAllowed() {
+		normalized.Enabled = false
+	}
 	raw, err := json.Marshal(normalized)
 	if err != nil {
 		return err
@@ -355,7 +364,7 @@ func (r *Runtime) scheduleInspections(ctx context.Context) {
 			timer.Stop()
 			continue
 		case <-timer.C:
-			if !settings.Enabled {
+			if !accountOpsEnginesAllowed() || !settings.Enabled {
 				continue
 			}
 			if settings.Schedule.Mode == "time_points" {
@@ -370,7 +379,7 @@ func (r *Runtime) scheduleInspections(ctx context.Context) {
 }
 
 func nextInspectionDelay(settings CodexInspectionSettings, now time.Time, lastTimePointKey string) (time.Duration, string) {
-	if !settings.Enabled {
+	if !accountOpsEnginesAllowed() || !settings.Enabled {
 		return 24 * time.Hour, ""
 	}
 	switch settings.Schedule.Mode {

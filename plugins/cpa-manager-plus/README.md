@@ -153,6 +153,15 @@ Auto-Ban 默认关闭。启用后，插件会使用已落库的 usage 失败事�
 
 所有 token 和完整认证头都不会写入 Auto-Ban 状态或历史。请先在测试规则或演练模式确认命中结果，再开启真实动作。
 
+
+## 账号处置 / 账号巡检 Tab（当前默认隐藏）
+
+从本分支起，导航不再展示「账号处置」（Auto-Ban）与「账号巡检」Tab；对应 Vue 页面、management API 与 SQLite 引擎代码仍保留，可通过 `web/src/features.js` 的 `FEATURE_ACCOUNT_ACTIONS_UI` / `FEATURE_INSPECTION_UI` 与 Go `LegacyAccountOpsEnginesEnabled` 一并重新打开。
+
+- 新装默认：`auto_ban_settings_v1.enabled` 与 `codex_inspection_settings_v1.enabled` 均为 `false`。
+- 杀开关关闭时：即使旧库里曾为 `enabled=true`，调度循环也不会启动工作；通过 API 保存设置时会把 `enabled` 钳为 `false`。
+- 官方 CPA 冷却已足够跳过冷却中账号；额度窗口（Window Keeper）Tab 保持可见可用。监控页的「打开巡检」入口一并隐藏；只读巡检/额度 API 调用仍可用于展示。
+
 ## UI 结构
 
 | Tab | 主要 endpoint |
@@ -160,8 +169,8 @@ Auto-Ban 默认关闭。启用后，插件会使用已落库的 usage 失败事�
 | 仪表盘 | `GET /v0/management/dashboard/summary` |
 | 请求监控 / 用量 | `POST /v0/management/monitoring/analytics` |
 | 模型单价 | `GET/PUT /v0/management/model-prices`、`GET /v0/management/model-prices/source-lookup` |
-| 认证异常 | `GET/POST/DELETE .../account-action-candidates...` |
-| 账号巡检 | `GET/POST .../codex-inspection/...` |
+| 认证异常 / 账号处置（UI 默认隐藏） | `GET/POST/DELETE .../account-action-candidates...`、`.../auto-ban/...` |
+| 账号巡检（UI 默认隐藏） | `GET/POST .../codex-inspection/...` |
 | 额度窗口 | `GET/PUT /v0/management/window-keeper/...` |
 | 配置 | `GET/PUT /usage-service/config` |
 | 健康 | `GET /v0/management/cpa-manager-plus/health` |

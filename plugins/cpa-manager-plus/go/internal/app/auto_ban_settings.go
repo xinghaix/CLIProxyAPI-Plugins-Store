@@ -75,6 +75,11 @@ func (r *Runtime) loadAutoBanSettings(ctx context.Context) error {
 			}
 		}
 	}
+	if !accountOpsEnginesAllowed() {
+		// Keep stored SQLite enabled as-is for upgrades that flip the kill-switch
+		// back on later; only suppress runtime activation while the switch is off.
+		settings.Enabled = false
+	}
 	r.autoBanMu.Lock()
 	r.autoBanSettings = settings
 	r.autoBanMu.Unlock()
@@ -91,6 +96,9 @@ func (r *Runtime) UpdateAutoBanSettings(ctx context.Context, settings AutoBanSet
 	normalized, err := normalizeAutoBanSettings(settings)
 	if err != nil {
 		return err
+	}
+	if !accountOpsEnginesAllowed() {
+		normalized.Enabled = false
 	}
 	raw, err := json.Marshal(normalized)
 	if err != nil {

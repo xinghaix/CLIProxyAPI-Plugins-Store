@@ -153,6 +153,15 @@ Auto-Ban is disabled by default. When enabled, it evaluates persisted usage fail
 
 Auto-Ban state and history never persist tokens or full authentication headers. Validate rules in dry-run mode before enabling real actions.
 
+
+## Account Actions / Inspection tabs (hidden by default)
+
+As of this branch, the nav no longer shows the **Account Actions** (Auto-Ban) or **Account Inspection** tabs. The Vue pages, management APIs, and SQLite engines remain in tree; re-enable via `FEATURE_ACCOUNT_ACTIONS_UI` / `FEATURE_INSPECTION_UI` in `web/src/features.js` together with Go `LegacyAccountOpsEnginesEnabled`.
+
+- New installs: both `auto_ban_settings_v1.enabled` and `codex_inspection_settings_v1.enabled` default to `false`.
+- With the kill-switch off: scheduler loops do not start work even if an upgraded database still has `enabled=true`; saving settings via API clamps `enabled` to `false`.
+- Official CPA cooldown is enough to skip cooled accounts. The **Quota windows** (Window Keeper) tab stays visible and working. Monitoring’s “Open inspection” button is hidden; read-only inspection/quota API calls may still be used for display.
+
 ## UI structure
 
 | Tab | Primary endpoint |
@@ -160,8 +169,8 @@ Auto-Ban state and history never persist tokens or full authentication headers. 
 | Dashboard | `GET /v0/management/dashboard/summary` |
 | Monitoring / usage | `POST /v0/management/monitoring/analytics` |
 | Model prices | `GET/PUT /v0/management/model-prices`, `GET /v0/management/model-prices/source-lookup` |
-| Auth exceptions | `GET/POST/DELETE .../account-action-candidates...` |
-| Account inspection | `GET/POST .../codex-inspection/...` |
+| Auth exceptions / Account actions (UI hidden by default) | `GET/POST/DELETE .../account-action-candidates...`, `.../auto-ban/...` |
+| Account inspection (UI hidden by default) | `GET/POST .../codex-inspection/...` |
 | Quota windows | `GET/PUT /v0/management/window-keeper/...` |
 | Settings | `GET/PUT /usage-service/config` |
 | Health | `GET /v0/management/cpa-manager-plus/health` |

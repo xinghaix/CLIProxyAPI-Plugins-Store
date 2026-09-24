@@ -84,6 +84,8 @@ func TestCandidateActionPath(t *testing.T) {
 }
 
 func TestUsageServiceConfigIgnoresRedactedManagementKeyAndPersistsCodex(t *testing.T) {
+	restore := app.SetLegacyAccountOpsEnginesEnabledForTest(true)
+	defer restore()
 	runtime, err := app.New([]byte("data_dir: " + t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
@@ -138,6 +140,8 @@ func TestUsageServiceConfigIgnoresRedactedManagementKeyAndPersistsCodex(t *testi
 }
 
 func TestUsageServiceConfigAcceptsLegacyFlatCodexSettings(t *testing.T) {
+	restore := app.SetLegacyAccountOpsEnginesEnabledForTest(true)
+	defer restore()
 	runtime, err := app.New([]byte("data_dir: " + t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
@@ -202,6 +206,8 @@ func TestDeleteModelPrice(t *testing.T) {
 }
 
 func TestAutoBanSettingsAndRulesRoutes(t *testing.T) {
+	restore := app.SetLegacyAccountOpsEnginesEnabledForTest(true)
+	defer restore()
 	ctx := context.Background()
 	runtime, err := app.New([]byte("data_dir: " + t.TempDir()))
 	if err != nil {

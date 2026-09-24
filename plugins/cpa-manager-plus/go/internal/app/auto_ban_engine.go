@@ -111,7 +111,7 @@ func autoBanErrorKind(status int, summary string) string {
 
 func (r *Runtime) applyAutoBanSignal(ctx context.Context, signal store.BanSignal) {
 	settings := r.AutoBanSettings()
-	if !settings.Enabled || (signal.Source == "usage" && !settings.Sources.Usage) || (signal.Source == "inspection" && !settings.Sources.Inspection) {
+	if !accountOpsEnginesAllowed() || !settings.Enabled || (signal.Source == "usage" && !settings.Sources.Usage) || (signal.Source == "inspection" && !settings.Sources.Inspection) {
 		return
 	}
 	if signal.AtMS == 0 {
@@ -199,7 +199,7 @@ func (r *Runtime) scheduleAutoBan(ctx context.Context) {
 			continue
 		case <-timer.C:
 		}
-		if !settings.Enabled {
+		if !accountOpsEnginesAllowed() || !settings.Enabled {
 			continue
 		}
 		states, err := r.store.ListDueAutoBanCooldowns(ctx, time.Now().UnixMilli(), 100)

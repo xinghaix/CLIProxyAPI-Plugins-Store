@@ -406,7 +406,7 @@
             {{ quotaLoading ? t('monitoring.authCard.querying') : t('monitoring.authCard.queryQuota') }}
           </button>
           <button class="btn" type="button" @click="filterAccountAPIKey(selectedAccount)">{{ t('monitoring.authCard.filterEvents') }}</button>
-          <button class="btn" type="button" @click="emit('open-inspection')">{{ t('monitoring.authCard.openInspection') }}</button>
+          <button v-if="FEATURE_INSPECTION_UI" class="btn" type="button" @click="emit('open-inspection')">{{ t('monitoring.authCard.openInspection') }}</button>
         </div>
       </article>
       <DataCard v-else :title="t('monitoring.cards.sourceDetail')" :subtitle="accountDetailSubtitle(selectedAccount)">
@@ -453,6 +453,7 @@
 <script setup>
 import {computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import {useI18n} from 'vue-i18n';
+import {FEATURE_INSPECTION_UI} from '../features.js';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import { eventApiKeyDisplay, isSensitiveSource, maskSecretSummary, shortHash } from '../utils/apiKeyDisplay.js';

@@ -12,6 +12,8 @@ import (
 )
 
 func TestAutoBanUsage429DisablesAndStartsCooldown(t *testing.T) {
+	restore := SetLegacyAccountOpsEnginesEnabledForTest(true)
+	defer restore()
 	ctx := context.Background()
 	runtime, err := New([]byte("data_dir: " + t.TempDir() + "\nbatch_size: 1"))
 	if err != nil {

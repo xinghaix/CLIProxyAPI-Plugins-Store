@@ -18,10 +18,10 @@
     </section>
 
     <section class="panel" v-if="activeTab === 'monitoring'">
-      <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" @open-inspection="selectTab('inspection')"/>
+      <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" @open-inspection="openInspectionTab"/>
     </section>
 
-    <section class="panel" v-if="activeTab === 'inspection'">
+    <section class="panel" v-if="FEATURE_INSPECTION_UI && activeTab === 'inspection'">
       <InspectionView ref="inspectionView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
 
@@ -125,7 +125,7 @@
     <section class="panel" v-if="activeTab === 'model-prices'">
       <ModelPricesView ref="modelPricesView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
-    <section class="panel" v-if="activeTab === 'account-actions'">
+    <section class="panel" v-if="FEATURE_ACCOUNT_ACTIONS_UI && activeTab === 'account-actions'">
       <AccountActionsView ref="accountActionsView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
     <section class="panel" v-if="activeTab === 'window-keeper'">
@@ -144,6 +144,7 @@ import ModelPricesView from './components/ModelPricesView.vue';
 import AccountActionsView from './components/AccountActionsView.vue';
 import InspectionView from './components/InspectionView.vue';
 import WindowKeeperView from './components/WindowKeeperView.vue';
+import {FEATURE_ACCOUNT_ACTIONS_UI, FEATURE_INSPECTION_UI, isAccountOpsTabVisible} from './features.js';
 import {formatHealthText, HEALTH, LEGACY_SESSION_KEY, PROXY, readCPAAuthStoreKey, SESSION_KEY} from './utils/data.js';
 import {buildManagerConfigSaveBody} from './utils/managerConfigSave.js';
 import {initThemeBridge} from './themeBridge.js';
@@ -159,15 +160,16 @@ initThemeBridge();
 
 const {t} = useI18n();
 const localeKeys = {en: 'language.English', 'zh-CN': 'language.zhCN', 'zh-TW': 'language.zhTW', ru: 'language.Russian'};
-const tabs = computed(() => [
+const allTabs = computed(() => [
   {key: 'dashboard', label: t('tabs.dashboard')},
   {key: 'monitoring', label: t('tabs.monitoring')},
   {key: 'model-prices', label: t('tabs.modelPrices')},
-  {key: 'account-actions', label: t('tabs.accountActions')},
-  {key: 'inspection', label: t('tabs.inspection')},
+  ...(FEATURE_ACCOUNT_ACTIONS_UI ? [{key: 'account-actions', label: t('tabs.accountActions')}] : []),
+  ...(FEATURE_INSPECTION_UI ? [{key: 'inspection', label: t('tabs.inspection')}] : []),
   {key: 'window-keeper', label: t('tabs.windowKeeper')},
   {key: 'config', label: t('tabs.config')},
 ]);
+const tabs = computed(() => allTabs.value.filter((tab) => isAccountOpsTabVisible(tab.key)));
 const activeTab = ref('dashboard');
 const languageSelection = computed({
   get: () => localeModeRef.value === 'follow' ? 'follow' : localeRef.value,
@@ -326,9 +328,22 @@ async function checkHealth() {
   }
 }
 
+function fallbackVisibleTab() {
+  return 'dashboard';
+}
+
 function selectTab(tab) {
-  activeTab.value = tab;
+  if (!isAccountOpsTabVisible(tab)) {
+    activeTab.value = fallbackVisibleTab();
+  } else {
+    activeTab.value = tab;
+  }
   refreshActive();
+}
+
+function openInspectionTab() {
+  if (!FEATURE_INSPECTION_UI) return;
+  selectTab('inspection');
 }
 
 async function refreshActive() {
@@ -425,10 +440,7 @@ function handleOpenMonitoring() {
 function handleOpenTab(event) {
   const tab = event?.detail?.tab;
   if (!tab) return;
-  activeTab.value = tab;
-  setTimeout(() => {
-    refreshActive();
-  }, 0);
+  selectTab(isAccountOpsTabVisible(tab) ? tab : fallbackVisibleTab());
 }
 
 function passVerticalWheelToPage(event) {
