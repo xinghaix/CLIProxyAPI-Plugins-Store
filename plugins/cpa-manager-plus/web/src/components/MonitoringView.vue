@@ -66,7 +66,7 @@
     <section v-if="error" class="notice error">{{ error }}</section>
     <section v-if="!ready" class="notice">{{ t('monitoring.missingKey') }}</section>
 
-    <MetricGrid :cards="summaryCards"/>
+    <MetricGrid v-if="activeDataTab !== 'credentials'" :cards="summaryCards"/>
 
     <div class="monitor-tabs card">
       <div class="monitor-tabs-list">
@@ -75,6 +75,7 @@
       </div>
       <span v-if="activeMonitorNote" class="monitor-tabs-note">{{ activeMonitorNote }}</span>
     </div>
+    <p v-if="activeDataTab === 'credentials'" class="muted small-text cred-parent-range-note">{{ t('monitoring.credentials.parentRangeIgnored') }}</p>
 
     <DataCard v-if="activeDataTab === 'events'">
       <div class="table-wrap monitor-table event-stream-table">
@@ -414,6 +415,14 @@
       </DataCard>
     </div>
 
+    <CredentialsTab
+      v-if="activeDataTab === 'credentials'"
+      ref="credentialsTab"
+      :ready="ready"
+      :proxy-call="proxyCall"
+      @count="credentialsCount = $event"
+    />
+
     <DataCard v-if="activeDataTab === 'models'">
       <SimpleTable
         :rows="modelRows"
@@ -455,6 +464,7 @@ import {computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch} fr
 import {useI18n} from 'vue-i18n';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
+import CredentialsTab from './credentials/CredentialsTab.vue';
 import { eventApiKeyDisplay, isSensitiveSource, maskSecretSummary, shortHash } from '../utils/apiKeyDisplay.js';
 import { isOAuthAuthType, providerChip } from '../utils/providerTag.js';
 import { EMPTY_VALUE, formatDate, formatDateTime, formatInt, formatTime } from '../utils/localeFormat.js';
@@ -518,9 +528,13 @@ let modelRouteHideTimer = null;
 let timer = null;
 let quotaClockTimer = null;
 
+const credentialsTab = ref(null);
+const credentialsCount = ref(0);
+
 const dataTabs = computed(() => [
   {key: 'events', label: t('monitoring.tabs.events'), count: eventRows.value.length, note: ''},
   {key: 'accounts', label: t('monitoring.tabs.accounts'), count: accountApiKeyRows.value.length, note: t('monitoring.cards.accountsSubtitle')},
+  {key: 'credentials', label: t('monitoring.tabs.credentials'), count: credentialsCount.value, note: t('monitoring.cards.credentialsSubtitle')},
   {key: 'models', label: t('monitoring.tabs.models'), count: modelRows.value.length, note: t('monitoring.cards.modelsSubtitle')},
 ]);
 const activeMonitorNote = computed(() => dataTabs.value.find((tab) => tab.key === activeDataTab.value)?.note || '');
@@ -1623,6 +1637,13 @@ function csvCell(v) {
   const s = v == null ? '' : String(v);
   return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 }
+
+watch(activeDataTab, async (tab) => {
+  if (tab === 'credentials' && credentialsTab.value?.refresh) {
+    await credentialsTab.value.refresh();
+    credentialsCount.value = credentialsTab.value?.filteredCount?.() ?? credentialsCount.value;
+  }
+});
 
 defineExpose({refresh});
 

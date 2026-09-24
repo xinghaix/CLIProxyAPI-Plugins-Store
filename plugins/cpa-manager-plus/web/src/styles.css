@@ -1680,3 +1680,41 @@ pre {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* OAuth credentials tab (Monitoring) */
+.cred-scope-note,
+.cred-parent-range-note { margin: 0 0 12px; }
+.cred-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.cred-provider-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.cred-provider-chips .chip,
+.cred-filters .chip {
+  border: 1px solid color-mix(in srgb, var(--cpa-border) 80%, transparent);
+  background: var(--cpa-surface);
+  color: var(--cpa-text-secondary);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.cred-provider-chips .chip.active { background: color-mix(in srgb, var(--cpa-accent) 16%, transparent); border-color: var(--cpa-accent); color: var(--cpa-text); }
+.cred-table .cred-hist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 10px; font-size: 12px; }
+.cred-spark { display: inline-flex; align-items: flex-end; gap: 2px; height: 28px; min-width: 72px; }
+.cred-spark i { display: block; width: 4px; border-radius: 1px; background: var(--cpa-success); min-height: 2px; }
+.cred-spark i.idle { background: color-mix(in srgb, var(--cpa-text-tertiary) 18%, transparent); }
+.cred-drawer { width: min(720px, 96vw); display: flex; flex-direction: column; max-height: min(96vh, 960px); }
+.cred-drawer-tabs { margin: 0 0 12px; }
+.cred-drawer-body { overflow: auto; padding-bottom: 12px; flex: 1; }
+.cred-drawer-section-title { font-weight: 600; margin: 16px 0 8px; }
+.cred-drawer-path { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cred-drawer-footer { display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--cpa-border); padding-top: 12px; }
+.cred-window-card { border: 1px solid var(--cpa-border); border-radius: 12px; padding: 12px; margin-bottom: 12px; background: color-mix(in srgb, var(--cpa-surface) 92%, transparent); }
+.cred-window-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 8px; }
+.cred-window-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.cred-window-col-title { font-size: 12px; color: var(--cpa-text-secondary); margin-bottom: 6px; font-weight: 600; }
+.cred-usage-metrics { display: grid; gap: 4px; font-size: 13px; }
+.quota-bar.warn > span { background: #f59e0b; }
+.quota-bar.danger > span { background: var(--cpa-error); }
+.quota-bar.ok > span { background: var(--cpa-success); }
+@media (max-width: 900px) {
+  .cred-window-cols { grid-template-columns: 1fr; }
+}
