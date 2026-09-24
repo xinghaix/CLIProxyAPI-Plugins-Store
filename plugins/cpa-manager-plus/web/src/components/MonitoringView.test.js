@@ -111,6 +111,25 @@ describe('event model popup interactions', () => {
     expect(nonCodex.costTooltip).toBe(nonCodex.hints.cost);
   });
 
+  it('prioritizes upstream response_service_tier over inbound service_tier in tierDisplay', () => {
+    const row = state.buildEventTableRow({
+      model: 'gpt-6-luna',
+      service_tier: 'auto',
+      response_service_tier: 'priority',
+      reasoning_effort: 'max',
+    }, new Map());
+    expect(row.intensityDisplay).toBe('max');
+    expect(row.tierDisplay).toBe('priority');
+    expect(row.tier).toBe('priority');
+
+    const fallback = state.buildEventTableRow({
+      model: 'gpt-6-luna',
+      service_tier: 'auto',
+      reasoning_effort: 'max',
+    }, new Map());
+    expect(fallback.tierDisplay).toBe('auto');
+  });
+
   it.each([
     ['billed', 'billed', undefined, false, false, false],
     ['alias', 'billed', undefined, false, true, false],
@@ -124,6 +143,7 @@ describe('event model popup interactions', () => {
     ['billed', 'billed', 'BILLED', true, true, false],
     ['grok-4.7', 'grok-4.7', 'grok-4.7-build', true, true, false],
     ['gemini-3.7-flash', 'gemini-3.7-flash-high', 'gemini-3.7-flash', true, true, false],
+    ['gemini-3.8-flash', 'gemini-3.8-flash-high', 'gemini-3.8-flash', true, true, false],
   ])('keeps allowed response variants non-red: requested=%s billed=%s response=%s', (requested, billed, response, highlight, popup, mismatch) => {
     for (const failed of [false, true]) {
       const built = state.buildEventTableRow({ alias: requested, model: billed, response_model: response, failed }, new Map());

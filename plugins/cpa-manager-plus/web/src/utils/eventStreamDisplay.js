@@ -32,10 +32,14 @@ export function hasResponseModelDifference(row = {}) {
   return Boolean(response && billed && response !== billed);
 }
 
-function modelNamesContainEachOther(left, right) {
+export function containsStr(left, right) {
   const a = String(left || '').trim().toLowerCase();
   const b = String(right || '').trim().toLowerCase();
   return Boolean(a && b && (a.includes(b) || b.includes(a)));
+}
+
+export function modelNamesContainEachOther(left, right) {
+  return containsStr(left, right);
 }
 
 // A provider may decorate or normalize a model name while still referring to
@@ -46,7 +50,16 @@ export function hasResponseModelMismatch(row = {}) {
   const requested = requestedModelName(row);
   const billed = mappedModelName(row);
   if (!response || !billed || response === billed) return false;
-  return !modelNamesContainEachOther(response, requested) && !modelNamesContainEachOther(response, billed);
+
+  // 如果 请求模型 跟 响应模型 相互包含，不用显示为红色
+  if (containsStr(response, requested)) return false;
+  // 如果 路由模型 跟 响应模型 相互包含，不用显示为红色
+  if (containsStr(response, billed)) return false;
+  // 如果 请求模型 跟 路由模型 相互包含，不用显示为红色
+  if (containsStr(requested, billed) && (containsStr(requested, response) || containsStr(billed, response))) {
+    return false;
+  }
+  return true;
 }
 
 export function hasResponseModelConflict(row = {}) {

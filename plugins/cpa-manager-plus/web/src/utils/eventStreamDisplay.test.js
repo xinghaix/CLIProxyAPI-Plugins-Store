@@ -81,6 +81,7 @@ describe('event stream response model visibility', () => {
     ['alias', 'billed', 'alias', true, true, false],
     ['grok-4.7', 'grok-4.7', 'grok-4.7-build', true, true, false],
     ['gemini-3.7-flash', 'gemini-3.7-flash-high', 'gemini-3.7-flash', true, true, false],
+    ['gemini-3.8-flash', 'gemini-3.8-flash-high', 'gemini-3.8-flash', true, true, false],
   ])('requested=%s billed=%s response=%s', (requested, billed, response, popup, visible, mismatch) => {
     const raw = { alias: requested, model: billed, response_model: response };
     const normalized = { model: requested, mappedModel: billed, responseModel: response };
