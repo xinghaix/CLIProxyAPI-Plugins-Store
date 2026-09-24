@@ -845,7 +845,6 @@ export default {
     table: {
       account: '帳號',
       windows: '觀測窗口',
-      comparison: '套餐對照',
       status: '狀態',
     },
     windows: {

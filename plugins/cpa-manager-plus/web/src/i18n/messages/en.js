@@ -969,7 +969,6 @@ export default {
     table: {
       account: 'Account',
       windows: 'Observed Windows',
-      comparison: 'Plan Comparison',
       status: 'Status',
     },
     windows: {
