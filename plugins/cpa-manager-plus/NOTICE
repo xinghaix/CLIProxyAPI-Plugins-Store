@@ -1,0 +1,14 @@
+CPA Manager Plus plugin — third-party notices
+=============================================
+
+Portions of the credential quota monitoring feature (analytics timezone
+buckets, cache-input accounting normalization, account-window-usage
+aggregation semantics, and estimateWindowUsage forecast formula / quota
+drawer presentation) are adapted from:
+
+  CPA-Manager-Plus
+  https://github.com/seakee/CPA-Manager-Plus
+  Copyright (c) Seakee and contributors
+  Licensed under the MIT License
+
+See the upstream repository for the full MIT license text.

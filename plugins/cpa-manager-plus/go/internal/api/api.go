@@ -56,6 +56,10 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 		if err != nil {
 			return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		}
+		if strings.TrimSpace(request.TimeZone) == "" {
+			request.TimeZone = runtime.AnalyticsTimeZone()
+		}
+		request.Location = store.ResolveAnalyticsLocation(request.TimeZone)
 		result, err := runtime.Store().Analytics(ctx, request)
 		if err != nil {
 			return errorResponse(err)
@@ -247,6 +251,36 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 			return jsonResponse(http.StatusConflict, map[string]any{"error": err.Error()})
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"ok": true})
+	case method == http.MethodGet && path == "/v0/management/monitoring/oauth-credentials":
+		query, err := url.ParseQuery(request.Query)
+		if err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid query"})
+		}
+		includeAPIKeys := strings.EqualFold(query.Get("include_api_keys"), "1") || strings.EqualFold(query.Get("include_api_keys"), "true")
+		items, err := runtime.ListOAuthCredentials(ctx, includeAPIKeys)
+		if err != nil {
+			return jsonResponse(http.StatusConflict, map[string]any{"error": err.Error()})
+		}
+		return jsonResponse(http.StatusOK, map[string]any{
+			"items": items,
+			"time_zone": firstNonEmpty(runtime.AnalyticsTimeZone(), ""),
+			"generated_at_ms": time.Now().UnixMilli(),
+		})
+	case method == http.MethodPost && path == "/v0/management/monitoring/account-window-usage":
+		var payload struct {
+			Windows []store.AccountWindowUsageTarget `json:"windows"`
+		}
+		if err := json.Unmarshal(rawBody(request.Body), &payload); err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid account-window-usage request"})
+		}
+		items, err := runtime.Store().AccountWindowUsage(ctx, payload.Windows)
+		if err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		}
+		return jsonResponse(http.StatusOK, map[string]any{
+			"generated_at_ms": time.Now().UnixMilli(),
+			"items":           items,
+		})
 	case method == http.MethodPost && path == "/v0/management/account-quota-probe":
 		var payload struct {
 			AuthID    string `json:"authId"`
@@ -653,6 +687,7 @@ type analyticsPayload struct {
 		} `json:"events_page"`
 		Granularity string `json:"granularity"`
 	} `json:"include"`
+	TimeZone string `json:"time_zone"`
 }
 
 func analyticsRequest(raw []byte) (store.AnalyticsRequest, error) {
@@ -664,5 +699,14 @@ func analyticsRequest(raw []byte) (store.AnalyticsRequest, error) {
 	if payload.Filters.IncludeFailed != nil {
 		includeFailed = *payload.Filters.IncludeFailed
 	}
-	return store.AnalyticsRequest{FromMS: payload.FromMS, ToMS: payload.ToMS, Limit: payload.Include.EventsPage.Limit, Models: payload.Filters.Models, Providers: payload.Filters.Providers, Accounts: payload.Filters.Accounts, APIKeyHashes: payload.Filters.APIKeyHashes, FailedOnly: payload.Filters.FailedOnly, IncludeFailed: includeFailed, Search: payload.Search, Granularity: payload.Include.Granularity}, nil
+	return store.AnalyticsRequest{FromMS: payload.FromMS, ToMS: payload.ToMS, Limit: payload.Include.EventsPage.Limit, Models: payload.Filters.Models, Providers: payload.Filters.Providers, Accounts: payload.Filters.Accounts, APIKeyHashes: payload.Filters.APIKeyHashes, FailedOnly: payload.Filters.FailedOnly, IncludeFailed: includeFailed, Search: payload.Search, Granularity: payload.Include.Granularity, TimeZone: strings.TrimSpace(payload.TimeZone)}, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }

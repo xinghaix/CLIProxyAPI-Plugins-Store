@@ -34,6 +34,8 @@ type AnalyticsRequest struct {
 	IncludeFailed bool
 	Search        string
 	Granularity   string
+	TimeZone      string
+	Location      *time.Location
 }
 
 type eventRow struct {
@@ -441,9 +443,17 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 	models := map[string]bool{}
 	accounts := map[string]bool{}
 	keys := map[string]bool{}
-	bucketSize := int64(3600000)
-	if request.Granularity == "day" {
-		bucketSize = 86400000
+	location := request.Location
+	if location == nil {
+		if strings.TrimSpace(request.TimeZone) != "" {
+			location = ResolveAnalyticsLocation(request.TimeZone)
+		} else {
+			location = time.UTC
+		}
+	}
+	granularity := request.Granularity
+	if granularity != "day" {
+		granularity = "hour"
 	}
 	providerLookup := providerSnapshots(rows)
 	events := make([]map[string]any, 0, min(len(rows), request.Limit))
@@ -457,9 +467,9 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 		addStats(byAccount, account, row, price)
 		addStats(byKey, apiKey, row, price)
 		addAccountAPIKeyStats(byAccountAPIKey, row, price)
-		bucket := row.TimestampMS / bucketSize * bucketSize
+		bucket := AnalyticsBucketMS(row.TimestampMS, granularity, location)
 		addStats(byBucket, fmt.Sprint(bucket), row, price)
-		heatAt := time.UnixMilli(row.TimestampMS).UTC()
+		heatAt := time.UnixMilli(row.TimestampMS).In(location)
 		addStats(byHeat, fmt.Sprintf("%d-%02d", int(heatAt.Weekday()), heatAt.Hour()), row, price)
 		providers[row.Provider] = true
 		models[row.Model] = true
@@ -472,7 +482,11 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 			events = append(events, eventJSON(row, price))
 		}
 	}
-	return map[string]any{"summary": total.json(), "timeline": statsRows(byBucket, "bucket_ms"), "model_stats": statsRows(byModel, "model"), "model_share": statsRows(byModel, "model"), "account_stats": statsRows(byAccount, "account_snapshot"), "credential_stats": statsRows(byAccount, "auth_file"), "api_key_stats": statsRows(byKey, "api_key_hash"), "account_api_key_stats": accountAPIKeyStatsRows(byAccountAPIKey), "events": map[string]any{"items": events}, "filter_options": map[string]any{"providers": keysOf(providers), "model_stats": namedKeys(models, "model"), "auth_files": keysOf(accounts)}, "granularity": request.Granularity, "generated_at_ms": time.Now().UnixMilli(), "heatmap": heatmapRows(byHeat), "anomaly_points": []any{}, "recent_failures": failureRows(rows, prices)}
+	tzName := location.String()
+	if request.TimeZone != "" {
+		tzName = request.TimeZone
+	}
+	return map[string]any{"summary": total.json(), "timeline": statsRows(byBucket, "bucket_ms"), "model_stats": statsRows(byModel, "model"), "model_share": statsRows(byModel, "model"), "account_stats": statsRows(byAccount, "account_snapshot"), "credential_stats": statsRows(byAccount, "auth_file"), "api_key_stats": statsRows(byKey, "api_key_hash"), "account_api_key_stats": accountAPIKeyStatsRows(byAccountAPIKey), "events": map[string]any{"items": events}, "filter_options": map[string]any{"providers": keysOf(providers), "model_stats": namedKeys(models, "model"), "auth_files": keysOf(accounts)}, "granularity": granularity, "time_zone": tzName, "generated_at_ms": time.Now().UnixMilli(), "heatmap": heatmapRows(byHeat), "anomaly_points": []any{}, "recent_failures": failureRows(rows, prices)}
 }
 func addStats(group map[string]*stats, key string, row eventRow, price Price) {
 	if key == "" {
