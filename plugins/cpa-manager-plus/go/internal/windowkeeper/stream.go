@@ -11,17 +11,7 @@ func Completion(chunks []byte) (bool, string) {
 	completed := false
 	failed := false
 	var deltas, final strings.Builder
-	for _, line := range bytes.Split(chunks, []byte("\n")) {
-		line = bytes.TrimSpace(line)
-		line = bytes.TrimPrefix(line, []byte("data:"))
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 || line[0] != '{' {
-			continue
-		}
-		var event map[string]any
-		if err := json.Unmarshal(line, &event); err != nil {
-			continue
-		}
+	forEachSSEDataJSON(chunks, func(event map[string]any) {
 		eventType, _ := event["type"].(string)
 		switch eventType {
 		case "response.completed":
@@ -34,13 +24,44 @@ func Completion(chunks []byte) (bool, string) {
 		case "response.failed", "response.incomplete", "error":
 			failed = true
 		}
-	}
+	})
 	text := final.String()
 	if deltas.Len() > 0 {
 		text = deltas.String()
 	}
 	excerpt := strings.TrimSpace(text)
 	return completed && !failed && excerpt != "", excerpt
+}
+
+// forEachSSEDataJSON scans the buffer for every `data:` payload and decodes
+// consecutive JSON objects. Works for standard newline-delimited SSE and for
+// jammed streams that concatenate event/data frames without newlines.
+// Optional `event:` lines are ignored; non-JSON after `data:` is skipped.
+func forEachSSEDataJSON(chunks []byte, fn func(map[string]any)) {
+	remaining := chunks
+	for {
+		idx := bytes.Index(remaining, []byte("data:"))
+		if idx < 0 {
+			return
+		}
+		remaining = remaining[idx+len("data:"):]
+		remaining = bytes.TrimLeft(remaining, " \t")
+		if len(remaining) == 0 {
+			return
+		}
+		dec := json.NewDecoder(bytes.NewReader(remaining))
+		var event map[string]any
+		if err := dec.Decode(&event); err != nil {
+			// Non-JSON after data: (e.g. [DONE]) — keep scanning for the next data:.
+			continue
+		}
+		fn(event)
+		n := int(dec.InputOffset())
+		if n <= 0 {
+			return
+		}
+		remaining = remaining[n:]
+	}
 }
 
 func collectOutputText(value any, out *strings.Builder) {
@@ -100,8 +121,8 @@ func clipExcerpt(text string) string {
 }
 
 const (
-	maxDetailRunes  = 8192
-	maxHeaderRunes  = 4096
+	maxDetailRunes = 8192
+	maxHeaderRunes = 4096
 )
 
 // clipDetail truncates large request/response payloads for attempt storage.
