@@ -4,7 +4,7 @@ import "testing"
 
 func TestSettingsDefaultsAndNormalize(t *testing.T) {
 	def := DefaultSettings()
-	if def.Model != "gpt-5.4" || def.Effort != "low" || def.PollSeconds != 20 || def.SkewSeconds != 3 {
+	if def.Model != "gpt-5.4" || def.Effort != "none" || def.PollSeconds != 20 || def.SkewSeconds != 3 {
 		t.Fatalf("unexpected defaults: %+v", def)
 	}
 	norm, err := NormalizeSettings(def)

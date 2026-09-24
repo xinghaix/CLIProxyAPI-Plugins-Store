@@ -29,7 +29,7 @@ type Settings struct {
 
 func DefaultSettings() Settings {
 	return Settings{
-		Model: "gpt-5.4", Effort: "low", ServiceTier: "", Prompt: "Reply with exactly OK.",
+		Model: "gpt-5.4", Effort: "none", ServiceTier: "", Prompt: "Reply with exactly OK.",
 		UserAgent: "codex_cli_rs/0.76.0", WindowMode: "auto",
 		IncludeAdditional: "fill_gaps", PollSeconds: 20, SkewSeconds: 3,
 		MaxAttempts: 5, RetryBaseSeconds: 2, RetryMaxSeconds: 300,
@@ -49,10 +49,13 @@ func NormalizeSettings(settings Settings) (Settings, error) {
 	if settings.Model == "" {
 		return settings, fmt.Errorf("model is required")
 	}
+	if settings.Effort == "" {
+		settings.Effort = "none"
+	}
 	switch settings.Effort {
-	case "minimal", "low", "medium", "high", "xhigh":
+	case "none", "minimal", "low", "medium", "high", "xhigh", "max":
 	default:
-		return settings, fmt.Errorf("invalid reasoning effort")
+		return settings, fmt.Errorf("invalid reasoning effort: %s", settings.Effort)
 	}
 	switch settings.ServiceTier {
 	case "", "default", "standard", "flex":

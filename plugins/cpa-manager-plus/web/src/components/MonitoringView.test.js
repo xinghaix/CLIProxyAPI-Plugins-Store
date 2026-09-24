@@ -48,8 +48,10 @@ describe('event model popup interactions', () => {
     expect(same).toMatchObject({ showResponseModel: false, hasModelDetails: false });
   });
 
-  it('shows requested tier, priced tier, and reasoning-token price basis', () => {
+  it('shows concise tiered pricing only for codex oauth accounts', () => {
     const actual = state.buildEventTableRow({
+      provider: 'codex',
+      auth_type: 'oauth',
       model: 'gpt-5.6-sol',
       service_tier: 'auto',
       reasoning_effort: 'xhigh',
@@ -57,26 +59,48 @@ describe('event model popup interactions', () => {
       cost_estimate: {amount: 0.42, currency: 'USD', basis: 'openai_api_equivalent', status: 'estimated', schedule_id: 'openai-api-pricing-2026-09', context_tier: 'short', service_tier: 'fast', tier_source: 'response'},
     }, new Map());
     expect(actual.cost).toBe(0.42);
-    expect(actual.costMeta).toBe('Fast · Short context · ≤272K input · actual response · request auto');
-    expect(actual.costTooltip).toBe(actual.costMeta);
+    expect(actual.costMeta).toBe('Fast (actual) · Short context');
+    expect(actual.costTooltip).toBe('Fast (actual) · Short context · request auto');
 
     const assumed = state.buildEventTableRow({
+      provider: 'codex',
+      auth_type: 'oauth',
       model: 'gpt-5.6-sol', service_tier: 'auto', reasoning_effort: 'high',
       cost_estimate: {amount: 0.42, status: 'estimated', context_tier: 'short', service_tier: 'standard', tier_source: 'assumed-standard'},
     }, new Map());
-    expect(assumed.costMeta).toBe('Standard · Short context · ≤272K input · Standard assumed · request auto');
+    expect(assumed.costMeta).toBe('Standard (assumed) · Short context');
+    expect(assumed.costTooltip).toBe('Standard (assumed) · Short context · request auto');
 
     const customFlat = state.buildEventTableRow({
+      provider: 'codex',
+      auth_type: 'oauth',
       model: 'gpt-6-sol', service_tier: 'auto', response_service_tier: 'fast', reasoning_effort: 'xhigh',
       cost_estimate: {amount: 0.102, status: 'estimated', schedule_id: 'model-price-flat', context_tier: 'flat'},
     }, new Map());
-    expect(customFlat.costMeta).toBe('configured model price · actual response tier fast · request auto · flat price is not adjusted for service tier or context');
+    expect(customFlat.costMeta).toBe('Custom price');
+    expect(customFlat.costTooltip).toBe('Custom price · flat price is not adjusted for service tier or context');
 
-    const unpriced = state.buildEventTableRow({model: 'gpt-5.5', cost_estimate: {amount: 0, status: 'unpriced', note: 'long_context_rate_unavailable'}}, new Map());
+    const unpriced = state.buildEventTableRow({
+      provider: 'codex',
+      auth_type: 'oauth',
+      model: 'gpt-5.5',
+      cost_estimate: {amount: 0, status: 'unpriced', note: 'long_context_rate_unavailable'},
+    }, new Map());
     expect(unpriced.cost).toBeNull();
     expect(unpriced.costText).toBe('—');
-    expect(unpriced.costMeta).toBe('No published rate estimate');
+    expect(unpriced.costMeta).toBe('No published price');
     expect(unpriced.costTooltip).toContain('Long-context pricing is not published for this Fast model.');
+
+    // Non-Codex OAuth accounts must NOT show costMeta
+    const nonCodex = state.buildEventTableRow({
+      provider: 'antigravity',
+      auth_type: 'oauth',
+      model: 'gemini-3.7-flash',
+      cost_estimate: {amount: 0.0109, status: 'estimated', schedule_id: 'model-price-flat', context_tier: 'flat'},
+    }, new Map());
+    expect(nonCodex.cost).toBe(0.0109);
+    expect(nonCodex.costMeta).toBe('');
+    expect(nonCodex.costTooltip).toBe(nonCodex.hints.cost);
   });
 
   it.each([

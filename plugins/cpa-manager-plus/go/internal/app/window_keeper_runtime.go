@@ -238,10 +238,15 @@ func (s runtimeSender) Send(ctx context.Context, ref windowkeeper.AccountRef, se
 		return windowkeeper.SendResult{Kind: windowkeeper.ErrKindRetry}, fmt.Errorf("host model streaming callbacks not available")
 	}
 
+	effort := strings.TrimSpace(settings.Effort)
+	if effort == "" {
+		effort = "none"
+	}
 	requestBody := map[string]any{
 		"model": settings.Model, "store": false,
-		"input":     []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": settings.Prompt}}}},
-		"reasoning": map[string]any{"effort": settings.Effort},
+		"input":            []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": settings.Prompt}}}},
+		"reasoning":        map[string]any{"effort": effort},
+		"reasoning_effort": effort,
 	}
 	if strings.TrimSpace(settings.ServiceTier) != "" {
 		requestBody["service_tier"] = strings.TrimSpace(settings.ServiceTier)

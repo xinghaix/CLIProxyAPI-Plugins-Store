@@ -57,6 +57,7 @@
   .provider-chip { display:inline-flex; padding:1px 8px; border-radius:999px; box-shadow:inset 0 0 0 1px var(--provider-border, var(--cpa-rule)); font-family:var(--cpa-font-mono); font-size:11px; font-weight:600; }
   .provider-chip.is-codex { --provider-border:#7eae86; color:#163222; background:#cde8d1; }
   .provider-chip.is-api { --provider-border:#7aa4d4; color:#1e3a5f; background:#c5daf0; }
+  .provider-chip.is-antigravity { --provider-border:#7db1d2; color:#163348; background:#cee4f3; }
   .event-metric-label, .muted, .small-text { color:var(--cpa-text-secondary); }
   .small-text { font-size:11px; }
   .good-text { color:var(--cpa-success); }
@@ -127,7 +128,53 @@
           </thead>
           <tbody>
             <tr>
-              <td><strong>oauth@example.com</strong><div class="provider-cell"><span class="provider-chip is-codex">CODEX</span></div></td>
+              <td><strong>user@gmail.com</strong><div class="provider-cell"><span class="provider-chip is-antigravity">ANTIGRAVITY</span></div></td>
+              <td>gemini-3.7-flash</td>
+              <td><div><span class="event-metric-label">强度</span> —</div><div><span class="event-metric-label">等级</span> auto</div></td>
+              <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span><span class="pattern-bar good"></span><span class="pattern-bar good"></span></div></div></td>
+              <td><strong class="good-text">93.0%</strong><div class="muted small-text">1,057 次</div></td>
+              <td><div><span class="event-metric-label">首字</span> 7.23s</div><div><span class="event-metric-label">耗时</span> 7.23s</div></td>
+              <td><strong>169</strong></td>
+              <td><div>09-23</div><div>18:48</div></td>
+              <td><strong>10.3K</strong><div class="muted small-text">入 8.4K · 出 1.2K</div></td>
+              <td><strong>0.0%</strong></td>
+              <td class="event-cost-cell" title="花费 $0.0109 · 缓存命中率 0.0%">
+                <strong>$0.0109</strong>
+              </td>
+            </tr>
+            <tr>
+              <td><strong>user@gmail.com</strong><div class="provider-cell"><span class="provider-chip is-antigravity">ANTIGRAVITY</span></div></td>
+              <td>gemini-3.8-flash</td>
+              <td><div><span class="event-metric-label">强度</span> high</div><div><span class="event-metric-label">等级</span> auto</div></td>
+              <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span><span class="pattern-bar good"></span></div></div></td>
+              <td><strong class="good-text">96.9%</strong><div class="muted small-text">423 次</div></td>
+              <td><div><span class="event-metric-label">首字</span> 5.47s</div><div><span class="event-metric-label">耗时</span> 9.32s</div></td>
+              <td><strong>139</strong></td>
+              <td><div>09-23</div><div>18:48</div></td>
+              <td><strong>500.0K</strong><div class="muted small-text">入 498.6K · 出 1.3K</div></td>
+              <td><strong>99.8%</strong></td>
+              <td class="event-cost-cell" title="花费 $0.0439 · 缓存命中率 99.8%">
+                <strong>$0.0439</strong>
+              </td>
+            </tr>
+            <tr>
+              <td><strong>codex-user@outlook.com</strong><div class="provider-cell"><span class="provider-chip is-codex">CODEX</span></div></td>
+              <td>gpt-6-luna</td>
+              <td><div><span class="event-metric-label">强度</span> max</div><div><span class="event-metric-label">等级</span> auto</div></td>
+              <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span></div></div></td>
+              <td><strong class="good-text">99.0%</strong><div class="muted small-text">383 次</div></td>
+              <td><div><span class="event-metric-label">首字</span> 7.19s</div><div><span class="event-metric-label">耗时</span> 11.3s</div></td>
+              <td><strong>16</strong></td>
+              <td><div>09-23</div><div>18:48</div></td>
+              <td><strong>188.3K</strong><div class="muted small-text">入 188.2K · 出 184</div></td>
+              <td><strong>97.1%</strong></td>
+              <td class="event-cost-cell" title="Standard (假设) · 短上下文 · 请求档位 auto">
+                <strong>$0.0029</strong>
+                <span class="cost-estimate-meta">Standard (假设) · 短上下文</span>
+              </td>
+            </tr>
+            <tr>
+              <td><strong>codex-user@outlook.com</strong><div class="provider-cell"><span class="provider-chip is-codex">CODEX</span></div></td>
               <td>gpt-5.6-sol</td>
               <td><div><span class="event-metric-label">强度</span> xhigh</div><div><span class="event-metric-label">等级</span> auto</div></td>
               <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span><span class="pattern-bar good"></span><span class="pattern-bar good"></span></div></div></td>
@@ -137,29 +184,13 @@
               <td><div>09-23</div><div>14:21</div></td>
               <td><strong>100.8K</strong><div class="muted small-text">入 100.0K · 出 800</div></td>
               <td><strong>0%</strong></td>
-              <td class="event-cost-cell" title="Fast 加速 · 短上下文 · 输入 ≤272K · 实际响应档位 · 请求档位 auto">
+              <td class="event-cost-cell" title="实际 Fast · 短上下文 · 请求档位 auto">
                 <strong>$0.8320</strong>
-                <span class="cost-estimate-meta">Fast 加速 · 短上下文 · 输入 ≤272K · 实际响应档位 · 请求档位 auto</span>
+                <span class="cost-estimate-meta">实际 Fast · 短上下文</span>
               </td>
             </tr>
             <tr>
-              <td><strong>oauth@example.com</strong><div class="provider-cell"><span class="provider-chip is-codex">CODEX</span></div></td>
-              <td>gpt-5.4</td>
-              <td><div><span class="event-metric-label">强度</span> high</div><div><span class="event-metric-label">等级</span> auto</div></td>
-              <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span><span class="pattern-bar good"></span></div></div></td>
-              <td><strong class="good-text">100%</strong><div class="muted small-text">1 / 1</div></td>
-              <td><div><span class="event-metric-label">首字</span> 0.8s</div><div><span class="event-metric-label">耗时</span> 4.1s</div></td>
-              <td><strong>22.0</strong></td>
-              <td><div>09-23</div><div>14:18</div></td>
-              <td><strong>100.0K</strong><div class="muted small-text">入 100.0K · 出 0</div></td>
-              <td><strong>0%</strong></td>
-              <td class="event-cost-cell">
-                <strong>$0.2500</strong>
-                <span class="cost-estimate-meta">Standard 标准 · 短上下文 · 输入 ≤272K · 按 Standard 假设 · 请求档位 auto</span>
-              </td>
-            </tr>
-            <tr>
-              <td><strong>oauth@example.com</strong><div class="provider-cell"><span class="provider-chip is-codex">CODEX</span></div></td>
+              <td><strong>codex-user@outlook.com</strong><div class="provider-cell"><span class="provider-chip is-codex">CODEX</span></div></td>
               <td>gpt-6-sol</td>
               <td><div><span class="event-metric-label">强度</span> xhigh</div><div><span class="event-metric-label">等级</span> auto</div></td>
               <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span></div></div></td>
@@ -169,41 +200,9 @@
               <td><div>09-23</div><div>14:11</div></td>
               <td><strong>102.0K</strong><div class="muted small-text">入 100.0K · 出 2.0K</div></td>
               <td><strong>0%</strong></td>
-              <td class="event-cost-cell">
+              <td class="event-cost-cell" title="自定义单价 · 平面单价未按服务档位或上下文调整">
                 <strong>$0.1020</strong>
-                <span class="cost-estimate-meta">自定义模型单价 · 请求档位 auto · 平面单价未按服务档位或上下文调整</span>
-              </td>
-            </tr>
-            <tr>
-              <td><strong>sk-live-…92af</strong><div class="provider-cell"><span class="provider-chip is-api">API</span></div></td>
-              <td>gpt-5.5</td>
-              <td><div><span class="event-metric-label">强度</span> medium</div><div><span class="event-metric-label">等级</span> fast</div></td>
-              <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span><span class="pattern-bar good"></span></div></div></td>
-              <td><strong class="good-text">100%</strong><div class="muted small-text">1 / 1</div></td>
-              <td><div><span class="event-metric-label">首字</span> 2.4s</div><div><span class="event-metric-label">耗时</span> 19.6s</div></td>
-              <td><strong>9.1</strong></td>
-              <td><div>09-23</div><div>13:58</div></td>
-              <td><strong>280.1K</strong><div class="muted small-text">入 280.0K · 出 100</div></td>
-              <td><strong>0%</strong></td>
-              <td class="event-cost-cell">
-                <strong>—</strong>
-                <span class="cost-estimate-meta">无公开价格，无法估价</span>
-              </td>
-            </tr>
-            <tr>
-              <td><strong>sk-live-…92af</strong><div class="provider-cell"><span class="provider-chip is-api">API</span></div></td>
-              <td>gpt-5.5</td>
-              <td><div><span class="event-metric-label">强度</span> low</div><div><span class="event-metric-label">等级</span> priority</div></td>
-              <td><div class="event-status-grid"><span class="event-status-kicker good-text">成功</span><div class="event-status-marks"><span class="pattern-bar good"></span><span class="event-protocol-tag is-http">HTTP <span class="event-protocol-code">200</span></span></div><span class="event-status-kicker muted">最近</span><div class="recent-status"><span class="pattern-bar good"></span></div></div></td>
-              <td><strong class="good-text">100%</strong><div class="muted small-text">1 / 1</div></td>
-              <td><div><span class="event-metric-label">首字</span> 0.6s</div><div><span class="event-metric-label">耗时</span> 3.2s</div></td>
-              <td><strong>31.2</strong></td>
-              <td><div>09-23</div><div>13:42</div></td>
-              <td><strong>10.1K</strong><div class="muted small-text">入 10.0K · 出 100</div></td>
-              <td><strong>12%</strong></td>
-              <td class="event-cost-cell">
-                <strong>—</strong>
-                <span class="cost-estimate-meta">无公开价格，无法估价</span>
+                <span class="cost-estimate-meta">自定义单价</span>
               </td>
             </tr>
           </tbody>

@@ -22,7 +22,7 @@ describe('WindowKeeperView controller', () => {
       const path = typeof payloadOrMethod === 'object' ? payloadOrMethod.path : maybePath;
       if (path && path.endsWith('/settings')) {
         return Promise.resolve({
-          settings: { enabled: true, model: 'gpt-5.4', effort: 'low', poll_seconds: 20 },
+          settings: { enabled: true, model: 'gpt-5.4', effort: 'none', poll_seconds: 20 },
           management_key_set: true,
         });
       }

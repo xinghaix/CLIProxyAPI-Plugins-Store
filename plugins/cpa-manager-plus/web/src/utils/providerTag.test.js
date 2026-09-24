@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chipClass, isOAuthAuthType, providerChip } from './providerTag.js';
+import { chipClass, isCodexOAuth, isOAuthAuthType, providerChip } from './providerTag.js';
 
 describe('providerChip', () => {
   it('maps official oauth credential providers', () => {
@@ -56,5 +56,14 @@ describe('providerChip', () => {
     expect(providerChip('', 'apikey').tag).toBe('');
     expect(providerChip('—', 'oauth').tag).toBe('');
     expect(chipClass('xai')).toBe('is-xai');
+  });
+
+  it('identifies codex oauth accounts accurately', () => {
+    expect(isCodexOAuth({ provider: 'codex', auth_type: 'oauth' })).toBe(true);
+    expect(isCodexOAuth({ auth_provider_snapshot: 'chatgpt', auth_type: 'oauth2' })).toBe(true);
+    expect(isCodexOAuth({ provider: 'antigravity', auth_type: 'oauth' })).toBe(false);
+    expect(isCodexOAuth({ provider: 'codex', auth_type: 'apikey' })).toBe(false);
+    expect(isCodexOAuth({ provider: 'openai', auth_type: 'oauth' })).toBe(false);
+    expect(isCodexOAuth(null)).toBe(false);
   });
 });

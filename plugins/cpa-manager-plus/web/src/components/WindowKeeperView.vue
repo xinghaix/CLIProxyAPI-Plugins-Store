@@ -16,7 +16,7 @@
             <span class="toggle-knob"></span>
           </button>
           <span class="muted small-text">
-            {{ settings.model || 'gpt-5.4' }} · {{ settings.effort || 'low' }}
+            {{ settings.model || 'gpt-5.4' }} · {{ formatEffort(settings.effort) }}
             <template v-if="settings.service_tier"> · {{ settings.service_tier }}</template>
             <template v-if="settings.window_mode === 'always'"> · {{ t('windowKeeper.policy.windowModes.alwaysShort') }}</template>
           </span>
@@ -41,7 +41,8 @@
           <label class="config-field">
             <span class="config-field-label">{{ t('windowKeeper.policy.effort') }}</span>
             <select v-model="form.effort" class="control">
-              <option v-for="opt in ['minimal', 'low', 'medium', 'high', 'xhigh']" :key="opt" :value="opt">{{ opt }}</option>
+              <option value="none">{{ t('windowKeeper.policy.efforts.none') }}</option>
+              <option v-for="opt in ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']" :key="opt" :value="opt">{{ opt }}</option>
             </select>
           </label>
           <label class="config-field">
@@ -281,7 +282,7 @@ const hasManagementKey = ref(true);
 const settings = reactive({
   enabled: false,
   model: 'gpt-5.4',
-  effort: 'low',
+  effort: 'none',
   window_mode: 'auto',
   service_tier: '',
   prompt: 'Reply with exactly OK.',
@@ -292,7 +293,7 @@ const settings = reactive({
 
 const form = reactive({
   model: 'gpt-5.4',
-  effort: 'low',
+  effort: 'none',
   window_mode: 'auto',
   service_tier: '',
   prompt: 'Reply with exactly OK.',
@@ -331,6 +332,13 @@ function formatKindLabel(kind) {
     case 'monthly': return t('windowKeeper.windows.monthly');
     default: return kind || t('windowKeeper.windows.custom');
   }
+}
+
+function formatEffort(effort) {
+  if (!effort || effort === 'none') {
+    return 'none (' + t('windowKeeper.policy.efforts.noneShort') + ')';
+  }
+  return effort;
 }
 
 function formatTime(val) {

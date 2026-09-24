@@ -28,6 +28,19 @@ export function isOAuthAuthType(authType) {
   return type === 'oauth' || type === 'oauth2';
 }
 
+export function isCodexOAuth(providerOrRow, authType) {
+  if (!providerOrRow) return false;
+  let provider = providerOrRow;
+  let type = authType;
+  if (typeof providerOrRow === 'object') {
+    provider = providerOrRow.auth_provider_snapshot || providerOrRow.provider || providerOrRow.raw?.auth_provider_snapshot || providerOrRow.raw?.provider;
+    type = providerOrRow.auth_type || providerOrRow.raw?.auth_type;
+  }
+  if (!isOAuthAuthType(type)) return false;
+  const chip = providerChip(provider, type);
+  return chip?.kind === 'codex';
+}
+
 function matchProvider(raw) {
   const lower = String(raw || '').trim().toLowerCase();
   if (!lower) return null;

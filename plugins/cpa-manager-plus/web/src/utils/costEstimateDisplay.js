@@ -1,3 +1,5 @@
+import { isCodexOAuth } from './providerTag.js';
+
 export const COST_ESTIMATE_NOTE_KEYS = {
   missing_model: 'missingModel',
   missing_price: 'missingPrice',
@@ -22,30 +24,21 @@ export function eventCostAmount(row) {
 }
 
 export function eventCostMeta(row, t) {
+  if (!isCodexOAuth(row)) return '';
   const estimate = row?.cost_estimate;
   if (!estimate || estimate.status !== 'estimated') return t('monitoring.costEstimate.estimateUnavailable');
   if (estimate.schedule_id === 'model-price-flat' || estimate.context_tier === 'flat') {
-    const responseTier = String(row?.response_service_tier || '').trim();
-    const requestedTier = String(row?.service_tier || '').trim();
-    const evidence = [
-      responseTier ? t('monitoring.costEstimate.actualTier', {tier: responseTier}) : '',
-      requestedTier ? t('monitoring.costEstimate.requestTier', {tier: requestedTier}) : '',
-    ].filter(Boolean);
-    return [t('monitoring.costEstimate.customPrice'), ...evidence, t('monitoring.costEstimate.customTierNote')].filter(Boolean).join(' · ');
+    return t('monitoring.costEstimate.customPrice');
   }
-  const tier = estimate.service_tier === 'fast' ? t('monitoring.costEstimate.fast') : t('monitoring.costEstimate.standard');
-  const context = estimate.context_tier === 'long' ? t('monitoring.costEstimate.longContext') : t('monitoring.costEstimate.shortContext');
-  const requestedTier = String(row?.service_tier || '').trim();
-  const request = requestedTier ? t('monitoring.costEstimate.requestTier', {tier: requestedTier}) : '';
-  let source;
+  const tierName = estimate.service_tier === 'fast' ? t('monitoring.costEstimate.fast') : t('monitoring.costEstimate.standard');
+  let tierLabel = tierName;
   if (estimate.tier_source === 'response') {
-    source = [t('monitoring.costEstimate.sourceActual'), request].filter(Boolean).join(' · ');
+    tierLabel = t('monitoring.costEstimate.tierActual', { tier: tierName });
   } else if (estimate.tier_source === 'assumed-standard') {
-    source = [t('monitoring.costEstimate.assumedStandard'), request].filter(Boolean).join(' · ');
-  } else {
-    source = request || t('monitoring.costEstimate.sourceRequested');
+    tierLabel = t('monitoring.costEstimate.tierAssumed', { tier: tierName });
   }
-  return `${tier} · ${context} · ${source}`;
+  const context = estimate.context_tier === 'long' ? t('monitoring.costEstimate.longContext') : t('monitoring.costEstimate.shortContext');
+  return `${tierLabel} · ${context}`;
 }
 
 export function eventReasoningMeta(row, t, formatCompact) {
@@ -67,11 +60,18 @@ export function eventCostNote(note, t) {
 }
 
 export function eventCostTooltip(row, t) {
+  if (!isCodexOAuth(row)) return '';
   const estimate = row?.cost_estimate;
   if (!estimate || estimate.status !== 'estimated') {
     return [t('monitoring.costEstimate.estimateUnavailable'), eventCostNote(estimate?.note, t)].filter(Boolean).join(' · ');
   }
-  return eventCostMeta(row, t);
+  if (estimate.schedule_id === 'model-price-flat' || estimate.context_tier === 'flat') {
+    return [t('monitoring.costEstimate.customPrice'), t('monitoring.costEstimate.customTierNote')].filter(Boolean).join(' · ');
+  }
+  const meta = eventCostMeta(row, t);
+  const requestedTier = String(row?.service_tier || '').trim();
+  const request = requestedTier ? t('monitoring.costEstimate.requestTier', { tier: requestedTier }) : '';
+  return [meta, request].filter(Boolean).join(' · ');
 }
 
 export function aggregateCostCoverage(row, t, formatInt) {

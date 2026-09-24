@@ -1438,7 +1438,7 @@ function buildEventTableRow(row, groupMap) {
     cacheHitRate: computeCacheHitRate(row),
     cost: eventCostAmount(row),
     costMeta: eventCostMeta(row),
-    costTooltip: eventCostTooltip(row),
+    costTooltip: '',
     failStatusCode: numberOrNull(row.fail_status_code),
     failSummary: row.fail_summary || '',
   };
@@ -1458,6 +1458,7 @@ function buildEventTableRow(row, groupMap) {
     costText: fmtMoney(built.cost),
     cacheText: fmtCacheHitRate(built.cacheHitRate),
   }, t);
+  built.costTooltip = eventCostTooltip(row) || built.hints.cost;
   return built;
 }
 
