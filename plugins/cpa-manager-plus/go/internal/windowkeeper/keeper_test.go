@@ -2,6 +2,7 @@ package windowkeeper
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -124,14 +125,18 @@ func (m *mockStore) StartAttempt(ctx context.Context, attempt Attempt) (int64, e
 	m.attempts = append(m.attempts, attempt)
 	return attempt.ID, nil
 }
-func (m *mockStore) FinishAttempt(ctx context.Context, id int64, status string, httpStatus int, kind, excerpt, responseID string) error {
+func (m *mockStore) FinishAttempt(ctx context.Context, id int64, finish AttemptFinish) error {
 	for i := range m.attempts {
 		if m.attempts[i].ID == id {
-			m.attempts[i].Status = status
-			m.attempts[i].HTTPStatus = httpStatus
-			m.attempts[i].ErrorKind = kind
-			m.attempts[i].Excerpt = excerpt
-			m.attempts[i].ResponseID = responseID
+			m.attempts[i].Status = finish.Status
+			m.attempts[i].HTTPStatus = finish.HTTPStatus
+			m.attempts[i].ErrorKind = finish.Kind
+			m.attempts[i].Excerpt = finish.Excerpt
+			m.attempts[i].ResponseID = finish.ResponseID
+			m.attempts[i].ReqHeaders = finish.ReqHeaders
+			m.attempts[i].ReqBody = finish.ReqBody
+			m.attempts[i].RespHeaders = finish.RespHeaders
+			m.attempts[i].RespBody = finish.RespBody
 			return nil
 		}
 	}
@@ -332,5 +337,103 @@ func TestProcessParallelAndErrorIsolation(t *testing.T) {
 	sender.mu.Unlock()
 	if calls != 2 {
 		t.Fatalf("expected both accounts to be sent in parallel, got %d calls", calls)
+	}
+}
+
+
+func TestActivateAlwaysRecordsAttemptEvenAfterSuccess(t *testing.T) {
+	ctx := context.Background()
+	store := newMockStore()
+	store.settings.Enabled = true
+	store.settings.PollSeconds = 20
+	store.settings.SkewSeconds = 3
+	store.settings.MaxAttempts = 3
+
+	now := time.Date(2026, 9, 24, 8, 0, 0, 0, time.UTC)
+	end := now.Add(time.Hour)
+	cleared := Window{
+		LimitID: "codex", Slot: "primary", Kind: KindFiveHour, PeriodSeconds: 18000,
+		UsedPercent: 2, LimitReached: false, EndsAt: end.Add(5 * time.Hour), StartsAt: end, Gating: true,
+	}
+	_ = store.TouchAccount(ctx, Account{AuthID: "ada", Email: "ada@example", NotBefore: now})
+	// Prior successful attempt for same automatic generation would normally skip send.
+	store.attempts = append(store.attempts, Attempt{
+		ID: 1, AccountID: "ada", GenerationKey: "prior", Status: "succeeded", AttemptNo: 1,
+	})
+	_ = store.SaveWindows(ctx, "ada", []State{{
+		LimitID: "codex", Slot: "primary", Kind: KindFiveHour, PeriodSeconds: 18000,
+		Phase: PhaseAnchored, Gating: true, SeenBlocked: true, Hypothesis: PhaseAnchored,
+		StartsAt: end, EndsAt: end.Add(5 * time.Hour),
+	}})
+
+	probe := &mockProber{snaps: []Snapshot{{PlanType: "plus", Windows: []Window{cleared}}}}
+	sender := &mockSender{}
+	tick := now
+	k := &Keeper{
+		Store:   store,
+		Catalog: mockCatalog{refs: []AccountRef{{AuthID: "ada", Email: "ada@example", Plan: "plus"}}},
+		Prober:  probe,
+		Sender:  sender,
+		Owner:   "test",
+		Now:     func() time.Time { return tick },
+	}
+
+	if err := k.Activate(ctx, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	if sender.calls != 1 {
+		t.Fatalf("sender.calls=%d want 1", sender.calls)
+	}
+	if len(store.attempts) < 2 {
+		t.Fatalf("attempts=%d want >=2", len(store.attempts))
+	}
+	last := store.attempts[len(store.attempts)-1]
+	if last.Status != "succeeded" {
+		t.Fatalf("status=%q", last.Status)
+	}
+	if !strings.HasPrefix(last.GenerationKey, "manual:") {
+		t.Fatalf("generation=%q want manual:", last.GenerationKey)
+	}
+}
+
+func TestActivateRecordsFailedAttemptWithDetails(t *testing.T) {
+	ctx := context.Background()
+	store := newMockStore()
+	store.settings.Enabled = true
+	store.settings.PollSeconds = 20
+	store.settings.MaxAttempts = 3
+	now := time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC)
+	cleared := Window{
+		LimitID: "codex", Slot: "primary", Kind: KindFiveHour, PeriodSeconds: 18000,
+		UsedPercent: 10, Gating: true, EndsAt: now.Add(5 * time.Hour), StartsAt: now,
+	}
+	_ = store.TouchAccount(ctx, Account{AuthID: "ada", Email: "ada@example", NotBefore: now})
+	probe := &mockProber{snaps: []Snapshot{{PlanType: "plus", Windows: []Window{cleared}}}}
+	sender := failingSender{
+		result: SendResult{
+			Status: 400, Kind: ErrKindConfig, Excerpt: "bad request",
+			ReqHeaders: `{"Content-Type":["application/json"]}`, ReqBody: `{"model":"gpt-5.4"}`,
+			RespHeaders: `{"Content-Type":["application/json"]}`, RespBody: `{"detail":"bad request"}`,
+		},
+		err: statusError{code: 400, msg: "bad request"},
+	}
+	k := &Keeper{
+		Store: store,
+		Catalog: mockCatalog{refs: []AccountRef{{AuthID: "ada", Email: "ada@example", Plan: "plus"}}},
+		Prober: probe, Sender: sender, Owner: "test",
+		Now: func() time.Time { return now },
+	}
+	if err := k.Activate(ctx, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.attempts) != 1 {
+		t.Fatalf("attempts=%d", len(store.attempts))
+	}
+	a := store.attempts[0]
+	if a.Status != "failed" {
+		t.Fatalf("status=%q", a.Status)
+	}
+	if a.ReqBody == "" || a.RespBody == "" {
+		t.Fatalf("expected req/resp bodies, got req=%q resp=%q", a.ReqBody, a.RespBody)
 	}
 }

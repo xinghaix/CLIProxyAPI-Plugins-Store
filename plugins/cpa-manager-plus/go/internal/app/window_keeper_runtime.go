@@ -260,6 +260,18 @@ func (s runtimeSender) Send(ctx context.Context, ref windowkeeper.AccountRef, se
 	}
 
 	body, _ := json.Marshal(buildWindowKeeperRequestBody(settings))
+	reqMeta := map[string][]string{
+		"Content-Type":    {"application/json"},
+		"X-Forced-Provider": {"codex"},
+		"X-Auth-Id":       {ref.AuthID},
+		"X-Entry-Protocol": {"openai-response"},
+		"X-Exit-Protocol": {"codex"},
+		"X-Model":         {settings.Model},
+	}
+	base := windowkeeper.SendResult{
+		ReqHeaders: windowkeeper.FormatHeadersJSON(reqMeta),
+		ReqBody:    string(body),
+	}
 
 	opened, err := execStream(pluginapi.HostModelExecutionRequest{
 		EntryProtocol: "openai-response", ExitProtocol: "codex", Model: settings.Model, Stream: true,
@@ -268,64 +280,78 @@ func (s runtimeSender) Send(ctx context.Context, ref windowkeeper.AccountRef, se
 	if err != nil {
 		// HostModelStreamResponse has no Body; bootstrap failures arrive as err with optional StatusCode().
 		status := statusCodeFromError(err)
-		return windowkeeper.SendResult{
-			Status:  status,
-			Kind:    windowkeeper.Classify(status, ""),
-			Excerpt: buildExcerptFromOpen(nil, err.Error()),
-		}, err
+		base.Status = status
+		base.Kind = windowkeeper.Classify(status, "")
+		base.Excerpt = buildExcerptFromOpen(nil, err.Error())
+		base.RespBody = err.Error()
+		return base, err
 	}
+	base.RespHeaders = windowkeeper.FormatHeadersJSON(map[string][]string(opened.Headers))
 	if opened.StreamID != "" {
 		defer closeStream(pluginapi.HostModelStreamCloseRequest{StreamID: opened.StreamID})
 	}
 	if opened.StatusCode >= 400 {
 		// v7 HostModelStreamResponse only has StatusCode/Headers/StreamID — no Body.
 		// Prefer a stream payload/error snippet when the host still opened a stream.
-		var body []byte
+		var respBody []byte
 		errText := ""
 		if opened.StreamID != "" {
 			if read, readErr := readStream(pluginapi.HostModelStreamReadRequest{StreamID: opened.StreamID}); readErr == nil {
-				body = read.Payload
+				respBody = read.Payload
 				errText = read.Error
 			}
 		}
-		return windowkeeper.SendResult{
-			Status:  opened.StatusCode,
-			Kind:    windowkeeper.Classify(opened.StatusCode, ""),
-			Excerpt: buildExcerptFromOpen(body, errText),
-		}, nil
+		base.Status = opened.StatusCode
+		base.Kind = windowkeeper.Classify(opened.StatusCode, "")
+		base.Excerpt = buildExcerptFromOpen(respBody, errText)
+		if len(respBody) > 0 {
+			base.RespBody = string(respBody)
+		} else {
+			base.RespBody = errText
+		}
+		return base, nil
 	}
 	var chunks []byte
 	for {
 		if err := ctx.Err(); err != nil {
-			return windowkeeper.SendResult{Kind: windowkeeper.ErrKindRetry, Excerpt: buildExcerptFromOpen(nil, err.Error())}, err
+			base.Kind = windowkeeper.ErrKindRetry
+			base.Excerpt = buildExcerptFromOpen(nil, err.Error())
+			base.RespBody = err.Error()
+			return base, err
 		}
 		read, err := readStream(pluginapi.HostModelStreamReadRequest{StreamID: opened.StreamID})
 		if err != nil {
 			status := statusCodeFromError(err)
-			return windowkeeper.SendResult{
-				Status:  status,
-				Kind:    windowkeeper.Classify(status, ""),
-				Excerpt: buildExcerptFromOpen(nil, err.Error()),
-			}, err
+			base.Status = status
+			base.Kind = windowkeeper.Classify(status, "")
+			base.Excerpt = buildExcerptFromOpen(nil, err.Error())
+			base.RespBody = err.Error()
+			return base, err
 		}
 		chunks = append(chunks, read.Payload...)
 		if read.Error != "" {
-			return windowkeeper.SendResult{
-				Status:  opened.StatusCode,
-				Kind:    windowkeeper.Classify(opened.StatusCode, windowkeeper.ErrKindRetry),
-				Excerpt: buildExcerptFromOpen(read.Payload, read.Error),
-			}, nil
+			base.Status = opened.StatusCode
+			base.Kind = windowkeeper.Classify(opened.StatusCode, windowkeeper.ErrKindRetry)
+			base.Excerpt = buildExcerptFromOpen(read.Payload, read.Error)
+			base.RespBody = string(read.Payload)
+			if base.RespBody == "" {
+				base.RespBody = read.Error
+			}
+			return base, nil
 		}
 		if read.Done {
 			break
 		}
 	}
-	ok, text := windowkeeper.Completion(chunks)
-	result := windowkeeper.SendResult{OK: ok, Status: opened.StatusCode, Excerpt: text}
+	ok, outText := windowkeeper.Completion(chunks)
+	base.OK = ok
+	base.Status = opened.StatusCode
+	base.Excerpt = outText
+	base.RespBody = string(chunks)
 	if !ok {
-		result.Kind = windowkeeper.ErrKindRetry
+		base.Kind = windowkeeper.ErrKindRetry
 	}
-	return result, nil
+	return base, nil
 }
 
 // buildExcerptFromOpen extracts a short diagnostic from an upstream open/stream failure.

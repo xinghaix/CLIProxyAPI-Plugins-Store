@@ -66,7 +66,7 @@ func TestFinishAttemptStoresExcerptFromSendError(t *testing.T) {
 		Now:     func() time.Time { return now },
 	}
 
-	if err := k.processOne(ctx, AccountRef{AuthID: "ada", Email: "ada@example", Plan: "plus"}, store.settings, now); err != nil {
+	if err := k.processOne(ctx, AccountRef{AuthID: "ada", Email: "ada@example", Plan: "plus"}, store.settings, now, false); err != nil {
 		t.Fatal(err)
 	}
 	if len(store.attempts) != 1 {
@@ -126,7 +126,7 @@ func TestFinishAttemptUsesSendExcerptWhenPresent(t *testing.T) {
 		Now:     func() time.Time { return now },
 	}
 
-	if err := k.processOne(ctx, AccountRef{AuthID: "ada", Email: "ada@example", Plan: "plus"}, store.settings, now); err != nil {
+	if err := k.processOne(ctx, AccountRef{AuthID: "ada", Email: "ada@example", Plan: "plus"}, store.settings, now, false); err != nil {
 		t.Fatal(err)
 	}
 	a := store.attempts[0]

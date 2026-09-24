@@ -99,7 +99,11 @@ func TestWindowKeeperStoreOperations(t *testing.T) {
 	if err != nil || count != 1 {
 		t.Fatalf("attempt count = %d, want 1", count)
 	}
-	if err := s.FinishWindowKeeperAttempt(ctx, attID, "succeeded", 200, "", "OK", "resp-1"); err != nil {
+	if err := s.FinishWindowKeeperAttempt(ctx, attID, windowkeeper.AttemptFinish{
+		Status: "succeeded", HTTPStatus: 200, Excerpt: "OK", ResponseID: "resp-1",
+		ReqHeaders: `{"Content-Type":["application/json"]}`, ReqBody: `{"model":"gpt-5.4"}`,
+		RespHeaders: `{"Content-Type":["application/json"]}`, RespBody: `{"ok":true}`,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	hasSuccess, err := s.HasWindowKeeperSuccess(ctx, "auth-1", "gen-1")
@@ -109,5 +113,35 @@ func TestWindowKeeperStoreOperations(t *testing.T) {
 	attempts, err := s.ListWindowKeeperAttempts(ctx, 10)
 	if err != nil || len(attempts) != 1 || attempts[0].Status != "succeeded" {
 		t.Fatalf("attempts mismatch: %+v", attempts)
+	}
+	if attempts[0].ReqBody == "" || attempts[0].RespBody == "" {
+		t.Fatalf("expected persisted req/resp bodies: %+v", attempts[0])
+	}
+
+	failID, err := s.StartWindowKeeperAttempt(ctx, windowkeeper.Attempt{
+		AccountID: "auth-1", GenerationKey: "manual:1", StartedAt: now, AttemptNo: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishWindowKeeperAttempt(ctx, failID, windowkeeper.AttemptFinish{
+		Status: "failed", HTTPStatus: 400, Kind: "config", Excerpt: "bad",
+		ReqBody: `{"model":"x"}`, RespBody: `{"detail":"bad"}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	attempts, err = s.ListWindowKeeperAttempts(ctx, 10)
+	if err != nil || len(attempts) != 2 {
+		t.Fatalf("attempts after fail: %+v", attempts)
+	}
+	var failed *windowkeeper.Attempt
+	for i := range attempts {
+		if attempts[i].Status == "failed" {
+			failed = &attempts[i]
+			break
+		}
+	}
+	if failed == nil || failed.RespBody != `{"detail":"bad"}` {
+		t.Fatalf("failed attempt detail missing: %+v", failed)
 	}
 }

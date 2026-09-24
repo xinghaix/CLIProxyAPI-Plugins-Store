@@ -107,11 +107,28 @@ type AccountRef struct {
 }
 
 type SendResult struct {
-	OK         bool
-	Status     int
-	Kind       string
-	Excerpt    string
-	ResponseID string
+	OK          bool
+	Status      int
+	Kind        string
+	Excerpt     string
+	ResponseID  string
+	ReqHeaders  string
+	ReqBody     string
+	RespHeaders string
+	RespBody    string
+}
+
+// AttemptFinish carries terminal attempt fields written by FinishAttempt.
+type AttemptFinish struct {
+	Status      string
+	HTTPStatus  int
+	Kind        string
+	Excerpt     string
+	ResponseID  string
+	ReqHeaders  string
+	ReqBody     string
+	RespHeaders string
+	RespBody    string
 }
 
 type Attempt struct {
@@ -127,6 +144,10 @@ type Attempt struct {
 	NotBefore     time.Time `json:"not_before,omitempty"`
 	Excerpt       string    `json:"output_excerpt,omitempty"`
 	ResponseID    string    `json:"response_id,omitempty"`
+	ReqHeaders    string    `json:"req_headers,omitempty"`
+	ReqBody       string    `json:"req_body,omitempty"`
+	RespHeaders   string    `json:"resp_headers,omitempty"`
+	RespBody      string    `json:"resp_body,omitempty"`
 }
 
 type Account struct {

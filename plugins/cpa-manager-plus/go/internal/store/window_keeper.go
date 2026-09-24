@@ -62,12 +62,39 @@ func (s *Store) ensureWindowKeeperSchema(ctx context.Context) error {
 			attempt_no integer not null,
 			not_before_ms integer,
 			output_excerpt text,
-			response_id text
+			response_id text,
+			req_headers text,
+			req_body text,
+			resp_headers text,
+			resp_body text
 		)`,
 		`create unique index if not exists idx_window_keeper_attempts_success on window_keeper_attempts(account_id, generation_key) where status = 'succeeded'`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return s.ensureWindowKeeperAttemptColumns(ctx)
+}
+
+func (s *Store) ensureWindowKeeperAttemptColumns(ctx context.Context) error {
+	existing, err := s.tableColumns(ctx, "window_keeper_attempts")
+	if err != nil {
+		return err
+	}
+	for _, column := range []struct {
+		name, definition string
+	}{
+		{"req_headers", "text"},
+		{"req_body", "text"},
+		{"resp_headers", "text"},
+		{"resp_body", "text"},
+	} {
+		if existing[column.name] {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, `alter table window_keeper_attempts add column `+column.name+` `+column.definition); err != nil {
 			return err
 		}
 	}
@@ -237,8 +264,11 @@ func (s *Store) StartWindowKeeperAttempt(ctx context.Context, attempt windowkeep
 	return result.LastInsertId()
 }
 
-func (s *Store) FinishWindowKeeperAttempt(ctx context.Context, id int64, status string, httpStatus int, kind, excerpt, responseID string) error {
-	_, err := s.db.ExecContext(ctx, "update window_keeper_attempts set status = ?, finished_at_ms = ?, http_status = ?, error_kind = ?, output_excerpt = ?, response_id = ? where id = ?", status, time.Now().UnixMilli(), httpStatus, kind, excerpt, responseID, id)
+func (s *Store) FinishWindowKeeperAttempt(ctx context.Context, id int64, finish windowkeeper.AttemptFinish) error {
+	_, err := s.db.ExecContext(ctx, `update window_keeper_attempts set status = ?, finished_at_ms = ?, http_status = ?, error_kind = ?, output_excerpt = ?, response_id = ?,
+		req_headers = ?, req_body = ?, resp_headers = ?, resp_body = ? where id = ?`,
+		finish.Status, time.Now().UnixMilli(), finish.HTTPStatus, finish.Kind, finish.Excerpt, finish.ResponseID,
+		finish.ReqHeaders, finish.ReqBody, finish.RespHeaders, finish.RespBody, id)
 	return err
 }
 
@@ -246,7 +276,9 @@ func (s *Store) ListWindowKeeperAttempts(ctx context.Context, limit int) ([]wind
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := s.db.QueryContext(ctx, "select id, account_id, generation_key, started_at_ms, ifnull(finished_at_ms, 0), status, ifnull(http_status, 0), ifnull(error_kind, ''), attempt_no, ifnull(output_excerpt, ''), ifnull(response_id, '') from window_keeper_attempts order by id desc limit ?", limit)
+	rows, err := s.db.QueryContext(ctx, `select id, account_id, generation_key, started_at_ms, ifnull(finished_at_ms, 0), status, ifnull(http_status, 0), ifnull(error_kind, ''), attempt_no,
+		ifnull(output_excerpt, ''), ifnull(response_id, ''), ifnull(req_headers, ''), ifnull(req_body, ''), ifnull(resp_headers, ''), ifnull(resp_body, '')
+		from window_keeper_attempts order by id desc limit ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +287,7 @@ func (s *Store) ListWindowKeeperAttempts(ctx context.Context, limit int) ([]wind
 	for rows.Next() {
 		var attempt windowkeeper.Attempt
 		var started, finished int64
-		if err := rows.Scan(&attempt.ID, &attempt.AccountID, &attempt.GenerationKey, &started, &finished, &attempt.Status, &attempt.HTTPStatus, &attempt.ErrorKind, &attempt.AttemptNo, &attempt.Excerpt, &attempt.ResponseID); err != nil {
+		if err := rows.Scan(&attempt.ID, &attempt.AccountID, &attempt.GenerationKey, &started, &finished, &attempt.Status, &attempt.HTTPStatus, &attempt.ErrorKind, &attempt.AttemptNo, &attempt.Excerpt, &attempt.ResponseID, &attempt.ReqHeaders, &attempt.ReqBody, &attempt.RespHeaders, &attempt.RespBody); err != nil {
 			return nil, err
 		}
 		if started > 0 {
@@ -368,8 +400,8 @@ func (w *WindowKeeperStore) StartAttempt(ctx context.Context, attempt windowkeep
 	return w.store.StartWindowKeeperAttempt(ctx, attempt)
 }
 
-func (w *WindowKeeperStore) FinishAttempt(ctx context.Context, id int64, status string, httpStatus int, kind, excerpt, responseID string) error {
-	return w.store.FinishWindowKeeperAttempt(ctx, id, status, httpStatus, kind, excerpt, responseID)
+func (w *WindowKeeperStore) FinishAttempt(ctx context.Context, id int64, finish windowkeeper.AttemptFinish) error {
+	return w.store.FinishWindowKeeperAttempt(ctx, id, finish)
 }
 
 func (w *WindowKeeperStore) ListAttempts(ctx context.Context, limit int) ([]windowkeeper.Attempt, error) {

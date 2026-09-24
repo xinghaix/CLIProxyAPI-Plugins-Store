@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -205,7 +206,7 @@ func (k *Keeper) Process(ctx context.Context, now time.Time) error {
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			_ = k.processOne(ctx, targetRef, settings, now)
+			_ = k.processOne(ctx, targetRef, settings, now, false)
 		}()
 	}
 	wg.Wait()
@@ -241,7 +242,7 @@ func (k *Keeper) Activate(ctx context.Context, authID string) error {
 		}
 	}
 	_ = k.Store.SetNotBefore(ctx, authID, k.now())
-	return k.processOne(ctx, ref, settings, k.now())
+	return k.processOne(ctx, ref, settings, k.now(), true)
 }
 
 func (k *Keeper) Probe(ctx context.Context, authID string) error {
@@ -256,9 +257,21 @@ func (k *Keeper) Probe(ctx context.Context, authID string) error {
 	return k.observe(ctx, ref, settings, k.now())
 }
 
-func (k *Keeper) processOne(ctx context.Context, ref AccountRef, settings Settings, now time.Time) error {
+func (k *Keeper) processOne(ctx context.Context, ref AccountRef, settings Settings, now time.Time, forceManual bool) error {
 	override := decodeOverride(loadOverride(ctx, k, ref.AuthID))
-	if !settings.Enabled || override.Enabled == "off" || ref.Disabled || ref.Unavailable || ref.NextRetryAfter.After(now) {
+	if !settings.Enabled || override.Enabled == "off" || ref.Disabled || ref.Unavailable || (!forceManual && ref.NextRetryAfter.After(now)) {
+		if forceManual {
+			switch {
+			case !settings.Enabled:
+				return errors.New("quota window keeper is disabled")
+			case override.Enabled == "off":
+				return errors.New("account override disables window keeper")
+			case ref.Disabled:
+				return errors.New("account is disabled")
+			case ref.Unavailable:
+				return errors.New("account is unavailable")
+			}
+		}
 		return nil
 	}
 	effective := settings
@@ -267,13 +280,22 @@ func (k *Keeper) processOne(ctx context.Context, ref AccountRef, settings Settin
 	}
 	until := now.Add(time.Duration(settings.RequestTimeoutSeconds+30) * time.Second)
 	claimed, err := k.Store.Claim(ctx, ref.AuthID, k.Owner, now, until)
-	if err != nil || !claimed {
+	if err != nil {
 		return err
+	}
+	if !claimed {
+		if forceManual {
+			return errors.New("account is busy; retry shortly")
+		}
+		return nil
 	}
 	defer k.Store.Release(ctx, ref.AuthID, k.Owner)
 	accounts, _ := k.Store.ListAccounts(ctx)
 	for _, account := range accounts {
 		if account.AuthID == ref.AuthID && account.PauseReason != "" {
+			if forceManual {
+				return errors.New("account is paused: " + account.PauseReason)
+			}
 			return nil
 		}
 	}
@@ -285,6 +307,9 @@ func (k *Keeper) processOne(ctx context.Context, ref AccountRef, settings Settin
 			next = now.Add(time.Duration(settings.RetryBaseSeconds) * time.Second)
 		}
 		_ = k.Store.SetNotBefore(ctx, ref.AuthID, next)
+		if forceManual {
+			return err
+		}
 		return nil
 	}
 	poll := time.Duration(settings.PollSeconds) * time.Second
@@ -292,24 +317,31 @@ func (k *Keeper) processOne(ctx context.Context, ref AccountRef, settings Settin
 	if result.Action == ActionWait && !result.NotBefore.IsZero() {
 		next = result.NotBefore
 	}
-	if result.Action != ActionSend {
-		return k.Store.SetNotBefore(ctx, ref.AuthID, next)
-	}
-	done, err := k.Store.HasSuccess(ctx, ref.AuthID, result.Generation)
-	if err != nil || done {
-		return k.Store.SetNotBefore(ctx, ref.AuthID, next)
-	}
-	priorAttempts, err := k.Store.AttemptCount(ctx, ref.AuthID, result.Generation)
-	if err != nil {
-		return err
-	}
-	attemptNo := priorAttempts + 1
-	if attemptNo > settings.MaxAttempts {
-		stopGeneration(result.States)
-		if err := k.Store.SaveWindows(ctx, ref.AuthID, result.States); err != nil {
+	attemptNo := 1
+	if forceManual {
+		// Manual activate always sends and records an attempt, even when the
+		// automatic clock would wait / skip (HasSuccess, MaxAttempts, Action!=Send).
+		result.Generation = "manual:" + strconv.FormatInt(now.UnixMilli(), 10)
+	} else {
+		if result.Action != ActionSend {
+			return k.Store.SetNotBefore(ctx, ref.AuthID, next)
+		}
+		done, err := k.Store.HasSuccess(ctx, ref.AuthID, result.Generation)
+		if err != nil || done {
+			return k.Store.SetNotBefore(ctx, ref.AuthID, next)
+		}
+		priorAttempts, err := k.Store.AttemptCount(ctx, ref.AuthID, result.Generation)
+		if err != nil {
 			return err
 		}
-		return k.Store.SetNotBefore(ctx, ref.AuthID, next)
+		attemptNo = priorAttempts + 1
+		if attemptNo > settings.MaxAttempts {
+			stopGeneration(result.States)
+			if err := k.Store.SaveWindows(ctx, ref.AuthID, result.States); err != nil {
+				return err
+			}
+			return k.Store.SetNotBefore(ctx, ref.AuthID, next)
+		}
 	}
 	id, err := k.Store.StartAttempt(ctx, Attempt{
 		AccountID: ref.AuthID, GenerationKey: result.Generation, StartedAt: now, AttemptNo: attemptNo,
@@ -335,7 +367,7 @@ func (k *Keeper) processOne(ctx context.Context, ref AccountRef, settings Settin
 			kind = Classify(sent.Status, "")
 		}
 		decision := Decide(sent.Status, kind, attemptNo, settings.MaxAttempts)
-		_ = k.Store.FinishAttempt(ctx, id, "failed", sent.Status, kind, trim(excerpt), sent.ResponseID)
+		_ = k.Store.FinishAttempt(ctx, id, FinishFromSend("failed", sent, kind, trim(excerpt)))
 		if decision.Action == PolicyActionPause {
 			reason := "reauth"
 			if kind == ErrKindConfig {
@@ -396,7 +428,7 @@ func (k *Keeper) processOne(ctx context.Context, ref AccountRef, settings Settin
 	if err := k.Store.SaveWindows(ctx, ref.AuthID, after); err != nil {
 		return err
 	}
-	if err := k.Store.FinishAttempt(ctx, id, "succeeded", sent.Status, "", trim(sent.Excerpt), sent.ResponseID); err != nil {
+	if err := k.Store.FinishAttempt(ctx, id, FinishFromSend("succeeded", sent, "", trim(sent.Excerpt))); err != nil {
 		return err
 	}
 	return k.Store.SetNotBefore(ctx, ref.AuthID, now.Add(poll))
