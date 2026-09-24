@@ -59,3 +59,41 @@ func collectOutputText(value any, out *strings.Builder) {
 		}
 	}
 }
+
+// ExcerptFromUpstream builds a short attempt excerpt from an upstream error body or message.
+// Prefers JSON "detail", then nested error.message / top-level "message"/"error" strings,
+// otherwise a trimmed raw snippet (max 120 runes).
+func ExcerptFromUpstream(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+		if detail, ok := parsed["detail"].(string); ok && strings.TrimSpace(detail) != "" {
+			return clipExcerpt(detail)
+		}
+		switch errVal := parsed["error"].(type) {
+		case string:
+			if strings.TrimSpace(errVal) != "" {
+				return clipExcerpt(errVal)
+			}
+		case map[string]any:
+			if msg, ok := errVal["message"].(string); ok && strings.TrimSpace(msg) != "" {
+				return clipExcerpt(msg)
+			}
+		}
+		if msg, ok := parsed["message"].(string); ok && strings.TrimSpace(msg) != "" {
+			return clipExcerpt(msg)
+		}
+	}
+	return clipExcerpt(raw)
+}
+
+func clipExcerpt(text string) string {
+	runes := []rune(strings.TrimSpace(text))
+	if len(runes) > 120 {
+		return string(runes[:120])
+	}
+	return string(runes)
+}

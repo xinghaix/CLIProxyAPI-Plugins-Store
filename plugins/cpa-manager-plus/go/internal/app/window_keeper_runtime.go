@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -139,6 +140,26 @@ func (r *Runtime) WindowKeeperAttempts(ctx context.Context, limit int) ([]window
 	return r.store.ListWindowKeeperAttempts(ctx, limit)
 }
 
+// buildWindowKeeperRequestBody builds the OpenAI Responses JSON for window-keeper keepalive.
+// Uses nested reasoning.effort when effort is set to a non-none value; never sends
+// top-level reasoning_effort (Codex rejects it with HTTP 400). Omits reasoning entirely
+// when effort is empty or "none". Includes service_tier only when non-empty.
+func buildWindowKeeperRequestBody(settings windowkeeper.Settings) map[string]any {
+	requestBody := map[string]any{
+		"model": settings.Model,
+		"store": false,
+		"input": []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": settings.Prompt}}}},
+	}
+	effort := strings.TrimSpace(settings.Effort)
+	if effort != "" && !strings.EqualFold(effort, "none") {
+		requestBody["reasoning"] = map[string]any{"effort": effort}
+	}
+	if tier := strings.TrimSpace(settings.ServiceTier); tier != "" {
+		requestBody["service_tier"] = tier
+	}
+	return requestBody
+}
+
 // Catalog adapter
 type runtimeCatalog struct{ r *Runtime }
 
@@ -238,50 +259,61 @@ func (s runtimeSender) Send(ctx context.Context, ref windowkeeper.AccountRef, se
 		return windowkeeper.SendResult{Kind: windowkeeper.ErrKindRetry}, fmt.Errorf("host model streaming callbacks not available")
 	}
 
-	effort := strings.TrimSpace(settings.Effort)
-	if effort == "" {
-		effort = "none"
-	}
-	requestBody := map[string]any{
-		"model": settings.Model, "store": false,
-		"input":            []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": settings.Prompt}}}},
-		"reasoning":        map[string]any{"effort": effort},
-		"reasoning_effort": effort,
-	}
-	if strings.TrimSpace(settings.ServiceTier) != "" {
-		requestBody["service_tier"] = strings.TrimSpace(settings.ServiceTier)
-	}
-	body, _ := json.Marshal(requestBody)
+	body, _ := json.Marshal(buildWindowKeeperRequestBody(settings))
 
 	opened, err := execStream(pluginapi.HostModelExecutionRequest{
 		EntryProtocol: "openai-response", ExitProtocol: "codex", Model: settings.Model, Stream: true,
 		Body: body, ForcedProvider: "codex", AuthID: ref.AuthID,
 	})
 	if err != nil {
-		return windowkeeper.SendResult{Kind: windowkeeper.ErrKindRetry}, err
+		// HostModelStreamResponse has no Body; bootstrap failures arrive as err with optional StatusCode().
+		status := statusCodeFromError(err)
+		return windowkeeper.SendResult{
+			Status:  status,
+			Kind:    windowkeeper.Classify(status, ""),
+			Excerpt: buildExcerptFromOpen(nil, err.Error()),
+		}, err
 	}
 	if opened.StreamID != "" {
 		defer closeStream(pluginapi.HostModelStreamCloseRequest{StreamID: opened.StreamID})
 	}
 	if opened.StatusCode >= 400 {
+		// v7 HostModelStreamResponse only has StatusCode/Headers/StreamID — no Body.
+		// Prefer a stream payload/error snippet when the host still opened a stream.
+		var body []byte
+		errText := ""
+		if opened.StreamID != "" {
+			if read, readErr := readStream(pluginapi.HostModelStreamReadRequest{StreamID: opened.StreamID}); readErr == nil {
+				body = read.Payload
+				errText = read.Error
+			}
+		}
 		return windowkeeper.SendResult{
-			Status: opened.StatusCode,
-			Kind:   windowkeeper.Classify(opened.StatusCode, ""),
+			Status:  opened.StatusCode,
+			Kind:    windowkeeper.Classify(opened.StatusCode, ""),
+			Excerpt: buildExcerptFromOpen(body, errText),
 		}, nil
 	}
 	var chunks []byte
 	for {
 		if err := ctx.Err(); err != nil {
-			return windowkeeper.SendResult{Kind: windowkeeper.ErrKindRetry}, err
+			return windowkeeper.SendResult{Kind: windowkeeper.ErrKindRetry, Excerpt: buildExcerptFromOpen(nil, err.Error())}, err
 		}
 		read, err := readStream(pluginapi.HostModelStreamReadRequest{StreamID: opened.StreamID})
 		if err != nil {
-			return windowkeeper.SendResult{Kind: windowkeeper.ErrKindRetry}, err
+			status := statusCodeFromError(err)
+			return windowkeeper.SendResult{
+				Status:  status,
+				Kind:    windowkeeper.Classify(status, ""),
+				Excerpt: buildExcerptFromOpen(nil, err.Error()),
+			}, err
 		}
 		chunks = append(chunks, read.Payload...)
 		if read.Error != "" {
 			return windowkeeper.SendResult{
-				Status: opened.StatusCode, Kind: windowkeeper.ErrKindRetry, Excerpt: read.Error,
+				Status:  opened.StatusCode,
+				Kind:    windowkeeper.Classify(opened.StatusCode, windowkeeper.ErrKindRetry),
+				Excerpt: buildExcerptFromOpen(read.Payload, read.Error),
 			}, nil
 		}
 		if read.Done {
@@ -294,4 +326,24 @@ func (s runtimeSender) Send(ctx context.Context, ref windowkeeper.AccountRef, se
 		result.Kind = windowkeeper.ErrKindRetry
 	}
 	return result, nil
+}
+
+// buildExcerptFromOpen extracts a short diagnostic from an upstream open/stream failure.
+// HostModelStreamResponse (CLIProxyAPI v7.3.9) has no Body field, so callers pass any
+// available payload bytes and/or error text (e.g. err.Error() or stream read.Error).
+func buildExcerptFromOpen(body []byte, errText string) string {
+	if len(body) > 0 {
+		if excerpt := windowkeeper.ExcerptFromUpstream(string(body)); excerpt != "" {
+			return excerpt
+		}
+	}
+	return windowkeeper.ExcerptFromUpstream(errText)
+}
+
+func statusCodeFromError(err error) int {
+	var withStatus interface{ StatusCode() int }
+	if errors.As(err, &withStatus) {
+		return withStatus.StatusCode()
+	}
+	return 0
 }
