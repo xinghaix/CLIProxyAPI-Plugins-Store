@@ -75,6 +75,9 @@ func (r *Runtime) loadAutoBanSettings(ctx context.Context) error {
 			}
 		}
 	}
+	// Master/emergency gates are applied at engine run sites, not here, so
+	// upgraded installs keep their tab-level enabled flag in SQLite while the
+	// master stays off.
 	r.autoBanMu.Lock()
 	r.autoBanSettings = settings
 	r.autoBanMu.Unlock()
@@ -92,6 +95,8 @@ func (r *Runtime) UpdateAutoBanSettings(ctx context.Context, settings AutoBanSet
 	if err != nil {
 		return err
 	}
+	// Do not clamp Enabled on save: master OFF stops the engine at runtime
+	// without rewriting tab-level settings.
 	raw, err := json.Marshal(normalized)
 	if err != nil {
 		return err

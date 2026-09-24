@@ -5,6 +5,14 @@ export default {
   config: {
     credentials: { title: '访问凭据', subtitle: '仅浏览器缓存', description: '浏览器访问 CPA Manager Plus / 插件 API 所需的 CPA management key（仅保存在本页 sessionStorage，与下方「账号处置授权」不同）。', keyPlaceholder: 'CPA management key（当前会话临时保存）', saveAndCheck: '保存并检测', checkRuntime: '检测 Runtime' },
     collector: { title: '本地用量采集', subtitle: '写入本地 SQLite', label: '记录请求用量', description: 'CPA Runtime 收到的用量记录会直接写入本地 SQLite，用于统计、模型价格与账号巡检。关闭后不会记录新的用量。' },
+    legacyAccountOps: {
+      title: '账号处置 / 巡检总控',
+      subtitle: '配置级总开关',
+      description: '默认关闭。总控关闭时：即使 Tab 内设置 enabled=true，引擎也不会运行，且对应 Tab 保持隐藏。总控打开后：重新显示对应 Tab，并降级读取各自 Tab 设置。',
+      autoBan: '账号处置（Auto-Ban）总控',
+      inspection: '账号巡检总控',
+      saved: '总控已保存',
+    },
     accountAuthorization: { title: '账号处置授权', subtitle: '仅用于启用、禁用或删除认证文件', baseUrl: 'CPA 管理 API 地址', currentBinding: '当前绑定: {value}', managementKey: 'CPA 管理密钥', keyPlaceholder: '留空保持不变', bound: '已绑定密钥（留空不修改）', unbound: '未绑定密钥', description: '真实账号巡检的 provider 探测，以及启用、禁用或删除认证文件的处置都依赖此配置（加密保存在本地 SQLite）。本地请求监控和模型价格同步不依赖此配置。' },
     runtime: { title: '运行时信息', subtitle: '只读', source: '配置来源', dataDir: '数据目录', queueCapacity: '队列容量', batchSize: '写入批量', description: '队列容量和写入批量在插件启动时读取；如需调整，请修改插件 YAML 后重启 CPA。', localRuntime: '本地 Runtime', environment: '环境变量', database: '数据库', notLoaded: '未加载' },
     save: { loading: '正在加载插件配置…', clean: '当前与本地 Runtime 配置一致，修改本地用量采集或账号处置授权后可保存。', saved: '插件配置已保存并应用', savePlugin: '保存插件配置', reload: '重新加载', notLoaded: '配置尚未加载完成，请稍后或点击「重新加载」' },

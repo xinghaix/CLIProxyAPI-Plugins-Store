@@ -34,44 +34,46 @@ type connection struct {
 
 // Runtime owns all local resources that must stop before the plugin is unloaded.
 type Runtime struct {
-	mu                   sync.Mutex
-	config               config.Config
-	store                *store.Store
-	writer               *ingest.Writer
-	responseObserver     *responseObserver
-	cancel               context.CancelFunc
-	wait                 sync.WaitGroup
-	closed               atomic.Bool
-	started              time.Time
-	masterKey            []byte
-	connection           connection
-	authList             func() ([]pluginapi.HostAuthFileEntry, error)
-	authGet              func(string) (pluginapi.HostAuthGetResponse, error)
-	httpDo               func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)
-	syncMu               sync.Mutex
-	officialMu           sync.Mutex
-	priceMu              sync.Mutex
-	priceSettings        PriceSyncSettings
-	priceStatus          PriceSyncStatus
-	priceWake            chan struct{}
-	inspectionMu         sync.Mutex
-	inspectionSettings   CodexInspectionSettings
-	inspectionWake       chan struct{}
-	inspectionRunMu      sync.Mutex
-	inspectionCancel     context.CancelFunc
-	autoBanMu            sync.Mutex
-	autoBanSettings      AutoBanSettings
-	autoBanWake          chan struct{}
-	autoBanActionMu      sync.Mutex
-	windowKeeperMu       sync.Mutex
-	windowKeeperSettings windowkeeper.Settings
-	windowKeeperWake     chan struct{}
-	windowKeeper         *windowkeeper.Keeper
-	modelExecuteStream   func(pluginapi.HostModelExecutionRequest) (pluginapi.HostModelStreamResponse, error)
-	modelStreamRead      func(pluginapi.HostModelStreamReadRequest) (pluginapi.HostModelStreamReadResponse, error)
-	modelStreamClose     func(pluginapi.HostModelStreamCloseRequest) error
-	usageSeen            atomic.Int64
-	lastUsageMS          atomic.Int64
+	mu                      sync.Mutex
+	config                  config.Config
+	store                   *store.Store
+	writer                  *ingest.Writer
+	responseObserver        *responseObserver
+	cancel                  context.CancelFunc
+	wait                    sync.WaitGroup
+	closed                  atomic.Bool
+	started                 time.Time
+	masterKey               []byte
+	connection              connection
+	authList                func() ([]pluginapi.HostAuthFileEntry, error)
+	authGet                 func(string) (pluginapi.HostAuthGetResponse, error)
+	httpDo                  func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)
+	syncMu                  sync.Mutex
+	officialMu              sync.Mutex
+	priceMu                 sync.Mutex
+	priceSettings           PriceSyncSettings
+	priceStatus             PriceSyncStatus
+	priceWake               chan struct{}
+	inspectionMu            sync.Mutex
+	inspectionSettings      CodexInspectionSettings
+	inspectionWake          chan struct{}
+	inspectionRunMu         sync.Mutex
+	inspectionCancel        context.CancelFunc
+	autoBanMu               sync.Mutex
+	autoBanSettings         AutoBanSettings
+	autoBanWake             chan struct{}
+	autoBanActionMu         sync.Mutex
+	mastersMu               sync.Mutex
+	legacyAccountOpsMasters LegacyAccountOpsMasters
+	windowKeeperMu          sync.Mutex
+	windowKeeperSettings    windowkeeper.Settings
+	windowKeeperWake        chan struct{}
+	windowKeeper            *windowkeeper.Keeper
+	modelExecuteStream      func(pluginapi.HostModelExecutionRequest) (pluginapi.HostModelStreamResponse, error)
+	modelStreamRead         func(pluginapi.HostModelStreamReadRequest) (pluginapi.HostModelStreamReadResponse, error)
+	modelStreamClose        func(pluginapi.HostModelStreamCloseRequest) error
+	usageSeen               atomic.Int64
+	lastUsageMS             atomic.Int64
 }
 
 func New(rawConfig []byte) (*Runtime, error) {
@@ -98,6 +100,10 @@ func New(rawConfig []byte) (*Runtime, error) {
 		return nil, err
 	}
 	if err := runtime.loadOfficialPricing(context.Background()); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	if err := runtime.loadLegacyAccountOpsMasters(context.Background()); err != nil {
 		_ = database.Close()
 		return nil, err
 	}

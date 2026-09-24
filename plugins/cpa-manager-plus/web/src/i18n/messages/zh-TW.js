@@ -5,6 +5,14 @@ export default {
   config: {
     credentials: { title: '存取憑據', subtitle: '僅瀏覽器快取', description: '瀏覽器存取 CPA Manager Plus / 外掛 API 所需的 CPA management key（僅儲存在本頁 sessionStorage，與下方「帳號處置授權」不同）。', keyPlaceholder: 'CPA management key（目前工作階段暫存）', saveAndCheck: '儲存並檢測', checkRuntime: '檢測 Runtime' },
     collector: { title: '本機用量蒐集', subtitle: '寫入本機 SQLite', label: '記錄請求用量', description: 'CPA Runtime 收到的用量記錄會直接寫入本機 SQLite，用於統計、模型價格與帳號巡檢。關閉後不會記錄新的用量。' },
+    legacyAccountOps: {
+      title: '帳號處置 / 巡檢總控',
+      subtitle: '設定級總開關',
+      description: '預設關閉。總控關閉時：即使 Tab 內設定 enabled=true，引擎也不會運行，且對應 Tab 保持隱藏。總控開啟後：重新顯示對應 Tab，並降級讀取各自 Tab 設定。',
+      autoBan: '帳號處置（Auto-Ban）總控',
+      inspection: '帳號巡檢總控',
+      saved: '總控已儲存',
+    },
     accountAuthorization: { title: '帳號處置授權', subtitle: '僅用於啟用、停用或刪除認證檔案', baseUrl: 'CPA 管理 API 位址', currentBinding: '目前綁定: {value}', managementKey: 'CPA 管理金鑰', keyPlaceholder: '留空維持不變', bound: '已綁定金鑰（留空不修改）', unbound: '未綁定金鑰', description: '實際帳號巡檢的 provider 探測，以及啟用、停用或刪除認證檔案的處置都依賴此設定（加密儲存在本機 SQLite）。本機請求監控和模型價格同步不依賴此設定。' },
     runtime: { title: '執行階段資訊', subtitle: '唯讀', source: '設定來源', dataDir: '資料目錄', queueCapacity: '佇列容量', batchSize: '寫入批次', description: '佇列容量和寫入批次會在外掛啟動時讀取；如需調整，請修改外掛 YAML 後重啟 CPA。', localRuntime: '本機 Runtime', environment: '環境變數', database: '資料庫', notLoaded: '未載入' },
     save: { loading: '正在載入外掛設定…', clean: '目前與本機 Runtime 設定一致，修改本機用量蒐集或帳號處置授權後可儲存。', saved: '外掛設定已儲存並套用', savePlugin: '儲存外掛設定', reload: '重新載入', notLoaded: '設定尚未載入完成，請稍後或點擊「重新載入」' },

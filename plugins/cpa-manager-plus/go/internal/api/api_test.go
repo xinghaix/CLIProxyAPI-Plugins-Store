@@ -84,6 +84,8 @@ func TestCandidateActionPath(t *testing.T) {
 }
 
 func TestUsageServiceConfigIgnoresRedactedManagementKeyAndPersistsCodex(t *testing.T) {
+	restore := app.SetLegacyAccountOpsEnginesEnabledForTest(true)
+	defer restore()
 	runtime, err := app.New([]byte("data_dir: " + t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
@@ -138,6 +140,8 @@ func TestUsageServiceConfigIgnoresRedactedManagementKeyAndPersistsCodex(t *testi
 }
 
 func TestUsageServiceConfigAcceptsLegacyFlatCodexSettings(t *testing.T) {
+	restore := app.SetLegacyAccountOpsEnginesEnabledForTest(true)
+	defer restore()
 	runtime, err := app.New([]byte("data_dir: " + t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
@@ -202,6 +206,8 @@ func TestDeleteModelPrice(t *testing.T) {
 }
 
 func TestAutoBanSettingsAndRulesRoutes(t *testing.T) {
+	restore := app.SetLegacyAccountOpsEnginesEnabledForTest(true)
+	defer restore()
 	ctx := context.Background()
 	runtime, err := app.New([]byte("data_dir: " + t.TempDir()))
 	if err != nil {
@@ -225,5 +231,49 @@ func TestAutoBanSettingsAndRulesRoutes(t *testing.T) {
 	list := Handle(ctx, runtime, []byte(`{"method":"GET","path":"/v0/management/auto-ban/rules"}`))
 	if list.StatusCode != http.StatusOK || !strings.Contains(string(list.Body), "codex-418-review") {
 		t.Fatalf("list auto-ban rules = %d: %s", list.StatusCode, list.Body)
+	}
+}
+
+func TestLegacyAccountOpsMastersRoutes(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := app.New([]byte("data_dir: " + t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+
+	get := Handle(ctx, runtime, []byte(`{"method":"GET","path":"/v0/management/legacy-account-ops/masters"}`))
+	if get.StatusCode != 200 {
+		t.Fatalf("get masters = %d: %s", get.StatusCode, get.Body)
+	}
+	var getPayload map[string]any
+	if err := json.Unmarshal(get.Body, &getPayload); err != nil {
+		t.Fatal(err)
+	}
+	masters := getPayload["masters"].(map[string]any)
+	if masters["autoBan"] != false || masters["inspection"] != false {
+		t.Fatalf("default masters = %#v", masters)
+	}
+
+	put := Handle(ctx, runtime, []byte(`{"method":"PUT","path":"/v0/management/legacy-account-ops/masters","body":{"autoBan":true,"inspection":false}}`))
+	if put.StatusCode != 200 {
+		t.Fatalf("put masters = %d: %s", put.StatusCode, put.Body)
+	}
+	got := runtime.LegacyAccountOpsMasters()
+	if !got.AutoBan || got.Inspection {
+		t.Fatalf("after put = %#v", got)
+	}
+
+	cfg := Handle(ctx, runtime, []byte(`{"method":"GET","path":"/usage-service/config"}`))
+	if cfg.StatusCode != 200 {
+		t.Fatalf("get config = %d: %s", cfg.StatusCode, cfg.Body)
+	}
+	var cfgPayload map[string]any
+	if err := json.Unmarshal(cfg.Body, &cfgPayload); err != nil {
+		t.Fatal(err)
+	}
+	cfgMasters := cfgPayload["config"].(map[string]any)["legacyAccountOpsMasters"].(map[string]any)
+	if cfgMasters["autoBan"] != true || cfgMasters["inspection"] != false {
+		t.Fatalf("config masters = %#v", cfgMasters)
 	}
 }

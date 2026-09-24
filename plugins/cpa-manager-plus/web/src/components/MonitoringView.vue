@@ -406,7 +406,7 @@
             {{ quotaLoading ? t('monitoring.authCard.querying') : t('monitoring.authCard.queryQuota') }}
           </button>
           <button class="btn" type="button" @click="filterAccountAPIKey(selectedAccount)">{{ t('monitoring.authCard.filterEvents') }}</button>
-          <button class="btn" type="button" @click="emit('open-inspection')">{{ t('monitoring.authCard.openInspection') }}</button>
+          <button v-if="inspectionTabVisible" class="btn" type="button" @click="emit('open-inspection')">{{ t('monitoring.authCard.openInspection') }}</button>
         </div>
       </article>
       <DataCard v-else :title="t('monitoring.cards.sourceDetail')" :subtitle="accountDetailSubtitle(selectedAccount)">
@@ -481,6 +481,7 @@ import {
 const props = defineProps({
   ready: {type: Boolean, default: false},
   proxyCall: {type: Function, required: true},
+  inspectionTabVisible: {type: Boolean, default: false},
 });
 const emit = defineEmits(['open-inspection']);
 const API_KEY_AUTO_COLLAPSE_MS = 5000;

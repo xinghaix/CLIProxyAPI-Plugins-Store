@@ -174,6 +174,7 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 		baseURL, hasKey := runtime.Connection()
 		inspection := runtime.CodexInspectionSettings()
 		autoBan := runtime.AutoBanSettings()
+		masters := runtime.LegacyAccountOpsMasters()
 		return jsonResponse(http.StatusOK, map[string]any{
 			"source": "plugin",
 			"config": map[string]any{
@@ -187,8 +188,9 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 					"queueCapacity": cfg.QueueCapacity,
 					"batchSize":     cfg.BatchSize,
 				},
-				"codexInspection": inspection,
-				"autoBan":         autoBan,
+				"codexInspection":         inspection,
+				"autoBan":                 autoBan,
+				"legacyAccountOpsMasters": masters,
 			},
 		})
 	case method == http.MethodPut && path == "/usage-service/config":
@@ -210,6 +212,17 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 			}
 		}
 		return Handle(ctx, runtime, []byte(`{"method":"GET","path":"/usage-service/config"}`))
+	case method == http.MethodGet && path == "/v0/management/legacy-account-ops/masters":
+		return jsonResponse(http.StatusOK, map[string]any{"masters": runtime.LegacyAccountOpsMasters()})
+	case method == http.MethodPut && path == "/v0/management/legacy-account-ops/masters":
+		var masters app.LegacyAccountOpsMasters
+		if err := json.Unmarshal(request.Body, &masters); err != nil {
+			return jsonResponse(http.StatusBadRequest, map[string]any{"error": "invalid legacy account ops masters"})
+		}
+		if err := runtime.UpdateLegacyAccountOpsMasters(ctx, masters); err != nil {
+			return errorResponse(err)
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"masters": runtime.LegacyAccountOpsMasters()})
 	case strings.HasPrefix(path, "/v0/management/auto-ban"):
 		return handleAutoBanRoute(ctx, runtime, method, path, request.Query, request.Body)
 	case method == http.MethodGet && path == "/v0/management/account-action-candidates":

@@ -153,6 +153,18 @@ Auto-Ban 默认关闭。启用后，插件会使用已落库的 usage 失败事�
 
 所有 token 和完整认证头都不会写入 Auto-Ban 状态或历史。请先在测试规则或演练模式确认命中结果，再开启真实动作。
 
+
+## 账号处置 / 账号巡检 Tab（配置总控，默认关闭）
+
+从本分支起，「账号处置」（Auto-Ban）与「账号巡检」由 **配置页总控** 管理，不再依赖编译期写死的 `FEATURE_* = false` / `LegacyAccountOpsEnginesEnabled = false`。
+
+- 持久化键：`legacy_account_ops_masters_v1`（字段 `autoBan` / `inspection`），**默认均为 `false`**。
+- **总控 OFF**：对应引擎运行时强制停止（即使 Tab 设置 `enabled=true`），对应导航 Tab 保持隐藏。
+- **总控 ON**：重新显示对应 Tab，并降级读取各自 Tab 设置（`enabled` → 运行，否则停止）。引擎实际运行条件：`总控 ON ∧ tab settings.enabled`。
+- 升级用户：旧库若曾开启 Auto-Ban/巡检，升级后总控仍为 false，循环不会工作，直到在「配置」页打开总控。
+- 紧急硬关：Go `LegacyAccountOpsEnginesEnabled`（默认 `true`）与前端 `FEATURE_*_UI`（默认 `true`）仍可作为无法从 UI 覆盖的应急开关。
+- 额度窗口（Window Keeper）Tab 不受影响；总控关闭时监控页「打开巡检」入口一并隐藏。
+
 ## UI 结构
 
 | Tab | 主要 endpoint |
@@ -160,8 +172,8 @@ Auto-Ban 默认关闭。启用后，插件会使用已落库的 usage 失败事�
 | 仪表盘 | `GET /v0/management/dashboard/summary` |
 | 请求监控 / 用量 | `POST /v0/management/monitoring/analytics` |
 | 模型单价 | `GET/PUT /v0/management/model-prices`、`GET /v0/management/model-prices/source-lookup` |
-| 认证异常 | `GET/POST/DELETE .../account-action-candidates...` |
-| 账号巡检 | `GET/POST .../codex-inspection/...` |
+| 认证异常 / 账号处置（总控默认关闭） | `GET/POST/DELETE .../account-action-candidates...`、`.../auto-ban/...` |
+| 账号巡检（总控默认关闭） | `GET/POST .../codex-inspection/...` |
 | 额度窗口 | `GET/PUT /v0/management/window-keeper/...` |
 | 配置 | `GET/PUT /usage-service/config` |
 | 健康 | `GET /v0/management/cpa-manager-plus/health` |
