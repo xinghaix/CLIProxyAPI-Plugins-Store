@@ -13,6 +13,7 @@
       :selected-row-key="selectedRowKey"
       :loading="loading"
       :total-count="rows.length"
+      :has-active-filters="hasActiveFilters"
       :format-compact="fmtCompact"
       :format-percent="fmtPct"
       :format-cost-text="formatCostText"
@@ -30,6 +31,7 @@
       :history-to-ms="historyToMs"
       :window-cards="selectedWindowCards"
       :probing="drawerProbing"
+      :action-notice="drawerNotice"
       :time-zone="analyticsTimeZone"
       :format-compact="fmtCompact"
       :format-percent="fmtPct"
@@ -93,6 +95,7 @@ const search = ref('');
 const selectedRowKey = ref('');
 const drawerOpen = ref(false);
 const drawerProbing = ref(false);
+const drawerNotice = ref('');
 const historyFromMs = ref(0);
 const historyToMs = ref(0);
 const nowMs = ref(Date.now());
@@ -137,6 +140,12 @@ const kpi = computed(() => {
     quotaRisk: list.filter((r) => r.statusBucket === 'quota_risk').length,
   };
 });
+
+const hasActiveFilters = computed(() => (
+  providerFilter.value !== 'all'
+  || statusFilter.value !== 'all'
+  || Boolean(search.value.trim())
+));
 
 const selectedWindowCards = computed(() => {
   const row = selectedRow.value;
@@ -300,6 +309,7 @@ async function enrichRows(baseRows) {
         }
       } catch (err) {
         console.warn('account-window-usage failed', err);
+        error.value = t('monitoring.credentials.usageFailed', { error: err?.message || String(err) });
       }
     }
   }
@@ -329,6 +339,10 @@ async function enrichRows(baseRows) {
   } catch (err) {
     console.warn('recent events for credentials failed', err);
     recentByRowKey.value = new Map();
+    // Soft: keep list usable; prefer not to overwrite a harder usage failure.
+    if (!error.value) {
+      error.value = t('monitoring.credentials.recentFailed', { error: err?.message || String(err) });
+    }
   }
 
   const enriched = baseRows.map((row) => {
@@ -406,21 +420,27 @@ async function probeCredential(row, { force = false } = {}) {
 
 function openDrawer(row) {
   selectedRowKey.value = row.rowKey;
+  drawerNotice.value = '';
   drawerOpen.value = true;
 }
 
 function closeDrawer() {
   drawerOpen.value = false;
+  drawerNotice.value = '';
 }
 
 async function refreshSelectedQuota() {
   const row = selectedRow.value;
   if (!row) return;
   drawerProbing.value = true;
+  drawerNotice.value = '';
   try {
     nowMs.value = Date.now();
     const probe = await probeCredential(row, { force: true });
     row.probe = probe;
+    if (probe?.error) {
+      drawerNotice.value = t('monitoring.credentials.refreshFailed', { error: probe.error });
+    }
     const { windows, targets } = buildAccountWindowUsageTargets(row, probe || {}, nowMs.value);
     row.quotaWindows = windows;
     row.planLabel = planLabelFrom(probe, row);
@@ -433,19 +453,25 @@ async function refreshSelectedQuota() {
       : null;
     const payloadTargets = targets.map(({ definition, ...target }) => target);
     if (payloadTargets.length) {
-      const resp = await props.proxyCall({
-        method: 'POST',
-        path: '/v0/management/monitoring/account-window-usage',
-        body: { windows: payloadTargets },
-      });
-      const next = new Map(usageByRequestKey.value);
-      for (const item of resp?.items || []) {
-        if (item?.request_key) next.set(item.request_key, item);
+      try {
+        const resp = await props.proxyCall({
+          method: 'POST',
+          path: '/v0/management/monitoring/account-window-usage',
+          body: { windows: payloadTargets },
+        });
+        const next = new Map(usageByRequestKey.value);
+        for (const item of resp?.items || []) {
+          if (item?.request_key) next.set(item.request_key, item);
+        }
+        usageByRequestKey.value = next;
+        row.quotaDisplays = buildQuotaDisplays(row, next);
+      } catch (err) {
+        drawerNotice.value = t('monitoring.credentials.usageFailed', { error: err?.message || String(err) });
       }
-      usageByRequestKey.value = next;
-      row.quotaDisplays = buildQuotaDisplays(row, next);
     }
     rows.value = rows.value.map((r) => (r.rowKey === row.rowKey ? { ...row } : r));
+  } catch (err) {
+    drawerNotice.value = t('monitoring.credentials.refreshFailed', { error: err?.message || String(err) });
   } finally {
     drawerProbing.value = false;
   }

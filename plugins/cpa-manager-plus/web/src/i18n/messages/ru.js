@@ -462,6 +462,11 @@ export default {
       parentRangeIgnored: 'Эта вкладка игнорирует диапазон и фильтры Monitoring выше. KPI и ящик Previous/Current/Forecast берутся из окон квот / probe каждой учётки.',
       searchPlaceholder: 'Поиск учётки / аккаунта / email / заметки',
       empty: 'OAuth-учётки не найдены.',
+      emptyFiltered: 'Нет учёток по текущим фильтрам.',
+      depleted: 'Исчерпано',
+      refreshFailed: 'Не удалось обновить квоту: {error}',
+      usageFailed: 'Не удалось получить использование окна: {error}',
+      recentFailed: 'Недавняя история запросов недоступна: {error}',
       priority: 'Приоритет {value}',
       filters: {
         all: 'Все ({count})',
@@ -545,6 +550,8 @@ export default {
         probeError: 'Ошибка probe',
         readOnlyHint: 'Только чтение — отключение / повторная авторизация здесь недоступны.',
         modelsHint: 'Список моделей из probe показывается, если он есть.',
+        copied: 'Скопировано',
+        copyFailed: 'Не удалось скопировать',
       },
     },
     empty: {

@@ -462,6 +462,11 @@ export default {
       parentRangeIgnored: '本页不使用上方 Monitoring 时间范围与筛选。列表 KPI 与抽屉 Previous/Current/Forecast 均绑定该凭证的配额探测窗口。',
       searchPlaceholder: '搜索凭证 / 账号 / 邮箱 / 备注',
       empty: '未找到 OAuth 凭证。',
+      emptyFiltered: '当前筛选条件下没有凭证。',
+      depleted: '已耗尽',
+      refreshFailed: '刷新配额失败：{error}',
+      usageFailed: '窗口用量查询失败：{error}',
+      recentFailed: '近期请求记录不可用：{error}',
       priority: '优先级 {value}',
       filters: {
         all: '全部 ({count})',
@@ -545,6 +550,8 @@ export default {
         probeError: '探测错误',
         readOnlyHint: '只读视图 — 此处不提供禁用 / 重新授权等写操作。',
         modelsHint: '当探测结果包含模型列表时会在此展示。',
+        copied: '已复制',
+        copyFailed: '复制失败',
       },
     },
     empty: {

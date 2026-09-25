@@ -462,6 +462,11 @@ export default {
       parentRangeIgnored: '本頁不使用上方 Monitoring 時間範圍與篩選。列表 KPI 與抽屜 Previous/Current/Forecast 皆綁定該憑證的配額探測視窗。',
       searchPlaceholder: '搜尋憑證 / 帳號 / 電子郵件 / 備註',
       empty: '找不到 OAuth 憑證。',
+      emptyFiltered: '目前篩選條件下沒有憑證。',
+      depleted: '已耗盡',
+      refreshFailed: '重新整理配額失敗：{error}',
+      usageFailed: '視窗用量查詢失敗：{error}',
+      recentFailed: '近期請求紀錄不可用：{error}',
       priority: '優先順序 {value}',
       filters: {
         all: '全部 ({count})',
@@ -545,6 +550,8 @@ export default {
         probeError: '探測錯誤',
         readOnlyHint: '唯讀檢視 — 此處不提供停用 / 重新授權等寫入操作。',
         modelsHint: '當探測結果包含模型清單時會在此顯示。',
+        copied: '已複製',
+        copyFailed: '複製失敗',
       },
     },
     empty: {

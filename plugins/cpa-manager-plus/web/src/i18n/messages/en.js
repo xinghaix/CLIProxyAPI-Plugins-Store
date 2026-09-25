@@ -586,6 +586,11 @@ export default {
       parentRangeIgnored: 'This tab ignores the Monitoring time range and filters above. KPI and drawer figures come from each credential’s quota windows / probe.',
       searchPlaceholder: 'Search credential / account / email / note',
       empty: 'No OAuth credentials found.',
+      emptyFiltered: 'No credentials match the current filters.',
+      depleted: 'Exhausted',
+      refreshFailed: 'Quota refresh failed: {error}',
+      usageFailed: 'Window usage lookup failed: {error}',
+      recentFailed: 'Recent request history unavailable: {error}',
       priority: 'Priority {value}',
       filters: {
         all: 'All ({count})',
@@ -669,6 +674,8 @@ export default {
         probeError: 'Probe error',
         readOnlyHint: 'Read-only view — disable / reauth actions are not available here.',
         modelsHint: 'Model allow-lists from the auth file are shown when the probe returns them.',
+        copied: 'Copied',
+        copyFailed: 'Copy failed',
       },
     },
     empty: {

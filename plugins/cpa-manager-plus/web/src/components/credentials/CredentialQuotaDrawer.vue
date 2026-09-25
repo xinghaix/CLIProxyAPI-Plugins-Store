@@ -1,16 +1,32 @@
 <template>
-  <div v-if="open && credential" class="drawer-backdrop" @click.self="$emit('close')">
-    <aside class="modal-dialog card drawer cred-drawer" role="dialog" :aria-label="title">
-      <div class="drawer-head">
-        <div>
-          <h2>{{ title }}</h2>
+  <div
+    v-if="open && credential"
+    class="drawer-backdrop cred-drawer-backdrop"
+    @click.self="$emit('close')"
+  >
+    <aside
+      class="modal-dialog card drawer cred-drawer"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="title"
+      tabindex="-1"
+      ref="panelRef"
+    >
+      <div class="drawer-head cred-drawer-head">
+        <div class="cred-drawer-head-main">
+          <h2 class="cred-drawer-title">{{ title }}</h2>
           <p class="muted small-text cred-drawer-sub">
             <span v-if="credential.planLabel" class="cred-plan-badge">{{ credential.planLabel }}</span>
-            <span>{{ credential.path || credential.fileName || EMPTY_VALUE }}</span>
-            <button v-if="credential.path || credential.fileName" type="button" class="btn btn-xs" @click="copyPath">{{ t('monitoring.credentials.drawer.copy') }}</button>
+            <span class="cred-drawer-path-text" :title="credential.path || credential.fileName || ''">{{ credential.path || credential.fileName || EMPTY_VALUE }}</span>
+            <button
+              v-if="credential.path || credential.fileName"
+              type="button"
+              class="btn btn-xs cred-copy-btn"
+              @click="copyPath"
+            >{{ copyLabel }}</button>
           </p>
         </div>
-        <button class="btn" type="button" @click="$emit('close')">{{ t('common.close') }}</button>
+        <button class="btn cred-drawer-close" type="button" @click="$emit('close')">{{ t('common.close') }}</button>
       </div>
 
       <div class="monitor-tabs-list cred-drawer-tabs">
@@ -24,7 +40,7 @@
       </div>
 
       <div v-if="activeTab === 'overview'" class="cred-drawer-body">
-        <MetricGrid class="cred-kpi-grid" :cards="overviewCards" />
+        <MetricGrid class="cred-kpi-grid cred-overview-kpi" :cards="overviewCards" />
         <div class="cred-overview-section">
           <div class="cred-drawer-section-title">{{ t('monitoring.credentials.drawer.overviewIdentity') }}</div>
           <div class="detail-grid cred-overview-grid">
@@ -45,7 +61,7 @@
           <ul class="cred-overview-windows">
             <li v-for="w in credential.quotaWindows" :key="w.key">
               <strong>{{ w.label }}</strong>
-              <span>{{ remainingText(w.remainingPercent) }}</span>
+              <span :class="{ 'cred-rem-depleted': isDepleted(w.remainingPercent) }">{{ remainingText(w.remainingPercent) }}</span>
               <span class="muted small-text">{{ w.resetAtMs ? formatCompact(w.resetAtMs) : '' }}</span>
             </li>
           </ul>
@@ -70,12 +86,12 @@
                 </div>
               </div>
             </div>
-            <div class="cred-window-remaining">
+            <div class="cred-window-remaining" :class="{ 'cred-rem-depleted': isDepleted(card.remainingPercent) }">
               <span>{{ t('monitoring.credentials.drawer.remainingLabel') }}</span>
               <b>{{ remainingText(card.remainingPercent) }}</b>
             </div>
           </div>
-          <div class="quota-bar thick" :class="quotaTone(card.remainingPercent)">
+          <div class="quota-bar thick" :class="[quotaTone(card.remainingPercent), { depleted: isDepleted(card.remainingPercent) }]">
             <span :style="{ width: `${clamp(card.remainingPercent)}%` }"></span>
           </div>
           <div class="cred-window-cols">
@@ -152,6 +168,8 @@
         </div>
       </div>
 
+      <div v-if="actionNotice" class="notice error cred-drawer-notice">{{ actionNotice }}</div>
+
       <div class="cred-drawer-footer">
         <button class="btn primary" type="button" :disabled="probing" @click="$emit('refresh-quota')">
           {{ probing ? t('monitoring.authCard.querying') : t('monitoring.credentials.drawer.refreshQuota') }}
@@ -162,11 +180,11 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, ref, watch } from 'vue';
+import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import MetricGrid from '../MetricGrid.vue';
 import { EMPTY_VALUE, formatCompactDateTime, formatInt } from '../../utils/localeFormat.js';
-import { clampPercent, quotaBarTone } from '../../utils/credentialPresentation.js';
+import { clampPercent, formatRemainingPercent, quotaBarTone } from '../../utils/credentialPresentation.js';
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -176,18 +194,46 @@ const props = defineProps({
   historyToMs: { type: Number, default: 0 },
   windowCards: { type: Array, default: () => [] },
   probing: { type: Boolean, default: false },
+  actionNotice: { type: String, default: '' },
   timeZone: { type: String, default: '' },
   formatCompact: { type: Function, required: true },
   formatPercent: { type: Function, required: true },
   formatCostText: { type: Function, required: true },
 });
 
-defineEmits(['close', 'refresh-quota']);
+const emit = defineEmits(['close', 'refresh-quota']);
 
 const { t, locale } = useI18n();
 const activeTab = ref('quota');
+const copyFeedback = ref('');
+const panelRef = ref(null);
+let copyTimer = null;
 
-watch(() => props.credential?.rowKey, () => { activeTab.value = 'quota'; });
+watch(() => props.credential?.rowKey, () => {
+  activeTab.value = 'quota';
+  copyFeedback.value = '';
+});
+
+watch(() => props.open, (isOpen) => {
+  if (isOpen) {
+    requestAnimationFrame(() => panelRef.value?.focus?.());
+  }
+});
+
+function onKeydown(event) {
+  if (event.key === 'Escape' && props.open) {
+    event.preventDefault();
+    emit('close');
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown);
+  if (copyTimer) clearTimeout(copyTimer);
+});
 
 const tabs = computed(() => [
   { key: 'overview', label: t('monitoring.credentials.drawer.tabs.overview') },
@@ -198,6 +244,14 @@ const tabs = computed(() => [
 ]);
 
 const title = computed(() => props.credential?.maskedEmail || props.credential?.displayName || props.credential?.fileName || EMPTY_VALUE);
+
+const copyLabel = computed(() => (
+  copyFeedback.value === 'ok'
+    ? t('monitoring.credentials.drawer.copied')
+    : copyFeedback.value === 'fail'
+      ? t('monitoring.credentials.drawer.copyFailed')
+      : t('monitoring.credentials.drawer.copy')
+));
 
 const usageLabels = computed(() => ({
   requests: t('monitoring.credentials.drawer.requests'),
@@ -264,9 +318,12 @@ function formatCompact(ms) {
 function formatCompactNum(value) {
   return props.formatCompact(value);
 }
+function isDepleted(remaining) {
+  const n = Number(remaining);
+  return Number.isFinite(n) && n <= 0;
+}
 function remainingText(remaining) {
-  if (!Number.isFinite(Number(remaining))) return EMPTY_VALUE;
-  return `${Math.round(Number(remaining))}%`;
+  return formatRemainingPercent(remaining, t('monitoring.credentials.depleted'));
 }
 function clamp(value) {
   return clampPercent(value);
@@ -282,8 +339,23 @@ function previousTitle(card) {
 }
 async function copyPath() {
   const value = props.credential?.path || props.credential?.fileName || '';
-  if (!value || !navigator?.clipboard) return;
-  try { await navigator.clipboard.writeText(value); } catch { /* ignore */ }
+  if (!value) return;
+  if (!navigator?.clipboard?.writeText) {
+    copyFeedback.value = 'fail';
+    scheduleCopyReset();
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(value);
+    copyFeedback.value = 'ok';
+  } catch {
+    copyFeedback.value = 'fail';
+  }
+  scheduleCopyReset();
+}
+function scheduleCopyReset() {
+  if (copyTimer) clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => { copyFeedback.value = ''; }, 1600);
 }
 
 const UsageMetrics = defineComponent({

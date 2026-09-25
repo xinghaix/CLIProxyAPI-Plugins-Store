@@ -1708,7 +1708,11 @@ pre {
 .cred-table { font-size: 13px; }
 .cred-table th { white-space: nowrap; }
 .cred-table td { vertical-align: top; padding-top: 10px; padding-bottom: 10px; }
-.cred-identity-title { font-size: 13px; font-weight: 650; }
+.cred-identity-cell { min-width: 0; max-width: 260px; }
+.cred-identity-title {
+  display: block; font-size: 13px; font-weight: 650;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 100%;
+}
 .cred-identity-file { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cred-plan-badge {
   display: inline-flex; align-items: center;
@@ -1720,6 +1724,11 @@ pre {
 .cred-avail.status-chip.ok { color: var(--cpa-success); border-color: color-mix(in srgb, var(--cpa-success) 35%, transparent); background: color-mix(in srgb, var(--cpa-success) 10%, transparent); }
 .cred-avail.status-chip.cooldown { color: #2563eb; border-color: color-mix(in srgb, #2563eb 35%, transparent); background: color-mix(in srgb, #2563eb 10%, transparent); }
 .cred-avail.status-chip.warn { color: #d97706; border-color: color-mix(in srgb, #d97706 35%, transparent); background: color-mix(in srgb, #d97706 10%, transparent); }
+.cred-avail.status-chip.off {
+  color: var(--cpa-text-tertiary);
+  border-color: color-mix(in srgb, var(--cpa-text-tertiary) 35%, transparent);
+  background: color-mix(in srgb, var(--cpa-text-tertiary) 8%, transparent);
+}
 
 .cred-recent-cell { min-width: 110px; }
 .cred-recent-time { margin-bottom: 4px; white-space: nowrap; }
@@ -1727,7 +1736,7 @@ pre {
 .cred-hist {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 10px;
+  gap: 8px 12px;
   min-width: 132px;
 }
 .cred-hist-metric {
@@ -1783,13 +1792,72 @@ pre {
 .cred-spark-status i.fail { background: var(--cpa-error); }
 .cred-spark-status i.idle { background: color-mix(in srgb, var(--cpa-text-tertiary) 16%, transparent); }
 
-.cred-drawer { width: min(780px, 96vw); display: flex; flex-direction: column; max-height: min(96vh, 980px); }
-.cred-drawer-tabs { margin: 0 0 12px; }
-.cred-drawer-body { overflow: auto; padding-bottom: 12px; flex: 1; }
+.cred-drawer-backdrop {
+  place-items: stretch end;
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+}
+.cred-drawer {
+  width: min(780px, 96vw);
+  display: flex;
+  flex-direction: column;
+  max-height: 100dvh;
+  height: 100%;
+  margin: 0;
+  align-self: stretch;
+  justify-self: end;
+  border-left: 1px solid var(--cpa-border);
+  border-radius: 0;
+  box-shadow: -18px 0 40px -28px rgb(28 25 21 / 0.35);
+  outline: none;
+}
+.cred-drawer-head { flex-shrink: 0; margin-bottom: 10px; }
+.cred-drawer-head-main { min-width: 0; flex: 1; }
+.cred-drawer-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(520px, 70vw);
+}
+.cred-drawer-close { flex: 0 0 auto; min-height: var(--cpa-touch-min, 44px); min-width: var(--cpa-touch-min, 44px); }
+.cred-drawer-tabs {
+  margin: 0 0 12px;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.cred-drawer-tabs .tab { flex: 0 0 auto; white-space: nowrap; min-height: var(--cpa-touch-min, 44px); }
+.cred-drawer-body { overflow: auto; padding-bottom: 12px; flex: 1; min-height: 0; }
 .cred-drawer-section-title { font-weight: 650; margin: 16px 0 8px; font-size: 14px; }
+.cred-drawer-section-title:first-child { margin-top: 8px; }
 .cred-drawer-path,
-.cred-drawer-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.cred-drawer-footer { display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--cpa-border); padding-top: 12px; }
+.cred-drawer-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.cred-drawer-path-text {
+  min-width: 0;
+  max-width: min(360px, 55vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cred-copy-btn { flex: 0 0 auto; min-height: 32px; }
+.cred-drawer-footer {
+  display: flex; gap: 8px; justify-content: flex-end;
+  border-top: 1px solid var(--cpa-border);
+  padding-top: 12px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  flex-shrink: 0;
+}
+.cred-drawer-notice { margin: 0 0 10px; }
+.cred-overview-kpi.metric-grid { margin-bottom: 8px; }
+.cred-overview-section + .cred-overview-section { margin-top: 4px; }
+.cred-overview-grid { gap: 10px; margin-top: 4px; }
 .cred-overview-grid { margin-top: 4px; }
 .cred-overview-windows { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .cred-overview-windows li { display: flex; gap: 10px; align-items: baseline; padding: 6px 8px; border: 1px solid var(--cpa-border); border-radius: 8px; }
@@ -1843,7 +1911,174 @@ pre {
 .quota-bar.danger > span { background: var(--cpa-error); }
 .quota-bar.ok > span { background: var(--cpa-success); }
 .quota-bar.neutral > span { background: var(--cpa-text-tertiary); }
+.quota-bar.depleted {
+  background: color-mix(in srgb, var(--cpa-error) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cpa-error) 28%, transparent);
+}
+.quota-bar.depleted > span { width: 0 !important; }
+.cred-rem-depleted { color: var(--cpa-error) !important; font-variant-numeric: tabular-nums; }
+.quota-usage-line { font-variant-numeric: tabular-nums; }
+
+/* Cred list selected/pressed (works without hover) */
+.cred-table tr.selected-row td,
+.cred-card.selected-row {
+  background: color-mix(in srgb, var(--cpa-accent) 6%, transparent);
+}
+.cred-table tr.clickable:active td,
+.cred-card.clickable:active {
+  background: color-mix(in srgb, var(--cpa-accent) 10%, transparent);
+}
+.cred-provider-chips .chip:focus-visible,
+.cred-filters .chip:focus-visible,
+.cred-drawer-tabs .tab:focus-visible,
+.cred-drawer-close:focus-visible,
+.cred-copy-btn:focus-visible {
+  outline: 2px solid var(--cpa-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--cpa-focus-ring);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cred-provider-chips .chip:hover:not(.active) {
+    border-color: color-mix(in srgb, var(--cpa-accent) 40%, var(--cpa-border));
+    color: var(--cpa-text);
+  }
+  .cred-table tr.clickable:hover td {
+    background: color-mix(in srgb, var(--cpa-accent) 4%, transparent);
+  }
+  .cred-card.clickable:hover {
+    background: color-mix(in srgb, var(--cpa-accent) 4%, transparent);
+  }
+}
+
+/* Loading / empty states */
+.cred-state { padding: 28px 16px; text-align: center; color: var(--cpa-text-secondary); }
+.cred-state-loading { display: grid; gap: 12px; justify-items: stretch; }
+.cred-skeleton-stack { display: grid; gap: 10px; }
+.cred-skeleton-row {
+  height: 56px;
+  border-radius: 10px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--cpa-text-tertiary) 10%, transparent) 0%,
+    color-mix(in srgb, var(--cpa-text-tertiary) 18%, transparent) 50%,
+    color-mix(in srgb, var(--cpa-text-tertiary) 10%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: cred-skel 1.2s ease-in-out infinite;
+}
+@keyframes cred-skel {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* Card list hidden on desktop; shown ≤768 */
+.cred-card-list { display: none; }
+
 @media (max-width: 900px) {
   .cred-window-cols { grid-template-columns: 1fr; }
   .cred-hist { grid-template-columns: 1fr 1fr; }
 }
+
+/* Mobile P0 — cards + bottom sheet */
+@media (max-width: 768px) {
+  .cred-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .cred-filters .control.wide,
+  .cred-filters .control.compact,
+  .cred-filters .control {
+    width: 100%;
+    min-width: 0;
+    min-height: var(--cpa-touch-min, 44px);
+  }
+  .cred-provider-chips { gap: 8px; }
+  .cred-provider-chips .chip,
+  .cred-filters .chip {
+    min-height: var(--cpa-touch-min, 44px);
+    padding: 10px 14px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .cred-kpi-grid.metric-grid { flex-wrap: wrap; }
+  .cred-kpi-grid.metric-grid > .metric,
+  .cred-kpi-grid.metric-grid > .metric-card { flex: 1 1 40%; }
+  .cred-kpi-grid.metric-grid > :nth-child(2n + 1) { padding-left: 0; }
+  .cred-kpi-grid.metric-grid > :nth-child(2n) { border-right: 0; padding-right: 0; }
+
+  .cred-table-desktop { display: none !important; }
+  .cred-card-list {
+    display: grid;
+    gap: 10px;
+  }
+  .cred-card {
+    display: grid;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid var(--cpa-border);
+    border-radius: 12px;
+    background: var(--cpa-surface);
+    min-height: 52px;
+    min-width: 0;
+  }
+  .cred-card-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+    min-width: 0;
+  }
+  .cred-card-identity { min-width: 0; flex: 1; }
+  .cred-card-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .cred-card-recent {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+  }
+  .cred-card-hist { min-width: 0; }
+  .cred-card-quota { min-width: 0; }
+  .cred-card .cred-identity-title { font-size: 14px; }
+  .cred-card .cred-identity-file { max-width: 100%; }
+
+  /* Bottom-sheet drawer */
+  .cred-drawer-backdrop {
+    place-items: end stretch;
+    justify-content: stretch;
+    align-items: end;
+    padding: 0;
+  }
+  .cred-drawer {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    max-height: calc(100dvh - 48px);
+    justify-self: stretch;
+    align-self: end;
+    border-left: 0;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    box-shadow: 0 -12px 36px -18px rgb(28 25 21 / 0.4);
+    padding: 16px 16px 0;
+  }
+  .cred-drawer-title { max-width: calc(100vw - 100px); font-size: 17px; }
+  .cred-drawer-path-text { max-width: calc(100vw - 140px); }
+  .cred-drawer-tabs {
+    margin: 0 -16px 12px;
+    padding: 0 16px;
+  }
+  .cred-drawer-close {
+    min-height: var(--cpa-touch-min, 44px);
+    min-width: var(--cpa-touch-min, 44px);
+  }
+  .cred-drawer-footer {
+    margin: 0 -16px;
+    padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+  }
+  .cred-drawer-footer .btn {
+    min-height: var(--cpa-touch-min, 44px);
+    width: 100%;
+  }
+  .cred-overview-grid { grid-template-columns: 1fr; }
+}
+

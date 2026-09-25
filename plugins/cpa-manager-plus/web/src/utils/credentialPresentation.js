@@ -225,3 +225,14 @@ export function planLabelFrom(probe, cred) {
     ''
   );
 }
+
+/**
+ * Remaining % label for list/drawer. When rem ≤ 0 show depleted copy (not bare "0%").
+ */
+export function formatRemainingPercent(remaining, depletedLabel = 'Exhausted') {
+  if (remaining == null || remaining === '') return EMPTY_VALUE;
+  const n = Number(remaining);
+  if (!Number.isFinite(n)) return EMPTY_VALUE;
+  if (n <= 0) return depletedLabel;
+  return `${Math.round(n)}%`;
+}

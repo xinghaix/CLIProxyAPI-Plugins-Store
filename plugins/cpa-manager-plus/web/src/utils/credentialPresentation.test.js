@@ -4,6 +4,7 @@ import {
   formatCompactNumber,
   formatCompactUsd,
   formatCredentialCost,
+  formatRemainingPercent,
   formatSuccessRate,
   groupRecentEventsByCredential,
   maskEmail,
@@ -84,5 +85,18 @@ describe('credentialPresentation', () => {
   it('shortens window labels for list denseness', () => {
     expect(shortWindowLabel('5-hour limit', 'five_hour')).toBe('5h');
     expect(shortWindowLabel('Weekly limit', 'weekly')).toBe('Weekly');
+  });
+
+  it('shows depleted copy instead of bare 0% when remaining ≤ 0', () => {
+    expect(formatRemainingPercent(0, '已耗尽')).toBe('已耗尽');
+    expect(formatRemainingPercent(-1, 'Exhausted')).toBe('Exhausted');
+    expect(formatRemainingPercent(18, 'Exhausted')).toBe('18%');
+    expect(formatRemainingPercent(null, 'Exhausted')).toBe('—');
+  });
+
+  it('maps disabled credentials to off tone', () => {
+    const result = resolveAvailability({ disabled: true, quotaWindows: [] }, {}, t);
+    expect(result.tone).toBe('off');
+    expect(result.bucket).toBe('disabled');
   });
 });
