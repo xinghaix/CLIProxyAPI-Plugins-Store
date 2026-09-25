@@ -201,6 +201,7 @@ import { useI18n } from 'vue-i18n';
 import MetricGrid from '../MetricGrid.vue';
 import { EMPTY_VALUE, formatCompactDateTime, formatInt } from '../../utils/localeFormat.js';
 import { clampPercent, formatRemainingPercent, quotaBarTone } from '../../utils/credentialPresentation.js';
+import { focusInitialIn, trapTabKeydown } from '../../utils/focusTrap.js';
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -245,14 +246,21 @@ watch(() => props.open, (isOpen) => {
   sheetOffsetY.value = 0;
   sheetDragging.value = false;
   if (isOpen) {
-    requestAnimationFrame(() => panelRef.value?.focus?.());
+    // Accessible default: focus Close first so Esc/close is one Tab away from entry;
+    // Tab/Shift+Tab then cycle only inside the panel (see trapTabKeydown).
+    requestAnimationFrame(() => focusInitialIn(panelRef.value, '.cred-drawer-close'));
   }
 });
 
 function onKeydown(event) {
-  if (event.key === 'Escape' && props.open) {
+  if (!props.open) return;
+  if (event.key === 'Escape') {
     event.preventDefault();
     emit('close');
+    return;
+  }
+  if (event.key === 'Tab') {
+    trapTabKeydown(event, panelRef.value);
   }
 }
 
