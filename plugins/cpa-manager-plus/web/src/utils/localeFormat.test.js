@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatBucketDateTime,
+  formatCompactDateTime,
+  formatDateTime,
   formatInt,
   formatNumber,
   formatShortTime,
@@ -25,5 +27,13 @@ describe('locale formatters', () => {
     expect(formatWeekdayIndex(99, 'en')).toBe('—');
     expect(formatShortTime(Date.UTC(2026, 0, 5, 14, 30), 'en')).toMatch(/14:30|2:30/);
     expect(formatBucketDateTime(Date.UTC(2026, 0, 5, 14, 30), 'en')).toMatch(/01|1/);
+  });
+
+  it('formats datetimes with an explicit timezone when provided', () => {
+    const ms = Date.UTC(2026, 0, 5, 6, 30, 0);
+    const shanghai = formatCompactDateTime(ms, 'en', 'Asia/Shanghai');
+    expect(shanghai).toMatch(/01\/05|1\/5/);
+    expect(shanghai).toMatch(/14:30/);
+    expect(formatDateTime(ms, 'en', 'UTC')).toMatch(/2026/);
   });
 });

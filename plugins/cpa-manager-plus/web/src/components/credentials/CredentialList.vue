@@ -30,7 +30,7 @@
       </select>
     </div>
 
-    <MetricGrid :cards="kpiCards" />
+    <MetricGrid class="cred-kpi-grid" :cards="kpiCards" />
 
     <div v-if="rows.length" class="table-wrap monitor-table cred-table">
       <table>
@@ -52,38 +52,70 @@
             :class="{ 'selected-row': row.rowKey === selectedRowKey }"
             @click="$emit('select', row)"
           >
-            <td>
-              <strong>{{ row.maskedEmail || row.displayName || EMPTY_VALUE }}</strong>
-              <div class="muted small-text">{{ row.fileName || EMPTY_VALUE }}</div>
+            <td class="cred-identity-cell">
+              <strong class="cred-identity-title">{{ row.maskedEmail || row.displayName || EMPTY_VALUE }}</strong>
+              <div class="muted small-text cred-identity-file" :title="row.path || row.fileName">{{ row.fileName || EMPTY_VALUE }}</div>
               <div v-if="row.providerChip?.tag" class="provider-cell">
                 <span :class="['provider-chip', row.providerChip.chip]">{{ row.providerChip.tag }}</span>
               </div>
             </td>
-            <td>{{ row.planLabel || EMPTY_VALUE }}</td>
             <td>
-              <span :class="['status-chip', row.availabilityTone]">{{ row.availabilityLabel }}</span>
-              <div v-if="row.priority != null" class="muted small-text">{{ t('monitoring.credentials.priority', { value: row.priority }) }}</div>
+              <span v-if="row.planLabel" class="cred-plan-badge">{{ row.planLabel }}</span>
+              <span v-else class="muted">{{ EMPTY_VALUE }}</span>
             </td>
             <td>
-              <div class="muted small-text">{{ row.lastRequestLabel }}</div>
-              <SparklineBars :values="row.sparkValues" :title="t('monitoring.credentials.columns.recent')" />
+              <span :class="['status-chip', 'cred-avail', row.availabilityTone]">
+                <i aria-hidden="true"></i>{{ row.availabilityLabel }}
+              </span>
+              <div v-if="row.priority != null" class="muted small-text">{{ t('monitoring.credentials.priority', { value: row.priority }) }}</div>
+            </td>
+            <td class="cred-recent-cell">
+              <div class="cred-recent-time muted small-text">{{ row.lastRequestLabel }}</div>
+              <SparklineBars
+                :statuses="row.recentStatuses"
+                :title="t('monitoring.credentials.columns.recent')"
+              />
             </td>
             <td>
               <div class="cred-hist">
-                <span>{{ fmtCompact(row.history?.requests) }}</span>
-                <span>{{ formatCost(row.history) }}</span>
-                <span>{{ fmtCompact(row.history?.tokens) }}</span>
-                <span :class="successClass(row.history?.successRate)">{{ fmtPct(row.history?.successRate) }}</span>
+                <span class="cred-hist-metric cred-hist-req" :title="t('monitoring.credentials.drawer.requests')">
+                  <i class="cred-hist-icon" aria-hidden="true"></i>
+                  <strong>{{ fmtCompact(row.history?.requests) }}</strong>
+                </span>
+                <span class="cred-hist-metric cred-hist-tok" :title="t('monitoring.credentials.drawer.tokens')">
+                  <i class="cred-hist-icon" aria-hidden="true"></i>
+                  <strong>{{ fmtCompact(row.history?.tokens) }}</strong>
+                </span>
+                <span class="cred-hist-metric cred-hist-cost" :title="t('monitoring.credentials.drawer.estCost')">
+                  <i class="cred-hist-icon" aria-hidden="true"></i>
+                  <strong>{{ formatCost(row.history) }}</strong>
+                </span>
+                <span
+                  class="cred-hist-metric cred-hist-ok"
+                  :class="successClass(row.history?.successRate)"
+                  :title="t('monitoring.credentials.drawer.successRate')"
+                >
+                  <i class="cred-hist-icon" aria-hidden="true"></i>
+                  <strong>{{ fmtPct(row.history?.successRate) }}</strong>
+                </span>
               </div>
             </td>
             <td>
-              <div v-if="row.primaryQuota" class="quota-row">
-                <div class="quota-row-header">
-                  <span>{{ row.primaryQuota.label }}</span>
-                  <b>{{ Math.round(row.primaryQuota.remainingPercent ?? 0) }}%</b>
-                </div>
-                <div class="quota-bar" :class="quotaTone(row.primaryQuota.remainingPercent)">
-                  <span :style="{ width: `${clamp(row.primaryQuota.remainingPercent)}%` }"></span>
+              <div v-if="row.quotaDisplays?.length" class="cred-quota-stack">
+                <div
+                  v-for="qw in row.quotaDisplays"
+                  :key="qw.key"
+                  class="quota-row"
+                  :title="qw.title"
+                >
+                  <div class="quota-row-header">
+                    <span class="quota-row-label">{{ qw.shortLabel }}</span>
+                    <b>{{ remainingText(qw.remainingPercent) }}</b>
+                  </div>
+                  <div class="quota-bar" :class="quotaTone(qw.remainingPercent)">
+                    <span :style="{ width: `${clamp(qw.remainingPercent)}%` }"></span>
+                  </div>
+                  <div v-if="qw.usageLine" class="quota-usage-line muted small-text">{{ qw.usageLine }}</div>
                 </div>
               </div>
               <div v-else class="muted">{{ EMPTY_VALUE }}</div>
@@ -102,6 +134,7 @@ import { useI18n } from 'vue-i18n';
 import MetricGrid from '../MetricGrid.vue';
 import SparklineBars from './SparklineBars.vue';
 import { EMPTY_VALUE, formatInt } from '../../utils/localeFormat.js';
+import { clampPercent, quotaBarTone } from '../../utils/credentialPresentation.js';
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },
@@ -123,10 +156,34 @@ defineEmits(['select', 'update:providerFilter', 'update:statusFilter', 'update:s
 const { t } = useI18n();
 
 const kpiCards = computed(() => [
-  { label: t('monitoring.credentials.kpi.total'), value: formatInt(props.kpi.total || 0), sub: t('monitoring.credentials.kpi.totalSub') },
-  { label: t('monitoring.credentials.kpi.available'), value: formatInt(props.kpi.available || 0), sub: t('monitoring.credentials.kpi.availableSub') },
-  { label: t('monitoring.credentials.kpi.attention'), value: formatInt(props.kpi.attention || 0), sub: t('monitoring.credentials.kpi.attentionSub') },
-  { label: t('monitoring.credentials.kpi.quotaRisk'), value: formatInt(props.kpi.quotaRisk || 0), sub: t('monitoring.credentials.kpi.quotaRiskSub') },
+  {
+    key: 'total',
+    label: t('monitoring.credentials.kpi.total'),
+    value: formatInt(props.kpi.total || 0),
+    sub: t('monitoring.credentials.kpi.totalSub'),
+    accent: 'blue',
+  },
+  {
+    key: 'available',
+    label: t('monitoring.credentials.kpi.available'),
+    value: formatInt(props.kpi.available || 0),
+    sub: t('monitoring.credentials.kpi.availableSub'),
+    accent: 'green',
+  },
+  {
+    key: 'attention',
+    label: t('monitoring.credentials.kpi.attention'),
+    value: formatInt(props.kpi.attention || 0),
+    sub: t('monitoring.credentials.kpi.attentionSub'),
+    accent: 'red',
+  },
+  {
+    key: 'quotaRisk',
+    label: t('monitoring.credentials.kpi.quotaRisk'),
+    value: formatInt(props.kpi.quotaRisk || 0),
+    sub: t('monitoring.credentials.kpi.quotaRiskSub'),
+    accent: 'amber',
+  },
 ]);
 
 function fmtCompact(value) {
@@ -145,15 +202,13 @@ function successClass(rate) {
   return 'bad-text';
 }
 function quotaTone(remaining) {
-  const n = Number(remaining);
-  if (!Number.isFinite(n)) return '';
-  if (n <= 10) return 'danger';
-  if (n <= 35) return 'warn';
-  return 'ok';
+  return quotaBarTone(remaining);
 }
 function clamp(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(100, n));
+  return clampPercent(value);
+}
+function remainingText(remaining) {
+  if (!Number.isFinite(Number(remaining))) return EMPTY_VALUE;
+  return `${Math.round(Number(remaining))}%`;
 }
 </script>

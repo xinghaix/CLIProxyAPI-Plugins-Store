@@ -192,14 +192,27 @@ export function resolveWindowUsagePresentation(definition, usageByRequestKey, cr
   const currentKey = `${credentialRowKey}\0${definition.providerWindowId}\0current`;
   const previousKey = `${credentialRowKey}\0${definition.providerWindowId}\0previous`;
   const previousEqualKey = `${credentialRowKey}\0${definition.providerWindowId}\0previous_equal_range`;
-  const current = usageItemToMetrics(usageByRequestKey.get(currentKey));
-  const previous =
-    usageItemToMetrics(usageByRequestKey.get(previousKey)) ||
-    usageItemToMetrics(usageByRequestKey.get(previousEqualKey));
+  const currentItem = usageByRequestKey.get(currentKey);
+  const previousItem = usageByRequestKey.get(previousKey);
+  const previousEqualItem = usageByRequestKey.get(previousEqualKey);
+  const current = usageItemToMetrics(currentItem);
+  const previous = usageItemToMetrics(previousItem) || usageItemToMetrics(previousEqualItem);
+  const previousPeriod = previousItem?.matched
+    ? 'previous'
+    : (previousEqualItem?.matched ? 'previous_equal_range' : null);
   const forecast = estimateWindowUsage({
     usedPercent: definition.usedPercent,
     current,
     previous,
   });
-  return { current, previous, forecast };
+  return {
+    current,
+    previous,
+    forecast,
+    previousPeriod,
+    currentFromMs: currentItem?.from_ms ?? definition.cycleStartMs ?? null,
+    currentToMs: currentItem?.to_ms ?? definition.cycleEndMs ?? null,
+    previousFromMs: (previousItem || previousEqualItem)?.from_ms ?? null,
+    previousToMs: (previousItem || previousEqualItem)?.to_ms ?? null,
+  };
 }

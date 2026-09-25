@@ -30,6 +30,7 @@
       :history-to-ms="historyToMs"
       :window-cards="selectedWindowCards"
       :probing="drawerProbing"
+      :time-zone="analyticsTimeZone"
       :format-compact="fmtCompact"
       :format-percent="fmtPct"
       :format-cost-text="formatCostText"
@@ -45,7 +46,7 @@ import { useI18n } from 'vue-i18n';
 import CredentialList from './CredentialList.vue';
 import CredentialQuotaDrawer from './CredentialQuotaDrawer.vue';
 import { isOAuthAuthType, providerChip } from '../../utils/providerTag.js';
-import { EMPTY_VALUE, formatDateTime, formatInt } from '../../utils/localeFormat.js';
+import { EMPTY_VALUE, formatCompactDateTime, formatDateTime } from '../../utils/localeFormat.js';
 import { formatQuotaResetRelative } from '../../utils/quotaDisplay.js';
 import {
   getOrCreateQuotaRequest,
@@ -59,6 +60,19 @@ import {
   resolveWindowUsagePresentation,
   usageItemToMetrics,
 } from '../../utils/quotaWindowRanges.js';
+import {
+  buildRecentStatusSlots,
+  formatCompactNumber,
+  formatCompactUsd,
+  formatCredentialCost,
+  formatSuccessRate,
+  formatWindowRange,
+  groupRecentEventsByCredential,
+  maskEmail,
+  planLabelFrom,
+  resolveAvailability,
+  shortWindowLabel,
+} from '../../utils/credentialPresentation.js';
 
 const props = defineProps({
   ready: { type: Boolean, default: false },
@@ -72,6 +86,7 @@ const loading = ref(false);
 const error = ref('');
 const rows = ref([]);
 const usageByRequestKey = ref(new Map());
+const recentByRowKey = ref(new Map());
 const providerFilter = ref('all');
 const statusFilter = ref('all');
 const search = ref('');
@@ -81,6 +96,7 @@ const drawerProbing = ref(false);
 const historyFromMs = ref(0);
 const historyToMs = ref(0);
 const nowMs = ref(Date.now());
+const analyticsTimeZone = ref('');
 
 const selectedRow = computed(() => rows.value.find((r) => r.rowKey === selectedRowKey.value) || null);
 
@@ -105,7 +121,7 @@ const filteredRows = computed(() => {
     if (providerFilter.value !== 'all' && row.provider !== providerFilter.value) return false;
     if (statusFilter.value !== 'all' && row.statusBucket !== statusFilter.value) return false;
     if (!q) return true;
-    const hay = [row.displayName, row.email, row.fileName, row.note, row.authIndex, row.provider]
+    const hay = [row.displayName, row.email, row.fileName, row.note, row.authIndex, row.provider, row.planLabel]
       .map((v) => String(v || '').toLowerCase())
       .join(' ');
     return hay.includes(q);
@@ -127,97 +143,75 @@ const selectedWindowCards = computed(() => {
   if (!row?.quotaWindows?.length) return [];
   return row.quotaWindows.map((definition) => {
     const presentation = resolveWindowUsagePresentation(definition, usageByRequestKey.value, row.rowKey);
+    const fmt = (ms) => formatCompactDateTime(ms, locale.value, analyticsTimeZone.value || undefined);
     return {
       key: definition.key,
+      kind: definition.kind,
       label: definition.label,
       remainingPercent: definition.remainingPercent,
       usedPercent: definition.usedPercent,
-      resetLabel: formatReset(definition.resetAtMs),
+      resetLabel: formatResetShort(definition.resetAtMs),
       previous: presentation.previous,
       current: presentation.current,
       forecast: presentation.forecast,
+      previousPeriod: presentation.previousPeriod,
+      previousRangeLabel: formatWindowRange(presentation.previousFromMs, presentation.previousToMs, fmt),
+      currentRangeLabel: formatWindowRange(presentation.currentFromMs, presentation.currentToMs, fmt),
     };
   });
 });
 
 function fmtCompact(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return EMPTY_VALUE;
-  if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return formatInt(n);
+  return formatCompactNumber(value);
 }
 
 function fmtPct(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return EMPTY_VALUE;
-  const ratio = n > 1 ? n / 100 : n;
-  return `${(ratio * 100).toFixed(ratio * 100 >= 10 ? 1 : 2)}%`;
+  return formatSuccessRate(value);
 }
 
 function formatCostText(metrics) {
-  if (!metrics) return EMPTY_VALUE;
-  if (metrics.costComplete === false || (metrics.unpricedCalls || 0) > 0) {
-    if (!Number.isFinite(metrics.cost) || metrics.cost <= 0) {
-      return t('monitoring.costEstimate.estimateUnavailable');
-    }
-    return `~$${metrics.cost.toFixed(2)}*`;
-  }
-  if (!Number.isFinite(metrics.cost)) return EMPTY_VALUE;
-  return `$${metrics.cost.toFixed(2)}`;
+  return formatCredentialCost(metrics, t('monitoring.costEstimate.estimateUnavailable'));
 }
 
 function formatReset(resetAtMs) {
   if (!resetAtMs) return '';
-  const absolute = formatDateTime(resetAtMs, locale.value);
+  const absolute = formatDateTime(resetAtMs, locale.value, analyticsTimeZone.value || undefined);
   const relative = formatQuotaResetRelative(resetAtMs, nowMs.value, locale.value);
   return relative ? `${absolute} · ${relative}` : absolute;
 }
 
-function maskEmail(value) {
-  const email = String(value || '').trim();
-  const at = email.indexOf('@');
-  if (at < 1) return email;
-  const local = email.slice(0, at);
-  const domain = email.slice(at);
-  if (local.length <= 3) return `${local[0] || ''}***${domain}`;
-  return `${local.slice(0, 3)}***${domain}`;
+function formatResetShort(resetAtMs) {
+  if (!resetAtMs) return '';
+  return formatCompactDateTime(resetAtMs, locale.value, analyticsTimeZone.value || undefined);
 }
 
-function availabilityFor(cred, probe) {
-  if (cred.disabled) {
-    return { label: t('monitoring.authCard.disabled'), tone: 'off', bucket: 'disabled' };
-  }
-  const windows = cred.quotaWindows || [];
-  const risky = windows.find((w) => Number(w.remainingPercent) <= 10);
-  const low = windows.find((w) => Number(w.remainingPercent) <= 35);
-  if (risky) {
+function buildQuotaDisplays(row, usageMap) {
+  const windows = row.quotaWindows || [];
+  return windows.slice(0, 3).map((definition) => {
+    const presentation = resolveWindowUsagePresentation(definition, usageMap, row.rowKey);
+    const shortLabel = shortWindowLabel(definition.label, definition.kind);
+    const current = presentation.current;
+    const forecast = presentation.forecast;
+    const parts = [];
+    if (current && (current.cost > 0 || current.tokens > 0 || current.costComplete === false)) {
+      parts.push(`${formatCostText(current)} / ${fmtCompact(current.tokens)}`);
+    }
+    if (forecast && (forecast.cost > 0 || forecast.tokens > 0)) {
+      parts.push(`~${formatCompactUsd(forecast.cost)} / ${fmtCompact(forecast.tokens)}`);
+    }
+    const resetRel = formatQuotaResetRelative(definition.resetAtMs, nowMs.value, locale.value);
     return {
-      label: t('monitoring.credentials.availability.exhausted', { window: risky.label }),
-      tone: 'warn',
-      bucket: 'quota_risk',
+      key: definition.key,
+      shortLabel,
+      remainingPercent: definition.remainingPercent,
+      usageLine: parts.join(' · ') || (resetRel || ''),
+      title: [
+        `${definition.label}: ${Math.round(definition.remainingPercent ?? 0)}%`,
+        resetRel,
+        parts.join(' · '),
+      ].filter(Boolean).join(' · '),
     };
-  }
-  if (low) {
-    return {
-      label: t('monitoring.credentials.availability.low', { window: low.label }),
-      tone: 'warn',
-      bucket: 'quota_risk',
-    };
-  }
-  const status = String(cred.status || probe?.status || '').toLowerCase();
-  if (status && status !== 'available' && status !== 'ok' && status !== 'enabled') {
-    return { label: cred.status || status, tone: 'warn', bucket: 'attention' };
-  }
-  if (cred.unavailable || cred.statusMessage) {
-    return { label: cred.statusMessage || t('monitoring.credentials.availability.attention'), tone: 'warn', bucket: 'attention' };
-  }
-  return { label: t('monitoring.credentials.availability.available'), tone: '', bucket: 'available' };
-}
-
-function planLabelFrom(probe, cred) {
-  return probe?.planType || probe?.quotaMetadata?.planType || cred.planType || '';
+  });
 }
 
 async function loadCredentials() {
@@ -231,6 +225,7 @@ async function loadCredentials() {
     });
     const items = Array.isArray(resp?.items) ? resp.items : [];
     const oauthItems = items.filter((item) => isOAuthAuthType(item.authType));
+    analyticsTimeZone.value = String(resp?.time_zone || '').trim();
     nowMs.value = Date.now();
     historyToMs.value = nowMs.value;
     historyFromMs.value = Math.max(1, nowMs.value - 90 * 24 * 3600 * 1000);
@@ -244,20 +239,21 @@ async function loadCredentials() {
         providerChip: chip,
         planLabel: '',
         availabilityLabel: t('monitoring.credentials.availability.available'),
-        availabilityTone: '',
+        availabilityTone: 'ok',
         statusBucket: item.disabled ? 'disabled' : 'available',
         lastRequestLabel: EMPTY_VALUE,
+        recentStatuses: Array.from({ length: 8 }, () => null),
         sparkValues: [],
         history: null,
         primaryQuota: null,
         quotaWindows: [],
+        quotaDisplays: [],
         probe: null,
       };
     });
     rows.value = baseRows;
     emit('count', baseRows.length);
 
-    // Enrich with per-credential probe + window usage (not parent monitoring range).
     await enrichRows(baseRows);
   } catch (err) {
     error.value = err?.message || String(err);
@@ -271,13 +267,14 @@ async function enrichRows(baseRows) {
   const windowTargets = [];
   const nextUsage = new Map(usageByRequestKey.value);
 
+  // Probe sequentially but cache-coalesced; keep list visible.
   for (const row of baseRows) {
     const probe = await probeCredential(row);
     row.probe = probe;
     const { windows, targets } = buildAccountWindowUsageTargets(row, probe || {}, nowMs.value);
     row.quotaWindows = windows;
     row.planLabel = planLabelFrom(probe, row);
-    const availability = availabilityFor(row, probe);
+    const availability = resolveAvailability(row, probe, t);
     row.availabilityLabel = availability.label;
     row.availabilityTone = availability.tone;
     row.statusBucket = availability.bucket;
@@ -290,9 +287,8 @@ async function enrichRows(baseRows) {
 
   const batch = [...historyTargets, ...windowTargets];
   if (batch.length) {
-    const chunks = [];
-    for (let i = 0; i < batch.length; i += 80) chunks.push(batch.slice(i, i + 80));
-    for (const chunk of chunks) {
+    for (let i = 0; i < batch.length; i += 80) {
+      const chunk = batch.slice(i, i + 80);
       try {
         const resp = await props.proxyCall({
           method: 'POST',
@@ -303,7 +299,6 @@ async function enrichRows(baseRows) {
           if (item?.request_key) nextUsage.set(item.request_key, item);
         }
       } catch (err) {
-        // Keep list visible; drawer can still refresh.
         console.warn('account-window-usage failed', err);
       }
     }
@@ -311,33 +306,65 @@ async function enrichRows(baseRows) {
 
   usageByRequestKey.value = nextUsage;
 
+  // One analytics pass for recent request status bars (credential-scoped grouping).
+  try {
+    const lookbackMs = nowMs.value - 14 * 24 * 3600 * 1000;
+    const analytics = await props.proxyCall({
+      method: 'POST',
+      path: '/v0/management/monitoring/analytics',
+      body: {
+        from_ms: Math.max(1, lookbackMs),
+        to_ms: nowMs.value,
+        now_ms: nowMs.value,
+        time_zone: analyticsTimeZone.value || undefined,
+        include: {
+          events_page: { limit: 2500 },
+          summary: false,
+          granularity: 'day',
+        },
+      },
+    });
+    const events = analytics?.events?.items || [];
+    recentByRowKey.value = groupRecentEventsByCredential(events, baseRows);
+  } catch (err) {
+    console.warn('recent events for credentials failed', err);
+    recentByRowKey.value = new Map();
+  }
+
   const enriched = baseRows.map((row) => {
     const historyItem = nextUsage.get(`${row.rowKey}\0history\0current`);
     const history = usageItemToMetrics(historyItem);
     const lastSeen = history?.lastSeenMs;
+    const recentEvents = recentByRowKey.value.get(row.rowKey) || [];
+    const recentStatuses = buildRecentStatusSlots(recentEvents, 8);
+    if (!lastSeen && recentEvents[0]?.timestamp_ms) {
+      // fall through to recent event time below
+    }
+    const lastMs = lastSeen || recentEvents[0]?.timestamp_ms || null;
     return {
       ...row,
       history,
-      lastRequestLabel: lastSeen ? formatDateTime(lastSeen, locale.value) : EMPTY_VALUE,
-      // Lightweight placeholder spark from recent history density; real hourly spark optional later.
-      sparkValues: sparkFromWindows(row, nextUsage),
+      lastRequestLabel: lastMs
+        ? formatCompactDateTime(lastMs, locale.value, analyticsTimeZone.value || undefined)
+        : EMPTY_VALUE,
+      recentStatuses,
+      quotaDisplays: buildQuotaDisplays(row, nextUsage),
     };
   });
+
+  // Prefer history first_seen for drawer stats range when available.
+  const firstSeens = enriched
+    .map((r) => {
+      const item = nextUsage.get(`${r.rowKey}\0history\0current`);
+      return item?.matched ? Number(item.from_ms) : null;
+    })
+    .filter((v) => Number.isFinite(v) && v > 0);
+  if (firstSeens.length) {
+    historyFromMs.value = Math.min(...firstSeens);
+  }
+
   rows.value = enriched;
   emit('count', enriched.length);
-}
-
-function sparkFromWindows(row, usageMap) {
-  // Derive a simple 12-slot spark from matched window request density when hourly API absent.
-  const values = [];
-  for (const window of row.quotaWindows || []) {
-    const current = usageMap.get(`${row.rowKey}\0${window.providerWindowId}\0current`);
-    values.push(Number(current?.total_requests) || 0);
-  }
-  if (values.length) return values;
-  const history = usageMap.get(`${row.rowKey}\0history\0current`);
-  const total = Number(history?.total_requests) || 0;
-  return Array.from({ length: 12 }, (_, i) => (i === 11 ? total : Math.round(total / 12)));
 }
 
 async function probeCredential(row, { force = false } = {}) {
@@ -397,7 +424,7 @@ async function refreshSelectedQuota() {
     const { windows, targets } = buildAccountWindowUsageTargets(row, probe || {}, nowMs.value);
     row.quotaWindows = windows;
     row.planLabel = planLabelFrom(probe, row);
-    const availability = availabilityFor(row, probe);
+    const availability = resolveAvailability(row, probe, t);
     row.availabilityLabel = availability.label;
     row.availabilityTone = availability.tone;
     row.statusBucket = availability.bucket;
@@ -416,8 +443,8 @@ async function refreshSelectedQuota() {
         if (item?.request_key) next.set(item.request_key, item);
       }
       usageByRequestKey.value = next;
+      row.quotaDisplays = buildQuotaDisplays(row, next);
     }
-    // trigger reactivity
     rows.value = rows.value.map((r) => (r.rowKey === row.rowKey ? { ...row } : r));
   } finally {
     drawerProbing.value = false;
