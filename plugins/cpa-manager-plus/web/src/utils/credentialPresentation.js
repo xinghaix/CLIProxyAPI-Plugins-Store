@@ -11,6 +11,25 @@ const COMPACT_UNITS = [
   { threshold: 1e3, suffix: 'K' },
 ];
 
+/** CPA auth-manager statuses that mean the file is loaded / ready (not a failure). */
+const HEALTHY_AUTH_STATUSES = new Set(['available', 'ok', 'enabled', 'active', 'ready', 'healthy']);
+
+/** Probe actions that indicate the credential needs attention after enrichment. */
+const ATTENTION_PROBE_ACTIONS = new Set(['review', 'reauth', 'disable']);
+
+/** Probe errorKind values that should never look "healthy active". */
+const FAILURE_PROBE_KINDS = new Set([
+  'auth_invalid',
+  'needs_review',
+  'probe_failed',
+  'network',
+  'timeout',
+  'missing_auth_index',
+  'unsupported_provider',
+  'quota_exhausted',
+  'quota_threshold',
+]);
+
 export function formatCompactNumber(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return EMPTY_VALUE;
@@ -92,12 +111,88 @@ export function shortWindowLabel(label, kind) {
 }
 
 /**
+ * True when enrichment / quota probe failed or needs manual review —
+ * must not present as healthy "active".
+ */
+export function isProbeFailure(probe) {
+  if (!probe || typeof probe !== 'object') return false;
+  if (probe.error) return true;
+  const action = String(probe.action || '').toLowerCase();
+  const kind = String(probe.errorKind || '').toLowerCase();
+  if (FAILURE_PROBE_KINDS.has(kind)) return true;
+  if (ATTENTION_PROBE_ACTIONS.has(action)) return true;
+  // Soft: actionReason without healthy keep + no usable windows.
+  if (action && action !== 'keep' && !hasQuotaWindows(probe)) return true;
+  return false;
+}
+
+function hasQuotaWindows(probe) {
+  const windows = probe?.quotaWindows;
+  if (Array.isArray(windows)) return windows.length > 0;
+  if (windows && typeof windows === 'object') return Object.keys(windows).length > 0;
+  return false;
+}
+
+/** Human-readable probe failure detail for notices (never empty when isProbeFailure). */
+export function probeFailureMessage(probe) {
+  if (!probe) return '';
+  return String(
+    probe.error
+    || probe.errorDetail
+    || probe.actionReason
+    || probe.actionError
+    || ''
+  ).trim();
+}
+
+/**
+ * Localize raw CPA auth status codes for zh-CN (and other) UI chrome.
+ * Provider codes (CODEX/XAI) stay as-is elsewhere; this is for status chips/fields.
+ */
+export function localizeAuthStatus(status, t) {
+  const raw = String(status || '').trim();
+  if (!raw) return '';
+  const key = raw.toLowerCase();
+  const known = {
+    active: 'monitoring.credentials.status.active',
+    available: 'monitoring.credentials.status.available',
+    ok: 'monitoring.credentials.status.ok',
+    enabled: 'monitoring.credentials.status.enabled',
+    disabled: 'monitoring.authCard.disabled',
+    error: 'monitoring.credentials.status.error',
+    unavailable: 'monitoring.credentials.status.unavailable',
+    expired: 'monitoring.credentials.status.expired',
+    pending: 'monitoring.credentials.status.pending',
+  };
+  const i18nKey = known[key];
+  if (i18nKey) {
+    const label = t(i18nKey);
+    // vue-i18n returns the key itself when missing — fall back to attention wording.
+    if (label && label !== i18nKey) return label;
+  }
+  // Never surface raw English codes in localized UI.
+  return t('monitoring.credentials.availability.attention');
+}
+
+/**
  * Availability presentation. Cooldown when a window is exhausted (remaining <= 0).
+ * Probe / enrichment failure maps to attention (需关注 / 探测失败) — never raw "active".
  */
 export function resolveAvailability(cred, probe, t) {
   if (cred?.disabled) {
     return { label: t('monitoring.authCard.disabled'), tone: 'off', bucket: 'disabled', severity: 'disabled' };
   }
+
+  // Probe/enrichment failure must drive availability away from looking healthy.
+  if (isProbeFailure(probe)) {
+    return {
+      label: t('monitoring.credentials.availability.probeFailed'),
+      tone: 'warn',
+      bucket: 'attention',
+      severity: 'warning',
+    };
+  }
+
   const windows = cred?.quotaWindows || [];
   const exhausted = windows.find((w) => Number.isFinite(w.remainingPercent) && w.remainingPercent <= 0);
   if (exhausted) {
@@ -129,9 +224,15 @@ export function resolveAvailability(cred, probe, t) {
       severity: 'warning',
     };
   }
-  const status = String(cred?.status || probe?.status || '').toLowerCase();
-  if (status && status !== 'available' && status !== 'ok' && status !== 'enabled') {
-    return { label: cred.status || status, tone: 'warn', bucket: 'attention', severity: 'warning' };
+
+  const status = String(cred?.status || probe?.status || '').toLowerCase().trim();
+  if (status && !HEALTHY_AUTH_STATUSES.has(status)) {
+    return {
+      label: localizeAuthStatus(cred?.status || status, t),
+      tone: 'warn',
+      bucket: 'attention',
+      severity: 'warning',
+    };
   }
   if (cred?.unavailable || cred?.statusMessage) {
     return {

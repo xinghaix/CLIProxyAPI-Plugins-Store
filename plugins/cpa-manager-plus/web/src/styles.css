@@ -1832,8 +1832,25 @@ pre {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
+  border-bottom: 1px solid var(--cpa-rule);
 }
-.cred-drawer-tabs .tab { flex: 0 0 auto; white-space: nowrap; min-height: var(--cpa-touch-min, 44px); }
+.cred-drawer-tabs .tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-height: var(--cpa-touch-min, 44px);
+  position: relative;
+  padding: 0 2px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--cpa-text-tertiary);
+  font-weight: 500;
+  box-shadow: none;
+}
+.cred-drawer-tabs .tab.active {
+  color: var(--cpa-ink);
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--cpa-ink);
+}
 .cred-drawer-body { overflow: auto; padding-bottom: 12px; flex: 1; min-height: 0; }
 .cred-drawer-section-title { font-weight: 650; margin: 16px 0 8px; font-size: 14px; }
 .cred-drawer-section-title:first-child { margin-top: 8px; }
@@ -1841,10 +1858,11 @@ pre {
 .cred-drawer-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
 .cred-drawer-path-text {
   min-width: 0;
-  max-width: min(360px, 55vw);
+  max-width: min(420px, 60vw);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: help;
 }
 .cred-copy-btn { flex: 0 0 auto; min-height: 32px; }
 .cred-drawer-footer {
@@ -1854,11 +1872,35 @@ pre {
   padding-bottom: max(12px, env(safe-area-inset-bottom));
   flex-shrink: 0;
 }
-.cred-drawer-notice { margin: 0 0 10px; }
+.cred-drawer-notice {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-left-width: 3px;
+  background: color-mix(in srgb, var(--cpa-error) 8%, transparent);
+  font-weight: 560;
+  flex-shrink: 0;
+}
 .cred-overview-kpi.metric-grid { margin-bottom: 8px; }
 .cred-overview-section + .cred-overview-section { margin-top: 4px; }
-.cred-overview-grid { gap: 10px; margin-top: 4px; }
-.cred-overview-grid { margin-top: 4px; }
+.cred-overview-grid {
+  gap: 10px 18px;
+  margin-top: 4px;
+}
+.cred-overview-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.cred-overview-grid > div > .muted {
+  font-size: 12px;
+  line-height: 1.3;
+}
+.cred-overview-grid > div > strong {
+  font-weight: 650;
+  word-break: break-word;
+  min-height: 1.2em;
+}
 .cred-overview-windows { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .cred-overview-window {
   display: grid; gap: 6px; padding: 8px 10px;

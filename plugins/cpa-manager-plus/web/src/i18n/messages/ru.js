@@ -458,7 +458,7 @@ export default {
       requestDetail: 'Детали запроса',
     },
     credentials: {
-      scopeNote: 'OAuth-учётные данные и окна квот. Использование, стоимость и прогноз считаются по окнам каждой учётки, а не по общему диапазону Monitoring.',
+      scopeNote: 'OAuth-учётные данные и окна квот. Использование, стоимость и прогноз считаются по окнам каждой учётки, а не по общему диапазону мониторинга.',
       parentRangeIgnored: 'Эта вкладка игнорирует диапазон и фильтры Monitoring выше. KPI и ящик Previous/Current/Forecast берутся из окон квот / probe каждой учётки.',
       searchPlaceholder: 'Поиск учётки / аккаунта / email / заметки',
       empty: 'OAuth-учётки не найдены.',
@@ -498,9 +498,20 @@ export default {
       availability: {
         available: 'Доступен',
         attention: 'Требует внимания',
+        probeFailed: 'Сбой проверки',
         exhausted: '{window} исчерпан',
         low: '{window} низкий',
         cooldown: '{window} охлаждение',
+      },
+      status: {
+        active: 'Активен',
+        available: 'Доступен',
+        ok: 'OK',
+        enabled: 'Включён',
+        error: 'Ошибка',
+        unavailable: 'Недоступен',
+        expired: 'Истёк',
+        pending: 'Ожидание',
       },
       drawer: {
         tabs: {

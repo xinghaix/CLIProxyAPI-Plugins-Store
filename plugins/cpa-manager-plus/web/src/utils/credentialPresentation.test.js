@@ -7,7 +7,10 @@ import {
   formatRemainingPercent,
   formatSuccessRate,
   groupRecentEventsByCredential,
+  isProbeFailure,
+  localizeAuthStatus,
   maskEmail,
+  probeFailureMessage,
   resolveAvailability,
   shortWindowLabel,
 } from './credentialPresentation.js';
@@ -16,9 +19,18 @@ const t = (key, params = {}) => {
   if (key.includes('cooldown')) return `${params.window} cooldown`;
   if (key.includes('exhausted')) return `${params.window} exhausted`;
   if (key.includes('low')) return `${params.window} low`;
-  if (key.includes('available')) return 'Available';
+  if (key.includes('probeFailed')) return 'Probe failed';
+  if (key.includes('available') && key.includes('availability')) return 'Available';
   if (key.includes('disabled')) return 'Disabled';
   if (key.includes('attention')) return 'Needs attention';
+  if (key.includes('status.active')) return 'Active';
+  if (key.includes('status.available')) return 'Available';
+  if (key.includes('status.ok')) return 'OK';
+  if (key.includes('status.enabled')) return 'Enabled';
+  if (key.includes('status.error')) return 'Error';
+  if (key.includes('status.unavailable')) return 'Unavailable';
+  if (key.includes('status.expired')) return 'Expired';
+  if (key.includes('status.pending')) return 'Pending';
   return key;
 };
 
@@ -119,5 +131,31 @@ describe('credentialPresentation', () => {
     const result = resolveAvailability({ disabled: true, quotaWindows: [] }, {}, t);
     expect(result.tone).toBe('off');
     expect(result.bucket).toBe('disabled');
+  });
+
+  it('treats CPA status "active" as healthy available (not raw English chip)', () => {
+    const result = resolveAvailability({ status: 'active', quotaWindows: [] }, { action: 'keep', errorKind: 'healthy' }, t);
+    expect(result.label).toBe('Available');
+    expect(result.bucket).toBe('available');
+    expect(result.tone).toBe('ok');
+  });
+
+  it('maps probe failure away from healthy active into attention/探测失败', () => {
+    const result = resolveAvailability(
+      { status: 'active', quotaWindows: [] },
+      { action: 'review', actionReason: '探测请求失败，需人工复核', errorKind: 'needs_review' },
+      t
+    );
+    expect(result.label).toBe('Probe failed');
+    expect(result.bucket).toBe('attention');
+    expect(result.tone).toBe('warn');
+    expect(isProbeFailure({ action: 'review', actionReason: '探测请求失败，需人工复核' })).toBe(true);
+    expect(probeFailureMessage({ actionReason: '探测请求失败，需人工复核' })).toBe('探测请求失败，需人工复核');
+  });
+
+  it('localizes raw auth status codes instead of surfacing English', () => {
+    expect(localizeAuthStatus('active', t)).toBe('Active');
+    expect(localizeAuthStatus('expired', t)).toBe('Expired');
+    expect(localizeAuthStatus('weird_code', t)).toBe('Needs attention');
   });
 });

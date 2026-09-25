@@ -458,8 +458,8 @@ export default {
       requestDetail: '请求详情',
     },
     credentials: {
-      scopeNote: 'OAuth 凭证与配额窗口。用量 / 费用 / 预测均按「每条凭证自己的配额窗口」计算，不受上方 Monitoring 时间范围影响。',
-      parentRangeIgnored: '本页不使用上方 Monitoring 时间范围与筛选。列表 KPI 与抽屉 Previous/Current/Forecast 均绑定该凭证的配额探测窗口。',
+      scopeNote: 'OAuth 凭证与配额窗口。用量 / 费用 / 预测均按「每条凭证自己的配额窗口」计算，不受上方监控时间范围影响。',
+      parentRangeIgnored: '本页不使用上方监控时间范围与筛选。列表 KPI 与抽屉「上一窗口 / 当前窗口 / 预测」均绑定该凭证的配额探测窗口。',
       searchPlaceholder: '搜索凭证 / 账号 / 邮箱 / 备注',
       empty: '未找到 OAuth 凭证。',
       emptyFiltered: '当前筛选条件下没有凭证。',
@@ -498,9 +498,20 @@ export default {
       availability: {
         available: '可用',
         attention: '需关注',
+        probeFailed: '探测失败',
         exhausted: '{window} 已耗尽',
         low: '{window} 偏低',
         cooldown: '{window} 冷却',
+      },
+      status: {
+        active: '已启用',
+        available: '可用',
+        ok: '正常',
+        enabled: '已启用',
+        error: '错误',
+        unavailable: '不可用',
+        expired: '已过期',
+        pending: '待处理',
       },
       drawer: {
         tabs: {

@@ -55,7 +55,7 @@
           <div class="detail-grid cred-overview-grid">
             <div><span class="muted">{{ t('monitoring.credentials.drawer.provider') }}</span><strong>{{ credential.provider || EMPTY_VALUE }}</strong></div>
             <div><span class="muted">{{ t('monitoring.credentials.drawer.authType') }}</span><strong>{{ credential.authType || EMPTY_VALUE }}</strong></div>
-            <div><span class="muted">{{ t('monitoring.credentials.drawer.status') }}</span><strong>{{ credential.status || credential.availabilityLabel || EMPTY_VALUE }}</strong></div>
+            <div><span class="muted">{{ t('monitoring.credentials.drawer.status') }}</span><strong>{{ statusLabel }}</strong></div>
             <div><span class="muted">{{ t('monitoring.authCard.priority') }}</span><strong>{{ credential.priority ?? EMPTY_VALUE }}</strong></div>
             <div v-if="credential.weight != null"><span class="muted">{{ t('monitoring.credentials.drawer.weight') }}</span><strong>{{ credential.weight }}</strong></div>
             <div v-if="credential.projectId"><span class="muted">{{ t('monitoring.credentials.drawer.projectId') }}</span><strong>{{ credential.projectId }}</strong></div>
@@ -176,15 +176,16 @@
 
       <div v-else class="cred-drawer-body">
         <div class="detail-grid cred-overview-grid">
-          <div><span class="muted">{{ t('monitoring.credentials.drawer.status') }}</span><strong>{{ credential.status || EMPTY_VALUE }}</strong></div>
-          <div><span class="muted">{{ t('monitoring.credentials.drawer.statusMessage') }}</span><strong>{{ credential.statusMessage || EMPTY_VALUE }}</strong></div>
+          <div><span class="muted">{{ t('monitoring.credentials.drawer.status') }}</span><strong>{{ statusLabel }}</strong></div>
+          <div v-if="hasDetailValue(credential.statusMessage)"><span class="muted">{{ t('monitoring.credentials.drawer.statusMessage') }}</span><strong>{{ credential.statusMessage }}</strong></div>
           <div><span class="muted">{{ t('monitoring.credentials.columns.availability') }}</span><strong>{{ credential.availabilityLabel || EMPTY_VALUE }}</strong></div>
-          <div v-if="credential.probe?.actionReason"><span class="muted">{{ t('monitoring.credentials.drawer.probeReason') }}</span><strong>{{ credential.probe.actionReason }}</strong></div>
-          <div v-if="credential.probe?.error"><span class="muted">{{ t('monitoring.credentials.drawer.probeError') }}</span><strong>{{ credential.probe.error }}</strong></div>
+          <div v-if="hasDetailValue(credential.probe?.actionReason)"><span class="muted">{{ t('monitoring.credentials.drawer.probeReason') }}</span><strong>{{ credential.probe.actionReason }}</strong></div>
+          <div v-if="hasDetailValue(credential.probe?.error)"><span class="muted">{{ t('monitoring.credentials.drawer.probeError') }}</span><strong>{{ credential.probe.error }}</strong></div>
+          <div v-if="hasDetailValue(credential.probe?.errorDetail) && credential.probe?.errorDetail !== credential.probe?.error"><span class="muted">{{ t('monitoring.credentials.drawer.probeError') }}</span><strong>{{ credential.probe.errorDetail }}</strong></div>
         </div>
       </div>
 
-      <div v-if="actionNotice" class="notice error cred-drawer-notice">{{ actionNotice }}</div>
+      <div v-if="actionNotice" class="notice error cred-drawer-notice" role="alert" aria-live="assertive">{{ actionNotice }}</div>
 
       <div class="cred-drawer-footer">
         <button class="btn primary" type="button" :disabled="probing" @click="$emit('refresh-quota')">
@@ -200,7 +201,7 @@ import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } 
 import { useI18n } from 'vue-i18n';
 import MetricGrid from '../MetricGrid.vue';
 import { EMPTY_VALUE, formatCompactDateTime, formatInt } from '../../utils/localeFormat.js';
-import { clampPercent, formatRemainingPercent, quotaBarTone } from '../../utils/credentialPresentation.js';
+import { clampPercent, formatRemainingPercent, localizeAuthStatus, quotaBarTone } from '../../utils/credentialPresentation.js';
 import { focusInitialIn, trapTabKeydown } from '../../utils/focusTrap.js';
 
 const props = defineProps({
@@ -282,6 +283,19 @@ const tabs = computed(() => [
 ]);
 
 const title = computed(() => props.credential?.maskedEmail || props.credential?.displayName || props.credential?.fileName || EMPTY_VALUE);
+
+const statusLabel = computed(() => {
+  const cred = props.credential;
+  if (!cred) return EMPTY_VALUE;
+  if (cred.status) return localizeAuthStatus(cred.status, t);
+  return cred.availabilityLabel || EMPTY_VALUE;
+});
+
+function hasDetailValue(value) {
+  if (value == null) return false;
+  const s = String(value).trim();
+  return s !== '' && s !== EMPTY_VALUE;
+}
 
 const copyLabel = computed(() => (
   copyFeedback.value === 'ok'
@@ -414,17 +428,31 @@ function onSheetPointerDown(event) {
 async function copyPath() {
   const value = props.credential?.path || props.credential?.fileName || '';
   if (!value) return;
-  if (!navigator?.clipboard?.writeText) {
-    copyFeedback.value = 'fail';
-    scheduleCopyReset();
-    return;
-  }
+  let ok = false;
   try {
-    await navigator.clipboard.writeText(value);
-    copyFeedback.value = 'ok';
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      ok = true;
+    }
   } catch {
-    copyFeedback.value = 'fail';
+    ok = false;
   }
+  if (!ok) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch {
+      ok = false;
+    }
+  }
+  copyFeedback.value = ok ? 'ok' : 'fail';
   scheduleCopyReset();
 }
 function scheduleCopyReset() {

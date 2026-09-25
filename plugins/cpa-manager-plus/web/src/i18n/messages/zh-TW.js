@@ -458,8 +458,8 @@ export default {
       requestDetail: '請求詳情',
     },
     credentials: {
-      scopeNote: 'OAuth 憑證與配額視窗。用量 / 費用 / 預測皆依「每條憑證自己的配額視窗」計算，不受上方 Monitoring 時間範圍影響。',
-      parentRangeIgnored: '本頁不使用上方 Monitoring 時間範圍與篩選。列表 KPI 與抽屜 Previous/Current/Forecast 皆綁定該憑證的配額探測視窗。',
+      scopeNote: 'OAuth 憑證與配額視窗。用量 / 費用 / 預測皆依「每條憑證自己的配額視窗」計算，不受上方監控時間範圍影響。',
+      parentRangeIgnored: '本頁不使用上方監控時間範圍與篩選。列表 KPI 與抽屜「上一視窗 / 當前視窗 / 預測」皆綁定該憑證的配額探測視窗。',
       searchPlaceholder: '搜尋憑證 / 帳號 / 電子郵件 / 備註',
       empty: '找不到 OAuth 憑證。',
       emptyFiltered: '目前篩選條件下沒有憑證。',
@@ -498,9 +498,20 @@ export default {
       availability: {
         available: '可用',
         attention: '需關注',
+        probeFailed: '探測失敗',
         exhausted: '{window} 已耗盡',
         low: '{window} 偏低',
         cooldown: '{window} 冷卻',
+      },
+      status: {
+        active: '已啟用',
+        available: '可用',
+        ok: '正常',
+        enabled: '已啟用',
+        error: '錯誤',
+        unavailable: '不可用',
+        expired: '已過期',
+        pending: '待處理',
       },
       drawer: {
         tabs: {

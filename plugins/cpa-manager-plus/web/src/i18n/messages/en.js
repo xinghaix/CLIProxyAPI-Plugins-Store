@@ -622,9 +622,20 @@ export default {
       availability: {
         available: 'Available',
         attention: 'Needs attention',
+        probeFailed: 'Probe failed',
         exhausted: '{window} exhausted',
         low: '{window} low',
         cooldown: '{window} cooldown',
+      },
+      status: {
+        active: 'Active',
+        available: 'Available',
+        ok: 'OK',
+        enabled: 'Enabled',
+        error: 'Error',
+        unavailable: 'Unavailable',
+        expired: 'Expired',
+        pending: 'Pending',
       },
       drawer: {
         tabs: {

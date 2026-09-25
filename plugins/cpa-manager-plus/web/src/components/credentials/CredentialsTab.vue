@@ -70,8 +70,10 @@ import {
   formatSuccessRate,
   formatWindowRange,
   groupRecentEventsByCredential,
+  isProbeFailure,
   maskEmail,
   planLabelFrom,
+  probeFailureMessage,
   resolveAvailability,
   shortWindowLabel,
 } from '../../utils/credentialPresentation.js';
@@ -472,8 +474,9 @@ async function refreshSelectedQuota() {
     nowMs.value = Date.now();
     const probe = await probeCredential(row, { force: true });
     row.probe = probe;
-    if (probe?.error) {
-      drawerNotice.value = t('monitoring.credentials.refreshFailed', { error: probe.error });
+    if (isProbeFailure(probe)) {
+      const detail = probeFailureMessage(probe) || t('monitoring.credentials.availability.probeFailed');
+      drawerNotice.value = t('monitoring.credentials.refreshFailed', { error: detail });
     }
     const { windows, targets } = buildAccountWindowUsageTargets(row, probe || {}, nowMs.value);
     row.quotaWindows = windows;
