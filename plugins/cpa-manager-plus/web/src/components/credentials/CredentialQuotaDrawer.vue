@@ -6,12 +6,21 @@
   >
     <aside
       class="modal-dialog card drawer cred-drawer"
+      :class="{ 'cred-drawer--dragging': sheetDragging }"
       role="dialog"
       aria-modal="true"
       :aria-label="title"
       tabindex="-1"
       ref="panelRef"
+      :style="sheetStyle"
     >
+      <div
+        class="cred-sheet-handle"
+        aria-hidden="true"
+        @pointerdown="onSheetPointerDown"
+      >
+        <span class="cred-sheet-handle-bar"></span>
+      </div>
       <div class="drawer-head cred-drawer-head">
         <div class="cred-drawer-head-main">
           <h2 class="cred-drawer-title">{{ title }}</h2>
@@ -59,10 +68,15 @@
         <div v-if="credential.quotaWindows?.length" class="cred-overview-section">
           <div class="cred-drawer-section-title">{{ t('monitoring.credentials.drawer.standardQuota') }}</div>
           <ul class="cred-overview-windows">
-            <li v-for="w in credential.quotaWindows" :key="w.key">
-              <strong>{{ w.label }}</strong>
-              <span :class="{ 'cred-rem-depleted': isDepleted(w.remainingPercent) }">{{ remainingText(w.remainingPercent) }}</span>
-              <span class="muted small-text">{{ w.resetAtMs ? formatCompact(w.resetAtMs) : '' }}</span>
+            <li v-for="w in credential.quotaWindows" :key="w.key" class="cred-overview-window">
+              <div class="cred-overview-window-head">
+                <strong>{{ w.label }}</strong>
+                <span :class="{ 'cred-rem-depleted': isDepleted(w.remainingPercent) }">{{ remainingText(w.remainingPercent) }}</span>
+                <span class="muted small-text">{{ w.resetAtMs ? formatCompact(w.resetAtMs) : '' }}</span>
+              </div>
+              <div class="quota-bar" :class="[quotaTone(w.remainingPercent), { depleted: isDepleted(w.remainingPercent) }]">
+                <span :style="{ width: `${clamp(w.remainingPercent)}%` }"></span>
+              </div>
             </li>
           </ul>
         </div>
@@ -147,15 +161,17 @@
           <div><span class="muted">{{ t('monitoring.authCard.note') }}</span><strong>{{ credential.note || EMPTY_VALUE }}</strong></div>
           <div><span class="muted">{{ t('monitoring.credentials.drawer.disabled') }}</span><strong>{{ credential.disabled ? t('common.disabled') : t('common.enabled') }}</strong></div>
         </div>
-        <p class="muted small-text">{{ t('monitoring.credentials.drawer.readOnlyHint') }}</p>
+        <div class="cred-stub-panel" role="note">
+          <p class="muted small-text">{{ t('monitoring.credentials.drawer.readOnlyHint') }}</p>
+        </div>
       </div>
 
       <div v-else-if="activeTab === 'models'" class="cred-drawer-body">
-        <p class="muted">{{ t('monitoring.credentials.drawer.modelsHint') }}</p>
+        <p class="muted small-text">{{ t('monitoring.credentials.drawer.modelsHint') }}</p>
         <div v-if="credential.probe?.models?.length" class="cred-model-list">
           <span v-for="m in credential.probe.models" :key="m" class="chip">{{ m }}</span>
         </div>
-        <div v-else class="empty">{{ t('monitoring.credentials.drawer.stubTab') }}</div>
+        <div v-else class="cred-stub-panel empty" role="status">{{ t('monitoring.credentials.drawer.stubTab') }}</div>
       </div>
 
       <div v-else class="cred-drawer-body">
@@ -207,7 +223,18 @@ const { t, locale } = useI18n();
 const activeTab = ref('quota');
 const copyFeedback = ref('');
 const panelRef = ref(null);
+const sheetOffsetY = ref(0);
+const sheetDragging = ref(false);
 let copyTimer = null;
+let sheetDragCleanup = null;
+
+const sheetStyle = computed(() => {
+  if (!sheetOffsetY.value) return undefined;
+  return {
+    transform: `translateY(${sheetOffsetY.value}px)`,
+    transition: sheetDragging.value ? 'none' : undefined,
+  };
+});
 
 watch(() => props.credential?.rowKey, () => {
   activeTab.value = 'quota';
@@ -215,6 +242,8 @@ watch(() => props.credential?.rowKey, () => {
 });
 
 watch(() => props.open, (isOpen) => {
+  sheetOffsetY.value = 0;
+  sheetDragging.value = false;
   if (isOpen) {
     requestAnimationFrame(() => panelRef.value?.focus?.());
   }
@@ -233,6 +262,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
   if (copyTimer) clearTimeout(copyTimer);
+  if (sheetDragCleanup) sheetDragCleanup();
 });
 
 const tabs = computed(() => [
@@ -337,6 +367,42 @@ function previousTitle(card) {
   }
   return t('monitoring.credentials.drawer.previous');
 }
+function isMobileSheet() {
+  return typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+}
+
+function onSheetPointerDown(event) {
+  if (!isMobileSheet()) return;
+  if (event.button != null && event.button !== 0) return;
+  event.preventDefault();
+  if (sheetDragCleanup) sheetDragCleanup();
+  const startY = event.clientY;
+  sheetDragging.value = true;
+  sheetOffsetY.value = 0;
+  const onMove = (ev) => {
+    sheetOffsetY.value = Math.max(0, ev.clientY - startY);
+  };
+  const onUp = () => {
+    if (sheetDragCleanup) sheetDragCleanup();
+    sheetDragCleanup = null;
+    sheetDragging.value = false;
+    if (sheetOffsetY.value > 96) {
+      sheetOffsetY.value = 0;
+      emit('close');
+      return;
+    }
+    sheetOffsetY.value = 0;
+  };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+  sheetDragCleanup = () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+  };
+}
+
 async function copyPath() {
   const value = props.credential?.path || props.credential?.fileName || '';
   if (!value) return;

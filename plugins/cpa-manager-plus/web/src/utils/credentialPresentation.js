@@ -105,7 +105,9 @@ export function resolveAvailability(cred, probe, t) {
     return {
       label: t('monitoring.credentials.availability.cooldown', { window: short }),
       tone: 'cooldown',
-      bucket: 'quota_risk',
+      // Cooldown (window exhausted / waiting reset) counts under attention (需关注),
+      // not quota_risk — quota_risk is low remaining / near limit only.
+      bucket: 'attention',
       severity: 'cooldown',
     };
   }

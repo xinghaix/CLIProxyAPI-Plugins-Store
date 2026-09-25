@@ -36,6 +36,9 @@ export function estimateWindowUsage(input) {
       tokens: Math.max(input.current.tokens, Math.round(input.current.tokens * multiplier)),
       cost: Math.max(input.current.cost, roundForecastCost(input.current.cost * multiplier)),
       basis: 'quota',
+      // Propagate pricing completeness so UI never invents bare $0 for unpriced windows.
+      costComplete: input.current.costComplete !== false && !(Number(input.current.unpricedCalls) > 0),
+      unpricedCalls: Number(input.current.unpricedCalls) || 0,
     };
     if (
       Number.isFinite(multiplier) &&

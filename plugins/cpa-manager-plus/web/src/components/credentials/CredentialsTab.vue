@@ -11,6 +11,7 @@
       :status-filter="statusFilter"
       :search="search"
       :selected-row-key="selectedRowKey"
+      :enriching-row-key="enrichingRowKey"
       :loading="loading"
       :total-count="rows.length"
       :has-active-filters="hasActiveFilters"
@@ -65,7 +66,6 @@ import {
 import {
   buildRecentStatusSlots,
   formatCompactNumber,
-  formatCompactUsd,
   formatCredentialCost,
   formatSuccessRate,
   formatWindowRange,
@@ -96,6 +96,8 @@ const selectedRowKey = ref('');
 const drawerOpen = ref(false);
 const drawerProbing = ref(false);
 const drawerNotice = ref('');
+const enrichingRowKey = ref('');
+const focusReturnEl = ref(null);
 const historyFromMs = ref(0);
 const historyToMs = ref(0);
 const nowMs = ref(Date.now());
@@ -205,8 +207,13 @@ function buildQuotaDisplays(row, usageMap) {
     if (current && (current.cost > 0 || current.tokens > 0 || current.costComplete === false)) {
       parts.push(`${formatCostText(current)} / ${fmtCompact(current.tokens)}`);
     }
-    if (forecast && (forecast.cost > 0 || forecast.tokens > 0)) {
-      parts.push(`~${formatCompactUsd(forecast.cost)} / ${fmtCompact(forecast.tokens)}`);
+    if (forecast && (forecast.cost > 0 || forecast.tokens > 0 || forecast.costComplete === false || (forecast.unpricedCalls || 0) > 0)) {
+      // Use cost helper so incomplete / unpriced never shows bare $0 (tilde only when complete).
+      const fcCost = formatCostText(forecast);
+      const fcShown = (fcCost === t('monitoring.costEstimate.estimateUnavailable') || fcCost.startsWith('~') || fcCost === '—')
+        ? fcCost
+        : `~${fcCost}`;
+      parts.push(`${fcShown} / ${fmtCompact(forecast.tokens)}`);
     }
     const resetRel = formatQuotaResetRelative(definition.resetAtMs, nowMs.value, locale.value);
     return {
@@ -275,9 +282,11 @@ async function enrichRows(baseRows) {
   const historyTargets = [];
   const windowTargets = [];
   const nextUsage = new Map(usageByRequestKey.value);
+  try {
 
-  // Probe sequentially but cache-coalesced; keep list visible.
+  // Probe sequentially but cache-coalesced; keep list visible with per-row enriching indicator.
   for (const row of baseRows) {
+    enrichingRowKey.value = row.rowKey;
     const probe = await probeCredential(row);
     row.probe = probe;
     const { windows, targets } = buildAccountWindowUsageTargets(row, probe || {}, nowMs.value);
@@ -293,6 +302,7 @@ async function enrichRows(baseRows) {
     windowTargets.push(...targets.map(({ definition, ...target }) => target));
     historyTargets.push(buildCredentialHistoryTarget(row, nowMs.value, 90));
   }
+  enrichingRowKey.value = '';
 
   const batch = [...historyTargets, ...windowTargets];
   if (batch.length) {
@@ -379,6 +389,9 @@ async function enrichRows(baseRows) {
 
   rows.value = enriched;
   emit('count', enriched.length);
+  } finally {
+    enrichingRowKey.value = '';
+  }
 }
 
 async function probeCredential(row, { force = false } = {}) {
@@ -418,7 +431,11 @@ async function probeCredential(row, { force = false } = {}) {
   }
 }
 
-function openDrawer(row) {
+function openDrawer(row, event) {
+  const target = event?.currentTarget;
+  focusReturnEl.value = (target && typeof target.focus === 'function')
+    ? target
+    : (document.activeElement instanceof HTMLElement ? document.activeElement : null);
   selectedRowKey.value = row.rowKey;
   drawerNotice.value = '';
   drawerOpen.value = true;
@@ -427,6 +444,23 @@ function openDrawer(row) {
 function closeDrawer() {
   drawerOpen.value = false;
   drawerNotice.value = '';
+  const el = focusReturnEl.value;
+  focusReturnEl.value = null;
+  const rowKey = selectedRowKey.value;
+  requestAnimationFrame(() => {
+    if (el && typeof el.focus === 'function' && el.isConnected) {
+      try { el.focus(); return; } catch { /* ignore */ }
+    }
+    // Fallback: visible row/card matching the closed credential.
+    if (!rowKey || typeof document === 'undefined') return;
+    const nodes = document.querySelectorAll(`[data-cred-row-key="${CSS.escape(rowKey)}"]`);
+    for (const node of nodes) {
+      if (!(node instanceof HTMLElement)) continue;
+      const style = window.getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden') continue;
+      try { node.focus(); return; } catch { /* ignore */ }
+    }
+  });
 }
 
 async function refreshSelectedQuota() {

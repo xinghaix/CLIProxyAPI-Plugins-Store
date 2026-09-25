@@ -8,7 +8,7 @@ describe('estimateWindowUsage', () => {
         usedPercent: 1,
         current: { requests: 2, tokens: 6400, cost: 0.02 },
       })
-    ).toEqual({ requests: 200, tokens: 640000, cost: 2, basis: 'quota' });
+    ).toEqual({ requests: 200, tokens: 640000, cost: 2, basis: 'quota', costComplete: true, unpricedCalls: 0 });
   });
 
   it('rounds dynamic projections while preserving current minimums', () => {
@@ -17,7 +17,7 @@ describe('estimateWindowUsage', () => {
         usedPercent: 7,
         current: { requests: 1, tokens: 6400, cost: 0.06 },
       })
-    ).toEqual({ requests: 14, tokens: 91429, cost: 0.86, basis: 'quota' });
+    ).toEqual({ requests: 14, tokens: 91429, cost: 0.86, basis: 'quota', costComplete: true, unpricedCalls: 0 });
   });
 
   it('uses previous when quota progress unavailable', () => {
@@ -28,6 +28,21 @@ describe('estimateWindowUsage', () => {
         previous: { requests: 60, tokens: 600000, cost: 6 },
       })
     ).toEqual({ requests: 60, tokens: 600000, cost: 6, basis: 'previous' });
+  });
+
+
+  it('propagates incomplete pricing onto quota forecasts', () => {
+    expect(
+      estimateWindowUsage({
+        usedPercent: 10,
+        current: { requests: 10, tokens: 1000, cost: 0, costComplete: false, unpricedCalls: 4 },
+      })
+    ).toMatchObject({
+      basis: 'quota',
+      costComplete: false,
+      unpricedCalls: 4,
+      cost: 0,
+    });
   });
 
   it('returns null without a usable basis', () => {

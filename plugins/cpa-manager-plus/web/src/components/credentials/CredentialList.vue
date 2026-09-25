@@ -58,11 +58,13 @@
               v-for="row in rows"
               :key="row.rowKey"
               class="clickable"
-              :class="{ 'selected-row': row.rowKey === selectedRowKey }"
+              :class="{ 'selected-row': row.rowKey === selectedRowKey, 'cred-row-enriching': row.rowKey === enrichingRowKey }"
               tabindex="0"
               role="button"
+              :data-cred-row-key="row.rowKey"
               :aria-pressed="row.rowKey === selectedRowKey"
-              @click="$emit('select', row)"
+              :aria-busy="row.rowKey === enrichingRowKey ? 'true' : undefined"
+              @click="$emit('select', row, $event)"
               @keydown="onRowKeydown($event, row)"
             >
               <td class="cred-identity-cell">
@@ -70,6 +72,10 @@
                 <div class="muted small-text cred-identity-file" :title="row.path || row.fileName">{{ row.fileName || EMPTY_VALUE }}</div>
                 <div v-if="row.providerChip?.tag" class="provider-cell">
                   <span :class="['provider-chip', row.providerChip.chip]">{{ row.providerChip.tag }}</span>
+                </div>
+                <div v-if="row.rowKey === enrichingRowKey" class="cred-enriching" role="status">
+                  <span class="cred-enriching-spinner" aria-hidden="true"></span>
+                  {{ t('monitoring.credentials.enriching') }}
                 </div>
               </td>
               <td>
@@ -144,11 +150,13 @@
           v-for="row in rows"
           :key="`card-${row.rowKey}`"
           class="cred-card clickable"
-          :class="{ 'selected-row': row.rowKey === selectedRowKey }"
+          :class="{ 'selected-row': row.rowKey === selectedRowKey, 'cred-row-enriching': row.rowKey === enrichingRowKey }"
           role="button"
           tabindex="0"
+          :data-cred-row-key="row.rowKey"
           :aria-pressed="row.rowKey === selectedRowKey"
-          @click="$emit('select', row)"
+          :aria-busy="row.rowKey === enrichingRowKey ? 'true' : undefined"
+          @click="$emit('select', row, $event)"
           @keydown="onRowKeydown($event, row)"
         >
           <div class="cred-card-top">
@@ -158,6 +166,10 @@
               <div class="cred-card-meta">
                 <span v-if="row.providerChip?.tag" :class="['provider-chip', row.providerChip.chip]">{{ row.providerChip.tag }}</span>
                 <span v-if="row.planLabel" class="cred-plan-badge">{{ row.planLabel }}</span>
+              </div>
+              <div v-if="row.rowKey === enrichingRowKey" class="cred-enriching" role="status">
+                <span class="cred-enriching-spinner" aria-hidden="true"></span>
+                {{ t('monitoring.credentials.enriching') }}
               </div>
             </div>
             <span :class="['status-chip', 'cred-avail', row.availabilityTone]">
@@ -221,6 +233,7 @@ const props = defineProps({
   statusFilter: { type: String, default: 'all' },
   search: { type: String, default: '' },
   selectedRowKey: { type: String, default: '' },
+  enrichingRowKey: { type: String, default: '' },
   loading: { type: Boolean, default: false },
   totalCount: { type: Number, default: 0 },
   hasActiveFilters: { type: Boolean, default: false },
@@ -295,7 +308,7 @@ function remainingText(remaining) {
 function onRowKeydown(event, row) {
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault();
-    emit('select', row);
+    emit('select', row, event);
   }
 }
 </script>

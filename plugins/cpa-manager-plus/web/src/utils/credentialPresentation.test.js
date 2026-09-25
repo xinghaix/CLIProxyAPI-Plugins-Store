@@ -54,7 +54,7 @@ describe('credentialPresentation', () => {
     );
     expect(result.label).toBe('5h cooldown');
     expect(result.tone).toBe('cooldown');
-    expect(result.bucket).toBe('quota_risk');
+    expect(result.bucket).toBe('attention');
   });
 
   it('builds padded recent status slots oldest to newest', () => {
@@ -92,6 +92,27 @@ describe('credentialPresentation', () => {
     expect(formatRemainingPercent(-1, 'Exhausted')).toBe('Exhausted');
     expect(formatRemainingPercent(18, 'Exhausted')).toBe('18%');
     expect(formatRemainingPercent(null, 'Exhausted')).toBe('—');
+  });
+
+
+  it('distinguishes zero complete cost vs missing vs unpriced', () => {
+    expect(formatCredentialCost({ cost: 0, costComplete: true, unpricedCalls: 0 })).toBe('$0.00');
+    expect(formatCredentialCost(null, 'n/a')).toBe('—');
+    expect(formatCredentialCost(undefined, 'n/a')).toBe('—');
+    expect(formatCredentialCost({ cost: 0, costComplete: false, unpricedCalls: 0 }, 'n/a')).toBe('n/a');
+    expect(formatCredentialCost({ cost: 0, costComplete: true, unpricedCalls: 2 }, 'n/a')).toBe('n/a');
+    expect(formatCredentialCost({ cost: 0, unpricedCalls: 1 }, 'n/a')).toBe('n/a');
+    expect(formatCredentialCost({ cost: 3.5, costComplete: false, unpricedCalls: 1 }, 'n/a')).toBe('~$3.50*');
+  });
+
+  it('keeps low remaining under quota_risk (not attention)', () => {
+    const low = resolveAvailability(
+      { quotaWindows: [{ label: 'Weekly', kind: 'weekly', remainingPercent: 18 }] },
+      {},
+      t
+    );
+    expect(low.bucket).toBe('quota_risk');
+    expect(low.tone).toBe('warn');
   });
 
   it('maps disabled credentials to off tone', () => {
