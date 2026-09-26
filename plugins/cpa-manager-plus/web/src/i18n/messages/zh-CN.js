@@ -473,7 +473,7 @@ export default {
       recentFailed: '近期请求记录不可用：{error}',
       priority: '优先级 {value}',
       filters: {
-        all: '全部 ({count})',
+        all: '全部',
         allStatuses: '全部状态',
         available: '可用',
         attention: '需关注',

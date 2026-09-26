@@ -473,7 +473,7 @@ export default {
       recentFailed: 'Недавняя история запросов недоступна: {error}',
       priority: 'Приоритет {value}',
       filters: {
-        all: 'Все ({count})',
+        all: 'Все',
         allStatuses: 'Все статусы',
         available: 'Доступны',
         attention: 'Требуют внимания',

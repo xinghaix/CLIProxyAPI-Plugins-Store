@@ -1,14 +1,5 @@
 <template>
   <div class="credentials-tab">
-    <div class="cred-page-toolbar">
-      <button
-        class="btn primary"
-        type="button"
-        :disabled="loading || !ready"
-        @click="refresh()"
-      >{{ loading ? t('common.loading') : t('common.refresh') }}</button>
-    </div>
-
     <div v-if="enrichingRowKey" class="cred-enriching-banner" role="status" aria-live="polite">
       <span class="cred-enriching-spinner" aria-hidden="true"></span>
       <span>{{ t('monitoring.credentials.enrichingBanner') }}</span>
@@ -26,12 +17,14 @@
       :selected-row-key="selectedRowKey"
       :enriching-row-key="enrichingRowKey"
       :loading="loading"
+      :ready="ready"
       :total-count="rows.length"
       :has-active-filters="hasActiveFilters"
       :format-compact="fmtCompact"
       :format-percent="fmtPct"
       :format-cost-text="formatCostText"
-      @select="openDrawer"
+      @select="(row, event, tab) => openDrawer(row, event, tab)"
+      @refresh="refresh"
       @update:provider-filter="providerFilter = $event"
       @update:status-filter="statusFilter = $event"
       @update:search="search = $event"
@@ -110,6 +103,7 @@ const statusFilter = ref('all');
 const search = ref('');
 const selectedRowKey = ref('');
 const drawerOpen = ref(false);
+const drawerInitialTab = ref('quota');
 const drawerProbing = ref(false);
 const drawerNotice = ref('');
 const enrichingRowKey = ref('');
@@ -454,14 +448,18 @@ async function probeCredential(row, { force = false } = {}) {
   }
 }
 
-function openDrawer(row, event) {
+function openDrawer(row, event, preferredTab) {
   const target = event?.currentTarget;
   focusReturnEl.value = (target && typeof target.focus === 'function')
     ? target
     : (document.activeElement instanceof HTMLElement ? document.activeElement : null);
   selectedRowKey.value = row.rowKey;
   drawerNotice.value = '';
-  drawerInitialTab.value = (row.probeFailed || isProbeFailure(row.probe)) ? 'diagnostics' : 'quota';
+  if (preferredTab) {
+    drawerInitialTab.value = preferredTab;
+  } else {
+    drawerInitialTab.value = (row.probeFailed || isProbeFailure(row.probe)) ? 'diagnostics' : 'quota';
+  }
   drawerOpen.value = true;
 }
 

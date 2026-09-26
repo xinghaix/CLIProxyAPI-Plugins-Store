@@ -1,4 +1,5 @@
 <template>
+  <Teleport to="body">
   <div
     v-if="open && credential"
     class="drawer-backdrop cred-drawer-backdrop"
@@ -194,6 +195,7 @@
       </div>
     </aside>
   </div>
+  </Teleport>
 </template>
 
 <script setup>

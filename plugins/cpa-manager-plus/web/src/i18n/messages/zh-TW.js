@@ -473,7 +473,7 @@ export default {
       recentFailed: '近期請求紀錄不可用：{error}',
       priority: '優先順序 {value}',
       filters: {
-        all: '全部 ({count})',
+        all: '全部',
         allStatuses: '全部狀態',
         available: '可用',
         attention: '需關注',

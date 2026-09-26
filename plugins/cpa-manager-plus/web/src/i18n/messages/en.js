@@ -598,7 +598,7 @@ export default {
       recentFailed: 'Recent request history unavailable: {error}',
       priority: 'Priority {value}',
       filters: {
-        all: 'All ({count})',
+        all: 'All',
         allStatuses: 'All statuses',
         available: 'Available',
         attention: 'Needs attention',

@@ -1,19 +1,25 @@
 <template>
   <div class="cred-list">
     <div class="cred-filters">
-      <div class="cred-provider-chips">
+      <div class="cred-provider-chips segmented-control" role="group" :aria-label="t('monitoring.credentials.columns.credential')">
         <button
           type="button"
-          :class="['chip', { active: providerFilter === 'all' }]"
+          :class="['segment-btn', { active: providerFilter === 'all' }]"
           @click="$emit('update:providerFilter', 'all')"
-        >{{ t('monitoring.credentials.filters.all', { count: totalCount }) }}</button>
+        >
+          {{ t('monitoring.credentials.filters.all') }}
+          <span class="segment-count">{{ totalCount }}</span>
+        </button>
         <button
           v-for="chip in providerChips"
           :key="chip.key"
           type="button"
-          :class="['chip', { active: providerFilter === chip.key }]"
+          :class="['segment-btn', { active: providerFilter === chip.key }]"
           @click="$emit('update:providerFilter', chip.key)"
-        >{{ chip.label }} ({{ chip.count }})</button>
+        >
+          {{ chip.label }}
+          <span class="segment-count">{{ chip.count }}</span>
+        </button>
       </div>
       <input
         class="control wide"
@@ -28,6 +34,12 @@
         <option value="quota_risk">{{ t('monitoring.credentials.filters.quotaRisk') }}</option>
         <option value="disabled">{{ t('monitoring.credentials.filters.disabled') }}</option>
       </select>
+      <button
+        class="btn primary cred-filters-refresh"
+        type="button"
+        :disabled="loading || !ready"
+        @click="$emit('refresh')"
+      >{{ loading ? t('common.loading') : t('common.refresh') }}</button>
     </div>
 
     <MetricGrid class="cred-kpi-grid" :cards="kpiCards" />
@@ -97,7 +109,12 @@
                 />
               </td>
               <td>
-                <div v-if="row.probeFailed" class="cred-hist-empty muted small-text">{{ t('monitoring.credentials.histProbeFailed') }}</div>
+                <button
+                  v-if="row.probeFailed"
+                  type="button"
+                  class="cred-probe-cta muted small-text"
+                  @click.stop="onProbeFailCta($event, row)"
+                >{{ t('monitoring.credentials.histProbeFailed') }}</button>
                 <div v-else-if="!hasHistoryUsage(row)" class="cred-hist-empty muted small-text">{{ t('monitoring.credentials.noUsage') }}</div>
                 <div v-else class="cred-hist">
                   <span class="cred-hist-metric cred-hist-req" :title="t('monitoring.credentials.drawer.requests')">
@@ -144,7 +161,12 @@
                     <div v-if="qw.usageLine" class="quota-usage-line muted small-text">{{ qw.usageLine }}</div>
                   </div>
                 </div>
-                <div v-else-if="row.probeFailed" class="cred-quota-empty muted small-text">{{ t('monitoring.credentials.probeFailQuota') }}</div>
+                <button
+                  v-else-if="row.probeFailed"
+                  type="button"
+                  class="cred-probe-cta cred-quota-empty"
+                  @click.stop="onProbeFailCta($event, row)"
+                >{{ t('monitoring.credentials.probeFailQuota') }}</button>
                 <div v-else class="muted">{{ EMPTY_VALUE }}</div>
               </td>
             </tr>
@@ -194,7 +216,12 @@
               :title="t('monitoring.credentials.columns.recent')"
             />
           </div>
-          <div v-if="row.probeFailed" class="cred-hist-empty muted small-text">{{ t('monitoring.credentials.histProbeFailed') }}</div>
+          <button
+            v-if="row.probeFailed"
+            type="button"
+            class="cred-probe-cta muted small-text"
+            @click.stop="onProbeFailCta($event, row)"
+          >{{ t('monitoring.credentials.histProbeFailed') }}</button>
           <div v-else-if="!hasHistoryUsage(row)" class="cred-hist-empty muted small-text">{{ t('monitoring.credentials.noUsage') }}</div>
           <div v-else class="cred-hist cred-card-hist">
             <span class="cred-hist-metric cred-hist-req"><i class="cred-hist-icon" aria-hidden="true"></i><span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.requests') }}</span><strong>{{ fmtCompact(row.history?.requests) }}</strong></span>
@@ -219,7 +246,12 @@
               <div v-if="qw.usageLine" class="quota-usage-line muted small-text">{{ qw.usageLine }}</div>
             </div>
           </div>
-          <div v-else-if="row.probeFailed" class="cred-quota-empty muted small-text">{{ t('monitoring.credentials.probeFailQuota') }}</div>
+          <button
+            v-else-if="row.probeFailed"
+            type="button"
+            class="cred-probe-cta cred-quota-empty"
+            @click.stop="onProbeFailCta($event, row)"
+          >{{ t('monitoring.credentials.probeFailQuota') }}</button>
           <div v-else class="muted small-text">{{ EMPTY_VALUE }}</div>
         </article>
       </div>
@@ -249,6 +281,7 @@ const props = defineProps({
   selectedRowKey: { type: String, default: '' },
   enrichingRowKey: { type: String, default: '' },
   loading: { type: Boolean, default: false },
+  ready: { type: Boolean, default: false },
   totalCount: { type: Number, default: 0 },
   hasActiveFilters: { type: Boolean, default: false },
   formatCompact: { type: Function, required: true },
@@ -256,7 +289,7 @@ const props = defineProps({
   formatCostText: { type: Function, required: true },
 });
 
-const emit = defineEmits(['select', 'update:providerFilter', 'update:statusFilter', 'update:search']);
+const emit = defineEmits(['select', 'refresh', 'update:providerFilter', 'update:statusFilter', 'update:search']);
 
 const { t } = useI18n();
 
@@ -335,6 +368,9 @@ function hasHistoryUsage(row) {
   if (Number.isFinite(cost) && cost > 0) return true;
   if (h.costComplete === false && (h.unpricedCalls || 0) > 0) return true;
   return false;
+}
+function onProbeFailCta(event, row) {
+  emit('select', row, event, 'diagnostics');
 }
 function onRowKeydown(event, row) {
   if (event.key === 'Enter' || event.key === ' ') {
