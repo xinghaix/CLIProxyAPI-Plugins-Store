@@ -213,6 +213,7 @@ const props = defineProps({
   windowCards: { type: Array, default: () => [] },
   probing: { type: Boolean, default: false },
   actionNotice: { type: String, default: '' },
+  initialTab: { type: String, default: 'quota' },
   timeZone: { type: String, default: '' },
   formatCompact: { type: Function, required: true },
   formatPercent: { type: Function, required: true },
@@ -239,14 +240,29 @@ const sheetStyle = computed(() => {
 });
 
 watch(() => props.credential?.rowKey, () => {
-  activeTab.value = 'quota';
+  applyInitialTab();
   copyFeedback.value = '';
 });
+
+function applyInitialTab() {
+  const tab = props.initialTab || 'quota';
+  if (tab === 'diagnostics' || props.credential?.probeFailed) {
+    activeTab.value = 'diagnostics';
+    return;
+  }
+  if (['overview', 'quota', 'settings', 'models', 'diagnostics'].includes(tab)) {
+    activeTab.value = tab;
+    return;
+  }
+  activeTab.value = 'quota';
+}
+
 
 watch(() => props.open, (isOpen) => {
   sheetOffsetY.value = 0;
   sheetDragging.value = false;
   if (isOpen) {
+    applyInitialTab();
     // Accessible default: focus Close first so Esc/close is one Tab away from entry;
     // Tab/Shift+Tab then cycle only inside the panel (see trapTabKeydown).
     requestAnimationFrame(() => focusInitialIn(panelRef.value, '.cred-drawer-close'));

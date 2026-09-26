@@ -1,6 +1,23 @@
 <template>
   <div class="credentials-tab">
-    <p class="muted small-text cred-scope-note">{{ t('monitoring.credentials.scopeNote') }}</p>
+    <div class="cred-page-head">
+      <div class="cred-page-head-main">
+        <h2 class="cred-page-title">{{ t('tabs.credentials') }}</h2>
+        <p class="muted small-text cred-page-sub">{{ t('monitoring.credentials.pageSubtitle') }}</p>
+      </div>
+      <button
+        class="btn primary"
+        type="button"
+        :disabled="loading || !ready"
+        @click="refresh()"
+      >{{ loading ? t('common.loading') : t('common.refresh') }}</button>
+    </div>
+
+    <div v-if="enrichingRowKey" class="cred-enriching-banner" role="status" aria-live="polite">
+      <span class="cred-enriching-spinner" aria-hidden="true"></span>
+      <span>{{ t('monitoring.credentials.enrichingBanner') }}</span>
+    </div>
+
     <section v-if="error" class="notice error">{{ error }}</section>
 
     <CredentialList
@@ -33,6 +50,7 @@
       :window-cards="selectedWindowCards"
       :probing="drawerProbing"
       :action-notice="drawerNotice"
+      :initial-tab="drawerInitialTab"
       :time-zone="analyticsTimeZone"
       :format-compact="fmtCompact"
       :format-percent="fmtPct"
@@ -135,21 +153,24 @@ const filteredRows = computed(() => {
   });
 });
 
-const kpi = computed(() => {
-  const list = filteredRows.value;
-  return {
-    total: list.length,
-    available: list.filter((r) => r.statusBucket === 'available').length,
-    attention: list.filter((r) => r.statusBucket === 'attention').length,
-    quotaRisk: list.filter((r) => r.statusBucket === 'quota_risk').length,
-  };
-});
-
 const hasActiveFilters = computed(() => (
   providerFilter.value !== 'all'
   || statusFilter.value !== 'all'
   || Boolean(search.value.trim())
 ));
+
+const kpi = computed(() => {
+  const all = rows.value;
+  const list = filteredRows.value;
+  const filtered = hasActiveFilters.value;
+  return {
+    total: all.length,
+    available: list.filter((r) => r.statusBucket === 'available').length,
+    attention: list.filter((r) => r.statusBucket === 'attention').length,
+    quotaRisk: list.filter((r) => r.statusBucket === 'quota_risk').length,
+    filtered,
+  };
+});
 
 const selectedWindowCards = computed(() => {
   const row = selectedRow.value;
@@ -267,6 +288,8 @@ async function loadCredentials() {
         quotaWindows: [],
         quotaDisplays: [],
         probe: null,
+        probeFailed: false,
+        probeFailureSummary: '',
       };
     });
     rows.value = baseRows;
@@ -298,6 +321,8 @@ async function enrichRows(baseRows) {
     row.availabilityLabel = availability.label;
     row.availabilityTone = availability.tone;
     row.statusBucket = availability.bucket;
+    row.probeFailed = isProbeFailure(probe);
+    row.probeFailureSummary = row.probeFailed ? (probeFailureMessage(probe) || t('monitoring.credentials.availability.probeFailed')) : '';
     row.primaryQuota = windows[0]
       ? { label: windows[0].label, remainingPercent: windows[0].remainingPercent }
       : null;
@@ -440,6 +465,7 @@ function openDrawer(row, event) {
     : (document.activeElement instanceof HTMLElement ? document.activeElement : null);
   selectedRowKey.value = row.rowKey;
   drawerNotice.value = '';
+  drawerInitialTab.value = (row.probeFailed || isProbeFailure(row.probe)) ? 'diagnostics' : 'quota';
   drawerOpen.value = true;
 }
 
@@ -485,6 +511,8 @@ async function refreshSelectedQuota() {
     row.availabilityLabel = availability.label;
     row.availabilityTone = availability.tone;
     row.statusBucket = availability.bucket;
+    row.probeFailed = isProbeFailure(probe);
+    row.probeFailureSummary = row.probeFailed ? (probeFailureMessage(probe) || t('monitoring.credentials.availability.probeFailed')) : '';
     row.primaryQuota = windows[0]
       ? { label: windows[0].label, remainingPercent: windows[0].remainingPercent }
       : null;
@@ -522,8 +550,12 @@ onMounted(() => {
   if (props.ready) loadCredentials();
 });
 
+async function refresh() {
+  await loadCredentials();
+}
+
 defineExpose({
-  refresh: loadCredentials,
+  refresh,
   filteredCount: () => filteredRows.value.length,
 });
 </script>

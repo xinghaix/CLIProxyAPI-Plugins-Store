@@ -18,6 +18,7 @@ import {
 const t = (key, params = {}) => {
   if (key.includes('cooldown')) return `${params.window} cooldown`;
   if (key.includes('exhausted')) return `${params.window} exhausted`;
+  if (key.includes('critical')) return `${params.window} nearly exhausted`;
   if (key.includes('low')) return `${params.window} low`;
   if (key.includes('probeFailed')) return 'Probe failed';
   if (key.includes('available') && key.includes('availability')) return 'Available';
@@ -125,6 +126,18 @@ describe('credentialPresentation', () => {
     );
     expect(low.bucket).toBe('quota_risk');
     expect(low.tone).toBe('warn');
+    expect(low.label).toBe('Weekly low');
+  });
+
+  it('uses critical (not exhausted) copy when remaining ≤ 10 but > 0', () => {
+    const risky = resolveAvailability(
+      { quotaWindows: [{ label: 'Weekly', kind: 'weekly', remainingPercent: 8 }] },
+      {},
+      t
+    );
+    expect(risky.bucket).toBe('quota_risk');
+    expect(risky.severity).toBe('critical');
+    expect(risky.label).toBe('Weekly nearly exhausted');
   });
 
   it('maps disabled credentials to off tone', () => {

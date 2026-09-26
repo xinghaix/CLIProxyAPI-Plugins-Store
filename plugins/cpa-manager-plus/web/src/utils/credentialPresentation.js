@@ -206,10 +206,11 @@ export function resolveAvailability(cred, probe, t) {
       severity: 'cooldown',
     };
   }
+  // Low remaining (≤10%) is quota risk — not "exhausted". Exhausted (≤0) already maps to cooldown above.
   const risky = windows.find((w) => Number.isFinite(w.remainingPercent) && w.remainingPercent <= 10);
   if (risky) {
     return {
-      label: t('monitoring.credentials.availability.exhausted', { window: shortWindowLabel(risky.label, risky.kind) }),
+      label: t('monitoring.credentials.availability.critical', { window: shortWindowLabel(risky.label, risky.kind) }),
       tone: 'warn',
       bucket: 'quota_risk',
       severity: 'critical',

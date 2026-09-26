@@ -86,6 +86,7 @@
                 <span :class="['status-chip', 'cred-avail', row.availabilityTone]">
                   <i aria-hidden="true"></i>{{ row.availabilityLabel }}
                 </span>
+                <div v-if="row.probeFailureSummary" class="muted small-text cred-probe-fail-summary" :title="row.probeFailureSummary">{{ row.probeFailureSummary }}</div>
                 <div v-if="row.priority != null" class="muted small-text">{{ t('monitoring.credentials.priority', { value: row.priority }) }}</div>
               </td>
               <td class="cred-recent-cell">
@@ -96,17 +97,22 @@
                 />
               </td>
               <td>
-                <div class="cred-hist">
+                <div v-if="row.probeFailed" class="cred-hist-empty muted small-text">{{ t('monitoring.credentials.histProbeFailed') }}</div>
+                <div v-else-if="!hasHistoryUsage(row)" class="cred-hist-empty muted small-text">{{ t('monitoring.credentials.noUsage') }}</div>
+                <div v-else class="cred-hist">
                   <span class="cred-hist-metric cred-hist-req" :title="t('monitoring.credentials.drawer.requests')">
                     <i class="cred-hist-icon" aria-hidden="true"></i>
+                    <span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.requests') }}</span>
                     <strong>{{ fmtCompact(row.history?.requests) }}</strong>
                   </span>
                   <span class="cred-hist-metric cred-hist-tok" :title="t('monitoring.credentials.drawer.tokens')">
                     <i class="cred-hist-icon" aria-hidden="true"></i>
+                    <span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.tokens') }}</span>
                     <strong>{{ fmtCompact(row.history?.tokens) }}</strong>
                   </span>
                   <span class="cred-hist-metric cred-hist-cost" :title="t('monitoring.credentials.drawer.estCost')">
                     <i class="cred-hist-icon" aria-hidden="true"></i>
+                    <span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.cost') }}</span>
                     <strong>{{ formatCost(row.history) }}</strong>
                   </span>
                   <span
@@ -115,6 +121,7 @@
                     :title="t('monitoring.credentials.drawer.successRate')"
                   >
                     <i class="cred-hist-icon" aria-hidden="true"></i>
+                    <span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.success') }}</span>
                     <strong>{{ fmtPct(row.history?.successRate) }}</strong>
                   </span>
                 </div>
@@ -137,6 +144,7 @@
                     <div v-if="qw.usageLine" class="quota-usage-line muted small-text">{{ qw.usageLine }}</div>
                   </div>
                 </div>
+                <div v-else-if="row.probeFailed" class="cred-quota-empty muted small-text">{{ t('monitoring.credentials.probeFailQuota') }}</div>
                 <div v-else class="muted">{{ EMPTY_VALUE }}</div>
               </td>
             </tr>
@@ -172,9 +180,12 @@
                 {{ t('monitoring.credentials.enriching') }}
               </div>
             </div>
-            <span :class="['status-chip', 'cred-avail', row.availabilityTone]">
-              <i aria-hidden="true"></i>{{ row.availabilityLabel }}
-            </span>
+            <div class="cred-card-status">
+              <span :class="['status-chip', 'cred-avail', row.availabilityTone]">
+                <i aria-hidden="true"></i>{{ row.availabilityLabel }}
+              </span>
+              <div v-if="row.probeFailureSummary" class="muted small-text cred-probe-fail-summary" :title="row.probeFailureSummary">{{ row.probeFailureSummary }}</div>
+            </div>
           </div>
           <div class="cred-card-recent">
             <span class="muted small-text">{{ row.lastRequestLabel }}</span>
@@ -183,11 +194,13 @@
               :title="t('monitoring.credentials.columns.recent')"
             />
           </div>
-          <div class="cred-hist cred-card-hist">
-            <span class="cred-hist-metric cred-hist-req"><i class="cred-hist-icon" aria-hidden="true"></i><strong>{{ fmtCompact(row.history?.requests) }}</strong></span>
-            <span class="cred-hist-metric cred-hist-tok"><i class="cred-hist-icon" aria-hidden="true"></i><strong>{{ fmtCompact(row.history?.tokens) }}</strong></span>
-            <span class="cred-hist-metric cred-hist-cost"><i class="cred-hist-icon" aria-hidden="true"></i><strong>{{ formatCost(row.history) }}</strong></span>
-            <span class="cred-hist-metric cred-hist-ok" :class="successClass(row.history?.successRate)"><i class="cred-hist-icon" aria-hidden="true"></i><strong>{{ fmtPct(row.history?.successRate) }}</strong></span>
+          <div v-if="row.probeFailed" class="cred-hist-empty muted small-text">{{ t('monitoring.credentials.histProbeFailed') }}</div>
+          <div v-else-if="!hasHistoryUsage(row)" class="cred-hist-empty muted small-text">{{ t('monitoring.credentials.noUsage') }}</div>
+          <div v-else class="cred-hist cred-card-hist">
+            <span class="cred-hist-metric cred-hist-req"><i class="cred-hist-icon" aria-hidden="true"></i><span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.requests') }}</span><strong>{{ fmtCompact(row.history?.requests) }}</strong></span>
+            <span class="cred-hist-metric cred-hist-tok"><i class="cred-hist-icon" aria-hidden="true"></i><span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.tokens') }}</span><strong>{{ fmtCompact(row.history?.tokens) }}</strong></span>
+            <span class="cred-hist-metric cred-hist-cost"><i class="cred-hist-icon" aria-hidden="true"></i><span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.cost') }}</span><strong>{{ formatCost(row.history) }}</strong></span>
+            <span class="cred-hist-metric cred-hist-ok" :class="successClass(row.history?.successRate)"><i class="cred-hist-icon" aria-hidden="true"></i><span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.success') }}</span><strong>{{ fmtPct(row.history?.successRate) }}</strong></span>
           </div>
           <div v-if="row.quotaDisplays?.length" class="cred-quota-stack cred-card-quota">
             <div
@@ -206,6 +219,7 @@
               <div v-if="qw.usageLine" class="quota-usage-line muted small-text">{{ qw.usageLine }}</div>
             </div>
           </div>
+          <div v-else-if="row.probeFailed" class="cred-quota-empty muted small-text">{{ t('monitoring.credentials.probeFailQuota') }}</div>
           <div v-else class="muted small-text">{{ EMPTY_VALUE }}</div>
         </article>
       </div>
@@ -246,36 +260,40 @@ const emit = defineEmits(['select', 'update:providerFilter', 'update:statusFilte
 
 const { t } = useI18n();
 
-const kpiCards = computed(() => [
-  {
-    key: 'total',
-    label: t('monitoring.credentials.kpi.total'),
-    value: formatInt(props.kpi.total || 0),
-    sub: t('monitoring.credentials.kpi.totalSub'),
-    accent: 'blue',
-  },
-  {
-    key: 'available',
-    label: t('monitoring.credentials.kpi.available'),
-    value: formatInt(props.kpi.available || 0),
-    sub: t('monitoring.credentials.kpi.availableSub'),
-    accent: 'green',
-  },
-  {
-    key: 'attention',
-    label: t('monitoring.credentials.kpi.attention'),
-    value: formatInt(props.kpi.attention || 0),
-    sub: t('monitoring.credentials.kpi.attentionSub'),
-    accent: 'red',
-  },
-  {
-    key: 'quotaRisk',
-    label: t('monitoring.credentials.kpi.quotaRisk'),
-    value: formatInt(props.kpi.quotaRisk || 0),
-    sub: t('monitoring.credentials.kpi.quotaRiskSub'),
-    accent: 'amber',
-  },
-]);
+const kpiCards = computed(() => {
+  const filtered = Boolean(props.kpi.filtered);
+  const filterSub = t('monitoring.credentials.kpi.filteredSub');
+  return [
+    {
+      key: 'total',
+      label: t('monitoring.credentials.kpi.total'),
+      value: formatInt(props.kpi.total || 0),
+      sub: t('monitoring.credentials.kpi.totalSub'),
+      accent: 'blue',
+    },
+    {
+      key: 'available',
+      label: t('monitoring.credentials.kpi.available'),
+      value: formatInt(props.kpi.available || 0),
+      sub: filtered ? filterSub : t('monitoring.credentials.kpi.availableSub'),
+      accent: 'green',
+    },
+    {
+      key: 'attention',
+      label: t('monitoring.credentials.kpi.attention'),
+      value: formatInt(props.kpi.attention || 0),
+      sub: filtered ? filterSub : t('monitoring.credentials.kpi.attentionSub'),
+      accent: 'red',
+    },
+    {
+      key: 'quotaRisk',
+      label: t('monitoring.credentials.kpi.quotaRisk'),
+      value: formatInt(props.kpi.quotaRisk || 0),
+      sub: filtered ? filterSub : t('monitoring.credentials.kpi.quotaRiskSub'),
+      accent: 'amber',
+    },
+  ];
+});
 
 function fmtCompact(value) {
   return props.formatCompact(value);
@@ -304,6 +322,19 @@ function isDepleted(remaining) {
 }
 function remainingText(remaining) {
   return formatRemainingPercent(remaining, t('monitoring.credentials.depleted'));
+}
+
+function hasHistoryUsage(row) {
+  const h = row?.history;
+  if (!h) return false;
+  const req = Number(h.requests);
+  const tok = Number(h.tokens);
+  const cost = Number(h.cost);
+  if (Number.isFinite(req) && req > 0) return true;
+  if (Number.isFinite(tok) && tok > 0) return true;
+  if (Number.isFinite(cost) && cost > 0) return true;
+  if (h.costComplete === false && (h.unpricedCalls || 0) > 0) return true;
+  return false;
 }
 function onRowKeydown(event, row) {
   if (event.key === 'Enter' || event.key === ' ') {

@@ -21,6 +21,10 @@
       <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" :inspection-tab-visible="showInspectionTab" @open-inspection="openInspectionTab"/>
     </section>
 
+    <section class="panel" v-if="activeTab === 'credentials'">
+      <CredentialsTab ref="credentialsView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
+    </section>
+
     <section class="panel" v-if="showInspectionTab && activeTab === 'inspection'">
       <InspectionView ref="inspectionView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
@@ -170,6 +174,7 @@ import ModelPricesView from './components/ModelPricesView.vue';
 import AccountActionsView from './components/AccountActionsView.vue';
 import InspectionView from './components/InspectionView.vue';
 import WindowKeeperView from './components/WindowKeeperView.vue';
+import CredentialsTab from './components/credentials/CredentialsTab.vue';
 import {isAccountOpsTabVisible} from './features.js';
 
 import {formatHealthText, HEALTH, LEGACY_SESSION_KEY, PROXY, readCPAAuthStoreKey, SESSION_KEY} from './utils/data.js';
@@ -202,6 +207,7 @@ const showInspectionTab = computed(() => isAccountOpsTabVisible('inspection', ac
 const allTabs = computed(() => [
   {key: 'dashboard', label: t('tabs.dashboard')},
   {key: 'monitoring', label: t('tabs.monitoring')},
+  {key: 'credentials', label: t('tabs.credentials')},
   {key: 'model-prices', label: t('tabs.modelPrices')},
   ...(showAccountActionsTab.value ? [{key: 'account-actions', label: t('tabs.accountActions')}] : []),
   ...(showInspectionTab.value ? [{key: 'inspection', label: t('tabs.inspection')}] : []),
@@ -392,6 +398,7 @@ async function refreshActive() {
   try {
     if (activeTab.value === 'dashboard') await (dashboardView.value ? dashboardView.value.refresh(true) : Promise.resolve());
     if (activeTab.value === 'monitoring') await (monitoringView.value ? monitoringView.value.refresh(true) : Promise.resolve());
+    if (activeTab.value === 'credentials') await (credentialsView.value ? credentialsView.value.refresh() : Promise.resolve());
     if (activeTab.value === 'inspection') await (inspectionView.value ? inspectionView.value.refresh(true) : Promise.resolve());
     if (activeTab.value === 'config') await loadConfig();
     if (activeTab.value === 'model-prices') await (modelPricesView.value ? modelPricesView.value.refresh(true) : Promise.resolve());
