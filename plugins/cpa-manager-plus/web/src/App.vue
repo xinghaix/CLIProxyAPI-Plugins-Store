@@ -21,6 +21,10 @@
       <MonitoringView ref="monitoringView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall" :inspection-tab-visible="showInspectionTab" @open-inspection="openInspectionTab"/>
     </section>
 
+    <section class="panel" v-if="activeTab === 'credentials'">
+      <CredentialsTab ref="credentialsView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
+    </section>
+
     <section class="panel" v-if="showInspectionTab && activeTab === 'inspection'">
       <InspectionView ref="inspectionView" :ready="!!resolvedCPAKey" :proxy-call="proxyCall"/>
     </section>
@@ -119,7 +123,7 @@
                       :disabled="mgrSaving || !mgrCPAKeyInput">{{ $t('common.clear') }}
               </button>
             </div>
-            <small class="muted">{{ mgrHasBoundKey ? $t('config.accountAuthorization.bound') : $t('config.accountAuthorization.unbound') }}</small>
+            <small class="muted">{{ (mgrHasBoundKey && mgrBoundCPABase) ? $t('config.accountAuthorization.bound') : $t('config.accountAuthorization.unbound') }}</small>
           </label>
         </div>
         <p class="muted small-text" style="margin-top:8px">{{ $t('config.accountAuthorization.description') }}</p>
@@ -170,10 +174,11 @@ import ModelPricesView from './components/ModelPricesView.vue';
 import AccountActionsView from './components/AccountActionsView.vue';
 import InspectionView from './components/InspectionView.vue';
 import WindowKeeperView from './components/WindowKeeperView.vue';
+import CredentialsTab from './components/credentials/CredentialsTab.vue';
 import {isAccountOpsTabVisible} from './features.js';
 
 import {formatHealthText, HEALTH, LEGACY_SESSION_KEY, PROXY, readCPAAuthStoreKey, SESSION_KEY} from './utils/data.js';
-import {buildManagerConfigSaveBody} from './utils/managerConfigSave.js';
+import {DEFAULT_CPA_MANAGEMENT_BASE_URL, buildManagerConfigSaveBody} from './utils/managerConfigSave.js';
 import {initThemeBridge} from './themeBridge.js';
 import {
   clearManualLocaleOverride,
@@ -202,6 +207,7 @@ const showInspectionTab = computed(() => isAccountOpsTabVisible('inspection', ac
 const allTabs = computed(() => [
   {key: 'dashboard', label: t('tabs.dashboard')},
   {key: 'monitoring', label: t('tabs.monitoring')},
+  {key: 'credentials', label: t('tabs.credentials')},
   {key: 'model-prices', label: t('tabs.modelPrices')},
   ...(showAccountActionsTab.value ? [{key: 'account-actions', label: t('tabs.accountActions')}] : []),
   ...(showInspectionTab.value ? [{key: 'inspection', label: t('tabs.inspection')}] : []),
@@ -228,6 +234,7 @@ const errors = reactive({});
 const configData = ref(null);
 const dashboardView = ref(null);
 const monitoringView = ref(null);
+const credentialsView = ref(null);
 const modelPricesView = ref(null);
 const accountActionsView = ref(null);
 const inspectionView = ref(null);
@@ -392,6 +399,7 @@ async function refreshActive() {
   try {
     if (activeTab.value === 'dashboard') await (dashboardView.value ? dashboardView.value.refresh(true) : Promise.resolve());
     if (activeTab.value === 'monitoring') await (monitoringView.value ? monitoringView.value.refresh(true) : Promise.resolve());
+    if (activeTab.value === 'credentials') await (credentialsView.value ? credentialsView.value.refresh() : Promise.resolve());
     if (activeTab.value === 'inspection') await (inspectionView.value ? inspectionView.value.refresh(true) : Promise.resolve());
     if (activeTab.value === 'config') await loadConfig();
     if (activeTab.value === 'model-prices') await (modelPricesView.value ? modelPricesView.value.refresh(true) : Promise.resolve());
@@ -481,6 +489,11 @@ async function saveManagerConfig() {
   errors.config = '';
   configSaveMessageKey.value = '';
   try {
+    // Prefer defaulting empty Base URL when a management key is present (same as windowkeeper).
+    const keyEntered = (mgrCPAKeyInput.value || '').trim();
+    if (!(mgrCPABaseInput.value || '').trim() && (keyEntered || mgrHasBoundKey.value)) {
+      mgrCPABaseInput.value = DEFAULT_CPA_MANAGEMENT_BASE_URL;
+    }
     const body = buildManagerConfigSaveBody({
       currentConfig: mgrLoadedConfig.value || {},
       cpaBaseURL: mgrCPABaseInput.value,

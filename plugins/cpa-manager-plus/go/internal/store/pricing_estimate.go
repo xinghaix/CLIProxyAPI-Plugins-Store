@@ -13,19 +13,25 @@ func estimateEventCost(row eventRow, price Price) pricing.Estimate {
 			CacheCreation: price.CacheCreation,
 		}
 	}
-	return pricing.EstimateCost(pricing.Usage{
-		Model:                    row.Model,
-		InputTokens:              row.InputTokens,
-		OutputTokens:             row.OutputTokens,
-		CachedTokens:             row.CachedTokens,
-		CacheReadTokens:          row.CacheReadTokens,
-		CacheWriteTokens:         row.CacheCreationTokens,
-		ServiceTier:              row.ServiceTier,
-		ResponseServiceTier:      row.ObservedServiceTier,
-		ResponseTierAmbiguous:    row.ResponseTierAmbiguous,
-		ResponseObservationCount: row.ResponseUsageCount,
-		ResponseObservationError: row.ResponseObservationAmbiguous,
-	}, fallback)
+	accounting := pricing.NormalizeCacheAccounting(pricing.CacheInputContext{
+		ExecutorType:     row.ExecutorType,
+		Provider:         row.Provider,
+		ProviderSnapshot: row.Provider,
+		AuthType:         row.AuthType,
+		ResolvedModel:    row.Model,
+		RequestedModel:   requestedModel(row),
+		DisplayModel:     row.Model,
+	}, row.InputTokens, row.CachedTokens, 0, row.CacheReadTokens, row.CacheCreationTokens)
+	return pricing.EstimateCost(pricing.UsageFromNormalized(
+		row.Model,
+		accounting,
+		row.OutputTokens,
+		row.ServiceTier,
+		row.ObservedServiceTier,
+		row.ResponseTierAmbiguous,
+		row.ResponseUsageCount,
+		row.ResponseObservationAmbiguous,
+	), fallback)
 }
 
 func (s *stats) addEstimate(estimate pricing.Estimate) {

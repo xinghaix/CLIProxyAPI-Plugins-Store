@@ -75,7 +75,6 @@
       </div>
       <span v-if="activeMonitorNote" class="monitor-tabs-note">{{ activeMonitorNote }}</span>
     </div>
-
     <DataCard v-if="activeDataTab === 'events'">
       <div class="table-wrap monitor-table event-stream-table">
         <table>

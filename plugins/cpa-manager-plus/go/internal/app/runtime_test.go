@@ -37,7 +37,7 @@ func TestRuntimePersistsUsageAndStops(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	health := runtime.Health(context.Background())
-	if health["runtime"] != "local" || health["version"] != "0.5.38" || health["event_count"] != int64(1) {
+	if health["runtime"] != "local" || health["version"] != "0.5.42" || health["event_count"] != int64(1) {
 		t.Fatalf("health = %#v", health)
 	}
 	if health["usage_handle_calls"] != int64(1) || health["collector_enabled"] != true {
@@ -331,5 +331,29 @@ func TestNextTimePointDelayUsesProvidedClock(t *testing.T) {
 	}
 	if key != "2035-01-02T11:30:00Z" {
 		t.Fatalf("key = %q", key)
+	}
+}
+
+func TestCPAConnectionConfigErrorDistinguishesMissingParts(t *testing.T) {
+	do := func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error) {
+		return pricesync.HTTPResponse{}, nil
+	}
+	if err := cpaConnectionConfigError(connection{}, nil); err == nil || err.Error() != "host httpDo is not available" {
+		t.Fatalf("nil httpDo: %v", err)
+	}
+	if err := cpaConnectionConfigError(connection{ManagementKey: "k"}, do); err == nil || err.Error() != "CPA 管理 API 地址未配置" {
+		t.Fatalf("empty BaseURL: %v", err)
+	}
+	if err := cpaConnectionConfigError(connection{BaseURL: "http://127.0.0.1:8317"}, do); err == nil || err.Error() != "CPA 管理密钥未配置" {
+		t.Fatalf("empty ManagementKey: %v", err)
+	}
+	if err := cpaConnectionConfigError(connection{BaseURL: "http://127.0.0.1:8317", ManagementKey: "k"}, do); err != nil {
+		t.Fatalf("ready connection: %v", err)
+	}
+	if err := cpaConnectionConfigErrorEN(connection{ManagementKey: "k"}, do); err == nil || err.Error() != "CPA management API URL is not configured" {
+		t.Fatalf("EN empty BaseURL: %v", err)
+	}
+	if err := cpaConnectionConfigErrorEN(connection{BaseURL: "http://127.0.0.1:8317"}, do); err == nil || err.Error() != "CPA management key is not configured" {
+		t.Fatalf("EN empty ManagementKey: %v", err)
 	}
 }
