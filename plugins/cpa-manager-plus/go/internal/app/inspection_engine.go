@@ -113,8 +113,12 @@ func (r *Runtime) executeInspection(runCtx context.Context, settings CodexInspec
 		_, _ = r.store.FinishInspectionRun(context.WithoutCancel(runCtx), run, "failed", "host auth callback is unavailable")
 		return r.store.InspectionDetail(context.Background(), run.ID)
 	}
-	if connection.BaseURL == "" || connection.ManagementKey == "" {
-		_, _ = r.store.FinishInspectionRun(context.WithoutCancel(runCtx), run, "failed", "CPA 账号处置授权未配置；真实巡检需要管理 API")
+	if connection.BaseURL == "" {
+		_, _ = r.store.FinishInspectionRun(context.WithoutCancel(runCtx), run, "failed", "CPA 管理 API 地址未配置；真实巡检需要管理 API")
+		return r.store.InspectionDetail(context.Background(), run.ID)
+	}
+	if connection.ManagementKey == "" {
+		_, _ = r.store.FinishInspectionRun(context.WithoutCancel(runCtx), run, "failed", "CPA 管理密钥未配置；真实巡检需要管理 API")
 		return r.store.InspectionDetail(context.Background(), run.ID)
 	}
 	auths, err := list()
@@ -1184,8 +1188,8 @@ func (r *Runtime) callCPA(ctx context.Context, method, route string, body []byte
 	r.mu.Lock()
 	connection, do := r.connection, r.httpDo
 	r.mu.Unlock()
-	if do == nil || connection.BaseURL == "" || connection.ManagementKey == "" {
-		return pricesync.HTTPResponse{}, fmt.Errorf("CPA 账号处置授权未配置")
+	if err := cpaConnectionConfigError(connection, do); err != nil {
+		return pricesync.HTTPResponse{}, err
 	}
 	base, err := url.Parse(connection.BaseURL)
 	if err != nil || base.Scheme == "" || base.Host == "" {

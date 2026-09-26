@@ -25,7 +25,7 @@ import (
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/windowkeeper"
 )
 
-const runtimeVersion = "0.5.41"
+const runtimeVersion = "0.5.42"
 
 type connection struct {
 	BaseURL       string `json:"cpaBaseUrl"`
@@ -345,6 +345,36 @@ func (r *Runtime) SetHTTPDo(do func(context.Context, string, string, http.Header
 	r.httpDo = do
 }
 
+
+// cpaConnectionConfigError returns a zh-friendly error distinguishing empty BaseURL,
+// empty ManagementKey, and a missing host httpDo callback (used by callCPA / inspection).
+func cpaConnectionConfigError(connection connection, do func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)) error {
+	if do == nil {
+		return fmt.Errorf("host httpDo is not available")
+	}
+	if connection.BaseURL == "" {
+		return fmt.Errorf("CPA 管理 API 地址未配置")
+	}
+	if connection.ManagementKey == "" {
+		return fmt.Errorf("CPA 管理密钥未配置")
+	}
+	return nil
+}
+
+// cpaConnectionConfigErrorEN is the English counterpart for non-i18n English call sites.
+func cpaConnectionConfigErrorEN(connection connection, do func(context.Context, string, string, http.Header, []byte) (pricesync.HTTPResponse, error)) error {
+	if do == nil {
+		return fmt.Errorf("host httpDo is not available")
+	}
+	if connection.BaseURL == "" {
+		return fmt.Errorf("CPA management API URL is not configured")
+	}
+	if connection.ManagementKey == "" {
+		return fmt.Errorf("CPA management key is not configured")
+	}
+	return nil
+}
+
 func (r *Runtime) ExecuteCandidate(ctx context.Context, id int64, action string) error {
 	if action == "ignore" || action == "resolve" {
 		return r.store.ResolveCandidate(ctx, id, action)
@@ -356,8 +386,8 @@ func (r *Runtime) ExecuteCandidate(ctx context.Context, id int64, action string)
 	r.mu.Lock()
 	connection, do := r.connection, r.httpDo
 	r.mu.Unlock()
-	if do == nil || connection.BaseURL == "" || connection.ManagementKey == "" {
-		return fmt.Errorf("CPA connection is not configured")
+	if err := cpaConnectionConfigErrorEN(connection, do); err != nil {
+		return err
 	}
 	base, err := url.Parse(connection.BaseURL)
 	if err != nil || base.Scheme == "" || base.Host == "" {

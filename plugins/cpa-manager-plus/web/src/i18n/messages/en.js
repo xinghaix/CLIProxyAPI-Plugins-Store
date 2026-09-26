@@ -73,7 +73,7 @@ export default {
       keyPlaceholder: 'Leave empty to keep unchanged',
       bound: 'Management key is bound (leave empty to keep unchanged)',
       unbound: 'No management key is bound',
-      description: 'Provider probing during account inspection and auth-file enable, disable, or delete actions use this encrypted local SQLite configuration. Local request monitoring and model price synchronization do not use it.',
+      description: 'Both the management API URL and management key are required. Provider probing during account inspection and auth-file enable, disable, or delete actions use this encrypted local SQLite configuration. A bound key with an empty URL still counts as unbound. Local request monitoring and model price synchronization do not use it.',
     },
     runtime: {
       title: 'Runtime information',

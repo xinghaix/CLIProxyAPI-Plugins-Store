@@ -123,7 +123,7 @@
                       :disabled="mgrSaving || !mgrCPAKeyInput">{{ $t('common.clear') }}
               </button>
             </div>
-            <small class="muted">{{ mgrHasBoundKey ? $t('config.accountAuthorization.bound') : $t('config.accountAuthorization.unbound') }}</small>
+            <small class="muted">{{ (mgrHasBoundKey && mgrBoundCPABase) ? $t('config.accountAuthorization.bound') : $t('config.accountAuthorization.unbound') }}</small>
           </label>
         </div>
         <p class="muted small-text" style="margin-top:8px">{{ $t('config.accountAuthorization.description') }}</p>
@@ -178,7 +178,7 @@ import CredentialsTab from './components/credentials/CredentialsTab.vue';
 import {isAccountOpsTabVisible} from './features.js';
 
 import {formatHealthText, HEALTH, LEGACY_SESSION_KEY, PROXY, readCPAAuthStoreKey, SESSION_KEY} from './utils/data.js';
-import {buildManagerConfigSaveBody} from './utils/managerConfigSave.js';
+import {DEFAULT_CPA_MANAGEMENT_BASE_URL, buildManagerConfigSaveBody} from './utils/managerConfigSave.js';
 import {initThemeBridge} from './themeBridge.js';
 import {
   clearManualLocaleOverride,
@@ -489,6 +489,11 @@ async function saveManagerConfig() {
   errors.config = '';
   configSaveMessageKey.value = '';
   try {
+    // Prefer defaulting empty Base URL when a management key is present (same as windowkeeper).
+    const keyEntered = (mgrCPAKeyInput.value || '').trim();
+    if (!(mgrCPABaseInput.value || '').trim() && (keyEntered || mgrHasBoundKey.value)) {
+      mgrCPABaseInput.value = DEFAULT_CPA_MANAGEMENT_BASE_URL;
+    }
     const body = buildManagerConfigSaveBody({
       currentConfig: mgrLoadedConfig.value || {},
       cpaBaseURL: mgrCPABaseInput.value,

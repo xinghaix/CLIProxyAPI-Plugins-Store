@@ -13,7 +13,7 @@ export default {
       inspection: '账号巡检总控',
       saved: '总控已保存',
     },
-    accountAuthorization: { title: '账号处置授权', subtitle: '仅用于启用、禁用或删除认证文件', baseUrl: 'CPA 管理 API 地址', currentBinding: '当前绑定: {value}', managementKey: 'CPA 管理密钥', keyPlaceholder: '留空保持不变', bound: '已绑定密钥（留空不修改）', unbound: '未绑定密钥', description: '真实账号巡检的 provider 探测，以及启用、禁用或删除认证文件的处置都依赖此配置（加密保存在本地 SQLite）。本地请求监控和模型价格同步不依赖此配置。' },
+    accountAuthorization: { title: '账号处置授权', subtitle: '仅用于启用、禁用或删除认证文件', baseUrl: 'CPA 管理 API 地址', currentBinding: '当前绑定: {value}', managementKey: 'CPA 管理密钥', keyPlaceholder: '留空保持不变', bound: '已绑定密钥（留空不修改）', unbound: '未绑定密钥', description: '管理 API 地址与管理密钥需同时配置才算完成授权。真实账号巡检的 provider 探测，以及启用、禁用或删除认证文件的处置都依赖此配置（加密保存在本地 SQLite）。仅绑定密钥但地址为空时仍视为未绑定。本地请求监控和模型价格同步不依赖此配置。' },
     runtime: { title: '运行时信息', subtitle: '只读', source: '配置来源', dataDir: '数据目录', queueCapacity: '队列容量', batchSize: '写入批量', description: '队列容量和写入批量在插件启动时读取；如需调整，请修改插件 YAML 后重启 CPA。', localRuntime: '本地 Runtime', environment: '环境变量', database: '数据库', notLoaded: '未加载' },
     save: { loading: '正在加载插件配置…', clean: '当前与本地 Runtime 配置一致，修改本地用量采集或账号处置授权后可保存。', saved: '插件配置已保存并应用', savePlugin: '保存插件配置', reload: '重新加载', notLoaded: '配置尚未加载完成，请稍后或点击「重新加载」' },
   },
