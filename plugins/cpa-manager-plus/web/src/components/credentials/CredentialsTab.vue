@@ -1,10 +1,6 @@
 <template>
   <div class="credentials-tab">
-    <div class="cred-page-head">
-      <div class="cred-page-head-main">
-        <h2 class="cred-page-title">{{ t('tabs.credentials') }}</h2>
-        <p class="muted small-text cred-page-sub">{{ t('monitoring.credentials.pageSubtitle') }}</p>
-      </div>
+    <div class="cred-page-toolbar">
       <button
         class="btn primary"
         type="button"

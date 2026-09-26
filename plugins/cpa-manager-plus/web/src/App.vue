@@ -234,6 +234,7 @@ const errors = reactive({});
 const configData = ref(null);
 const dashboardView = ref(null);
 const monitoringView = ref(null);
+const credentialsView = ref(null);
 const modelPricesView = ref(null);
 const accountActionsView = ref(null);
 const inspectionView = ref(null);
