@@ -15,6 +15,8 @@ func estimateEventCost(row eventRow, price Price) pricing.Estimate {
 	}
 	return pricing.EstimateCost(pricing.Usage{
 		Model:                    row.Model,
+		Provider:                 row.Provider,
+		ExecutorType:             row.ExecutorType,
 		InputTokens:              row.InputTokens,
 		OutputTokens:             row.OutputTokens,
 		CachedTokens:             row.CachedTokens,

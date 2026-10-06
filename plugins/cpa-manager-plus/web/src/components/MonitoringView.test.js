@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRenderer, nextTick, ssrContextKey } from 'vue';
 import { createI18n } from 'vue-i18n';
 import MonitoringView from './MonitoringView.vue';
+import DashboardView from './DashboardView.vue';
 import en from '../i18n/messages/en.js';
 
 // Exercise the real setup/controller without a browser DOM or network calls.
@@ -275,5 +276,62 @@ describe('event model popup interactions', () => {
     state.showModelRouteTooltip(event, mappedOnly);
     expect(state.modelRouteTooltip.row).toEqual(mappedOnly);
     expect(state.modelRouteTooltip.row.showResponseModel).toBe(false);
+  });
+});
+
+
+describe('latest refresh snapshots', () => {
+  let app;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', { innerWidth: 1200, innerHeight: 800, setInterval, clearInterval });
+  });
+  afterEach(() => { app?.unmount(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  const cases = [
+    ['monitoring', MonitoringView, 'refresh', 'data', '/v0/management/monitoring/analytics'],
+    ['dashboard analytics', DashboardView, 'refreshAnalytics', 'analyticsData', '/v0/management/monitoring/analytics'],
+    ['dashboard summary', DashboardView, 'refreshDashboard', 'dashData', '/v0/management/dashboard/summary'],
+  ];
+
+  it.each(cases)('%s ignores an older response arriving last', async (_name, component, refresh, dataKey, path) => {
+    const pending = [];
+    const proxyCall = vi.fn(payload => new Promise((resolve, reject) => pending.push({ payload, resolve, reject })));
+    app = renderer.createApp({ ...component, render: () => null }, { ready: true, proxyCall });
+    app.use(createI18n({ legacy: false, locale: 'en', messages: { en } }));
+    app.provide(ssrContextKey, {});
+    const state = app.mount({}).$.setupState;
+    const old = pending.find(request => request.payload.path === path);
+    if (refresh === 'refresh') {
+      state.filters.model = 'new-model';
+      await nextTick();
+    } else {
+      state[refresh](true);
+    }
+    const latest = pending.filter(request => request.payload.path === path).at(-1);
+    expect(latest).not.toBe(old);
+    latest.resolve({ marker: 'latest', events: { items: [] } });
+    await nextTick();
+    expect(state[dataKey].marker).toBe('latest');
+    old.resolve({ marker: 'stale', events: { items: [] } });
+    await nextTick();
+    expect(state[dataKey].marker).toBe('latest');
+  });
+
+  it('a stale monitoring error cannot end the latest loading state', async () => {
+    const pending = [];
+    const proxyCall = vi.fn(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
+    app = renderer.createApp({ ...MonitoringView, render: () => null }, { ready: true, proxyCall });
+    app.use(createI18n({ legacy: false, locale: 'en', messages: { en } }));
+    app.provide(ssrContextKey, {});
+    const state = app.mount({}).$.setupState;
+    const latestRun = state.refresh(true);
+    pending[0].reject(new Error('old filter failed'));
+    await nextTick();
+    expect(state.error).toBe('');
+    expect(state.loading).toBe(true);
+    pending[1].resolve({ marker: 'latest', events: { items: [] } });
+    await latestRun;
+    expect(state.loading).toBe(false);
   });
 });

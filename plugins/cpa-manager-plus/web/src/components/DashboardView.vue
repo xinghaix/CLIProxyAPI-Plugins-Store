@@ -333,6 +333,7 @@ const HOUR_MS = 3600000;
 // ===== Dashboard state =====
 const dashData = ref(null);
 const dashLoading = ref(false);
+let dashSequence = 0;
 const dSummary = computed(() => dashData.value?.today || {});
 const rolling = computed(() => dashData.value?.rolling_30m || {});
 const modelCostRank = computed(() => dashData.value?.model_cost_rank || []);
@@ -357,6 +358,7 @@ const dashboardKpi = computed(() => {
 // ===== Analytics state =====
 const analyticsData = ref(null);
 const analyticsLoading = ref(false);
+let analyticsSequence = 0;
 const analyticsError = ref('');
 const analyticsTab = ref('overview');
 const selectedBucketMs = ref(null);
@@ -597,20 +599,22 @@ defineExpose({ refresh: refreshAll });
 async function refreshDashboard(force = false) {
   if (!props.ready) return;
   if (dashLoading.value && !force) return;
+  const sequence = ++dashSequence;
   dashLoading.value = true;
   try {
     const now = Date.now();
     const d = new Date();
     d.setHours(0, 0, 0, 0);
-    dashData.value = await props.proxyCall({
+    const snapshot = await props.proxyCall({
       method: 'GET',
       path: '/v0/management/dashboard/summary',
       query: `today_start_ms=${d.getTime()}&now_ms=${now}&top_models=5&recent_failures=5`,
     });
+    if (sequence === dashSequence) dashData.value = snapshot;
   } catch {
     // Keep previous dashboard snapshot on fetch failure.
   } finally {
-    dashLoading.value = false;
+    if (sequence === dashSequence) dashLoading.value = false;
   }
 }
 
@@ -618,19 +622,22 @@ async function refreshDashboard(force = false) {
 async function refreshAnalytics(force = false) {
   if (!props.ready) return;
   if (analyticsLoading.value && !force) return;
+  const sequence = ++analyticsSequence;
   analyticsLoading.value = true;
   analyticsError.value = '';
   try {
-    analyticsData.value = await props.proxyCall({
+    const snapshot = await props.proxyCall({
       method: 'POST',
       path: '/v0/management/monitoring/analytics',
       body: buildAnalyticsRequest(),
     });
+    if (sequence !== analyticsSequence) return;
+    analyticsData.value = snapshot;
     selectedBucketMs.value = null;
   } catch (e) {
-    analyticsError.value = e.message || String(e);
+    if (sequence === analyticsSequence) analyticsError.value = e.message || String(e);
   } finally {
-    analyticsLoading.value = false;
+    if (sequence === analyticsSequence) analyticsLoading.value = false;
   }
 }
 

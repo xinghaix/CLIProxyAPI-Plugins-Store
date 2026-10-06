@@ -179,3 +179,33 @@ func TestFrontendMapsEveryEstimateNote(t *testing.T) {
 		}
 	}
 }
+
+func TestProducerCacheBucketSemantics(t *testing.T) {
+	rates := &FlatRates{Input: 3, Output: 15, CachedInput: 9, CacheRead: 0.3, CacheCreation: 3.75}
+	cases := []struct {
+		name, provider, executor   string
+		input, cached, read, write int64
+		want                       float64
+		status                     string
+	}{
+		{"claude independent", "claude", "", 100, 50, 50, 20, 0.00069, StatusEstimated},
+		{"anthropic cache exceeds input", " ANTHROPIC ", "", 100, 500, 500, 20, 0.000825, StatusEstimated},
+		{"executor identifies custom provider", "custom", "ClaudeExecutor", 100, 50, 50, 20, 0.00069, StatusEstimated},
+		{"cache creation legacy alias", "claude", "", 100, 20, 0, 20, 0.000675, StatusEstimated},
+		{"read without legacy alias", "claude", "", 100, 0, 50, 20, 0.00069, StatusEstimated},
+		{"OpenAI inclusive buckets", "openai", "", 100, 50, 50, 20, 0.000915, StatusEstimated},
+		{"compat executor overrides Claude name", "claude", "OpenAICompatExecutor", 100, 50, 50, 20, 0.000915, StatusEstimated},
+		{"compat provider overrides Claude executor", "openai-compatible-test", "ClaudeExecutor", 100, 50, 50, 20, 0.000915, StatusEstimated},
+		{"OpenAI cache overflow remains invalid", "openai", "", 100, 500, 500, 20, 0, StatusInvalid},
+		{"negative Claude counters invalid", "claude", "", -1, 50, 50, 20, 0, StatusInvalid},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := EstimateCost(Usage{Model: "custom", Provider: tc.provider, ExecutorType: tc.executor, InputTokens: tc.input, OutputTokens: 20, CachedTokens: tc.cached, CacheReadTokens: tc.read, CacheWriteTokens: tc.write}, rates)
+			if result.Status != tc.status {
+				t.Fatalf("status=%s note=%s", result.Status, result.Note)
+			}
+			closeTo(t, result.Amount, tc.want)
+		})
+	}
+}

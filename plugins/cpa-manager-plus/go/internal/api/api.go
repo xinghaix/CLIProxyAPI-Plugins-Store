@@ -643,6 +643,9 @@ type analyticsPayload struct {
 		Models        []string `json:"models"`
 		Providers     []string `json:"providers"`
 		Accounts      []string `json:"accounts"`
+		AuthFiles     []string `json:"auth_files"`
+		MinLatencyMS  int64    `json:"min_latency_ms"`
+		CacheStatus   string   `json:"cache_status"`
 		APIKeyHashes  []string `json:"api_key_hashes"`
 		FailedOnly    bool     `json:"failed_only"`
 		IncludeFailed *bool    `json:"include_failed"`
@@ -664,5 +667,5 @@ func analyticsRequest(raw []byte) (store.AnalyticsRequest, error) {
 	if payload.Filters.IncludeFailed != nil {
 		includeFailed = *payload.Filters.IncludeFailed
 	}
-	return store.AnalyticsRequest{FromMS: payload.FromMS, ToMS: payload.ToMS, Limit: payload.Include.EventsPage.Limit, Models: payload.Filters.Models, Providers: payload.Filters.Providers, Accounts: payload.Filters.Accounts, APIKeyHashes: payload.Filters.APIKeyHashes, FailedOnly: payload.Filters.FailedOnly, IncludeFailed: includeFailed, Search: payload.Search, Granularity: payload.Include.Granularity}, nil
+	return store.AnalyticsRequest{FromMS: payload.FromMS, ToMS: payload.ToMS, Limit: payload.Include.EventsPage.Limit, Models: payload.Filters.Models, Providers: payload.Filters.Providers, Accounts: payload.Filters.Accounts, AuthFiles: payload.Filters.AuthFiles, MinLatencyMS: payload.Filters.MinLatencyMS, CacheStatus: payload.Filters.CacheStatus, APIKeyHashes: payload.Filters.APIKeyHashes, FailedOnly: payload.Filters.FailedOnly, IncludeFailed: includeFailed, Search: payload.Search, Granularity: payload.Include.Granularity}, nil
 }

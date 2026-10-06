@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
+	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -815,7 +818,7 @@ func (s *Store) ApplyAutoBanSignal(ctx context.Context, signal BanSignal, dryRun
 	}
 
 	if rule.Action == AutoBanActionCooldownEnable && rule.CooldownSource == "header_only" {
-		if _, ok := parseCooldownHeader(signal.Headers, signal.AtMS); !ok {
+		if _, ok := ParseAutoBanCooldownHeader(signal.Headers, signal.AtMS); !ok {
 			state.State = AutoBanStateFlagged
 			state.ActiveRuleID = &rule.ID
 			if err := appendAutoBanHistoryTx(ctx, tx, AutoBanHistory{AccountKey: state.AccountKey, Provider: state.Provider, RuleID: &rule.ID, EventType: "suppressed_missing_reset", FromState: fromState, ToState: state.State, Source: signal.Source, Action: rule.Action, StatusCode: intPtrValue(signal.StatusCode), ErrorKind: signal.ErrorKind, Message: "cooldown response header is required", Actor: "system", CreatedAtMS: signal.AtMS}); err != nil {
@@ -1093,13 +1096,13 @@ func resolveCooldownUntilMS(rule AutoBanRule, signal BanSignal, nowMS int64) int
 			return nowMS + *rule.CooldownMS
 		}
 	case "header_only":
-		if until, ok := parseCooldownHeader(signal.Headers, nowMS); ok {
+		if until, ok := ParseAutoBanCooldownHeader(signal.Headers, nowMS); ok {
 			return until
 		}
 		// missing header: short fallback so caller can suppress
 		return nowMS
 	default: // header_or_default
-		if until, ok := parseCooldownHeader(signal.Headers, nowMS); ok {
+		if until, ok := ParseAutoBanCooldownHeader(signal.Headers, nowMS); ok {
 			return until
 		}
 		if rule.CooldownMS != nil && *rule.CooldownMS > 0 {
@@ -1111,29 +1114,38 @@ func resolveCooldownUntilMS(rule AutoBanRule, signal BanSignal, nowMS int64) int
 	return nowMS + 5*60*60*1000
 }
 
-func parseCooldownHeader(headers map[string]string, nowMS int64) (int64, bool) {
-	if len(headers) == 0 {
-		return 0, false
+// ParseAutoBanCooldownHeader returns a valid reset time shared by rule evaluation
+// and the runtime's configured fallback. Invalid headers never suppress fallback.
+func ParseAutoBanCooldownHeader(headers map[string]string, nowMS int64) (int64, bool) {
+	values := make(http.Header, len(headers))
+	for key, value := range headers {
+		values.Set(strings.TrimSpace(key), strings.TrimSpace(value))
 	}
-	// Prefer X-Ratelimit-Reset (unix sec or ms)
-	for _, key := range []string{"X-Ratelimit-Reset", "x-ratelimit-reset", "X-RateLimit-Reset"} {
-		if raw, ok := headers[key]; ok && strings.TrimSpace(raw) != "" {
-			var n int64
-			if _, err := fmt.Sscan(strings.TrimSpace(raw), &n); err == nil && n > 0 {
-				if n < 1_000_000_000_000 { // seconds
-					return n * 1000, true
-				}
-				return n, true
+	for _, key := range []string{"X-Ratelimit-Reset", "X-Ratelimit-Reset-After", "Retry-After"} {
+		raw := values.Get(key)
+		n, err := strconv.ParseInt(raw, 10, 64)
+		var until int64
+		if key == "X-Ratelimit-Reset" {
+			if err != nil || n <= 0 {
+				continue
 			}
+			if n < 1_000_000_000_000 { // unix seconds; larger values are milliseconds
+				n *= 1000
+			}
+			until = n
+		} else if err == nil && n >= 0 && n <= math.MaxInt64/1000 && nowMS <= math.MaxInt64-n*1000 {
+			until = nowMS + n*1000
+		} else if key == "Retry-After" {
+			date, err := http.ParseTime(raw)
+			if err != nil {
+				continue
+			}
+			until = date.UnixMilli()
+		} else {
+			continue
 		}
-	}
-	for _, key := range []string{"Retry-After", "retry-after"} {
-		if raw, ok := headers[key]; ok && strings.TrimSpace(raw) != "" {
-			raw = strings.TrimSpace(raw)
-			var seconds int64
-			if _, err := fmt.Sscan(raw, &seconds); err == nil && seconds >= 0 {
-				return nowMS + seconds*1000, true
-			}
+		if until > 0 && until >= nowMS {
+			return until, true
 		}
 	}
 	return 0, false

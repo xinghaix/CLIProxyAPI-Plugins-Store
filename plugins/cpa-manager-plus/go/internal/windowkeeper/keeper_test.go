@@ -9,6 +9,8 @@ import (
 )
 
 type mockStore struct {
+	// ponytail: one lock serializes mock storage; split only if test contention matters.
+	mu       sync.Mutex
 	settings Settings
 	accounts []Account
 	windows  map[string][]State
@@ -25,13 +27,19 @@ func newMockStore() *mockStore {
 }
 
 func (m *mockStore) LoadSettings(ctx context.Context) (Settings, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.settings, true, nil
 }
 func (m *mockStore) SaveSettings(ctx context.Context, s Settings) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.settings = s
 	return nil
 }
 func (m *mockStore) TouchAccount(ctx context.Context, a Account) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for i, existing := range m.accounts {
 		if existing.AuthID == a.AuthID {
 			m.accounts[i] = a
@@ -42,9 +50,13 @@ func (m *mockStore) TouchAccount(ctx context.Context, a Account) error {
 	return nil
 }
 func (m *mockStore) ListAccounts(ctx context.Context) ([]Account, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return append([]Account(nil), m.accounts...), nil
 }
 func (m *mockStore) SetPlan(ctx context.Context, authID, plan, group, mismatch string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for i := range m.accounts {
 		if m.accounts[i].AuthID == authID {
 			m.accounts[i].PlanType = plan
@@ -55,6 +67,8 @@ func (m *mockStore) SetPlan(ctx context.Context, authID, plan, group, mismatch s
 	return nil
 }
 func (m *mockStore) SetOverride(ctx context.Context, authID, raw string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for i := range m.accounts {
 		if m.accounts[i].AuthID == authID {
 			m.accounts[i].OverrideJSON = raw
@@ -63,6 +77,8 @@ func (m *mockStore) SetOverride(ctx context.Context, authID, raw string) error {
 	return nil
 }
 func (m *mockStore) SetPause(ctx context.Context, authID, reason string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for i := range m.accounts {
 		if m.accounts[i].AuthID == authID {
 			m.accounts[i].PauseReason = reason
@@ -71,6 +87,8 @@ func (m *mockStore) SetPause(ctx context.Context, authID, reason string) error {
 	return nil
 }
 func (m *mockStore) SetNotBefore(ctx context.Context, authID string, when time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for i := range m.accounts {
 		if m.accounts[i].AuthID == authID {
 			m.accounts[i].NotBefore = when
@@ -79,13 +97,19 @@ func (m *mockStore) SetNotBefore(ctx context.Context, authID string, when time.T
 	return nil
 }
 func (m *mockStore) SaveWindows(ctx context.Context, authID string, states []State) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.windows[authID] = append([]State(nil), states...)
 	return nil
 }
 func (m *mockStore) LoadWindows(ctx context.Context, authID string) ([]State, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return append([]State(nil), m.windows[authID]...), nil
 }
 func (m *mockStore) Claim(ctx context.Context, authID, owner string, now, until time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if cur, ok := m.leases[authID]; ok && cur != "" {
 		return false, nil
 	}
@@ -93,10 +117,14 @@ func (m *mockStore) Claim(ctx context.Context, authID, owner string, now, until 
 	return true, nil
 }
 func (m *mockStore) Release(ctx context.Context, authID, owner string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	delete(m.leases, authID)
 	return nil
 }
 func (m *mockStore) ReleaseAll(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.leases = make(map[string]string)
 	return nil
 }
@@ -104,6 +132,8 @@ func (m *mockStore) RequeueStarted(ctx context.Context, now time.Time) error {
 	return nil
 }
 func (m *mockStore) AttemptCount(ctx context.Context, authID, generation string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	c := 0
 	for _, a := range m.attempts {
 		if a.AccountID == authID && a.GenerationKey == generation {
@@ -113,6 +143,8 @@ func (m *mockStore) AttemptCount(ctx context.Context, authID, generation string)
 	return c, nil
 }
 func (m *mockStore) HasSuccess(ctx context.Context, authID, generation string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, a := range m.attempts {
 		if a.AccountID == authID && a.GenerationKey == generation && a.Status == "succeeded" {
 			return true, nil
@@ -121,11 +153,15 @@ func (m *mockStore) HasSuccess(ctx context.Context, authID, generation string) (
 	return false, nil
 }
 func (m *mockStore) StartAttempt(ctx context.Context, attempt Attempt) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	attempt.ID = int64(len(m.attempts) + 1)
 	m.attempts = append(m.attempts, attempt)
 	return attempt.ID, nil
 }
 func (m *mockStore) FinishAttempt(ctx context.Context, id int64, finish AttemptFinish) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for i := range m.attempts {
 		if m.attempts[i].ID == id {
 			m.attempts[i].Status = finish.Status
@@ -143,6 +179,8 @@ func (m *mockStore) FinishAttempt(ctx context.Context, id int64, finish AttemptF
 	return nil
 }
 func (m *mockStore) ListAttempts(ctx context.Context, limit int) ([]Attempt, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return append([]Attempt(nil), m.attempts...), nil
 }
 
@@ -309,15 +347,15 @@ func TestProcessParallelAndErrorIsolation(t *testing.T) {
 	sender := &syncSender{}
 
 	k := &Keeper{
-		Store:   store,
+		Store: store,
 		Catalog: mockCatalog{refs: []AccountRef{
 			{AuthID: "acc1", Email: "acc1@example.com", Plan: "plus"},
 			{AuthID: "acc2", Email: "acc2@example.com", Plan: "plus"},
 		}},
-		Prober:  &mockFnProber{fn: prober.fn},
-		Sender:  &mockFnSender{fn: func() { sender.mu.Lock(); sender.calls++; sender.mu.Unlock() }},
-		Owner:   "test",
-		Now:     func() time.Time { return now },
+		Prober: &mockFnProber{fn: prober.fn},
+		Sender: &mockFnSender{fn: func() { sender.mu.Lock(); sender.calls++; sender.mu.Unlock() }},
+		Owner:  "test",
+		Now:    func() time.Time { return now },
 	}
 
 	// First pass sets up accounts in blocked state
@@ -339,7 +377,6 @@ func TestProcessParallelAndErrorIsolation(t *testing.T) {
 		t.Fatalf("expected both accounts to be sent in parallel, got %d calls", calls)
 	}
 }
-
 
 func TestActivateAlwaysRecordsAttemptEvenAfterSuccess(t *testing.T) {
 	ctx := context.Background()
@@ -418,9 +455,9 @@ func TestActivateRecordsFailedAttemptWithDetails(t *testing.T) {
 		err: statusError{code: 400, msg: "bad request"},
 	}
 	k := &Keeper{
-		Store: store,
+		Store:   store,
 		Catalog: mockCatalog{refs: []AccountRef{{AuthID: "ada", Email: "ada@example", Plan: "plus"}}},
-		Prober: probe, Sender: sender, Owner: "test",
+		Prober:  probe, Sender: sender, Owner: "test",
 		Now: func() time.Time { return now },
 	}
 	if err := k.Activate(ctx, "ada"); err != nil {

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -133,20 +134,14 @@ func (r *Runtime) applyAutoBanSignal(ctx context.Context, signal store.BanSignal
 }
 
 func (r *Runtime) autoBanCooldownUntil(rule *store.AutoBanRule, signal store.BanSignal, settings AutoBanSettings, fallback *int64) *int64 {
-	if rule == nil || rule.CooldownSource != "header_or_default" || rule.CooldownMS != nil || hasAutoBanResetHeader(signal.Headers) {
+	if rule == nil || rule.CooldownSource != "header_or_default" || (rule.CooldownMS != nil && *rule.CooldownMS > 0) {
+		return fallback
+	}
+	if _, ok := store.ParseAutoBanCooldownHeader(signal.Headers, signal.AtMS); ok {
 		return fallback
 	}
 	until := signal.AtMS + int64(settings.DefaultCodexCooldownHours)*int64(time.Hour/time.Millisecond)
 	return &until
-}
-
-func hasAutoBanResetHeader(headers map[string]string) bool {
-	for key := range headers {
-		if strings.EqualFold(key, "x-ratelimit-reset") || strings.EqualFold(key, "x-ratelimit-reset-after") || strings.EqualFold(key, "retry-after") {
-			return true
-		}
-	}
-	return false
 }
 
 func (r *Runtime) autoBanCapabilities(signal store.BanSignal) (int, string) {
@@ -215,6 +210,9 @@ func (r *Runtime) scheduleAutoBan(ctx context.Context) {
 func (r *Runtime) executeAutoBanStateAction(ctx context.Context, state store.AutoBanAccountState, action string, cooldownUntilMS *int64, actor, source string) error {
 	r.autoBanActionMu.Lock()
 	defer r.autoBanActionMu.Unlock()
+	if actor != "user" && r.AutoBanSettings().DryRun {
+		return nil
+	}
 	if state.FileName == "" || state.AuthIndex == "" {
 		_, _ = r.store.TransitionAutoBanAction(context.WithoutCancel(ctx), state.AccountKey, action, false, "account has no manageable auth-file", cooldownUntilMS, actor, source)
 		return fmt.Errorf("account has no manageable auth-file")
@@ -244,6 +242,9 @@ func (r *Runtime) executeAutoBanStateAction(ctx context.Context, state store.Aut
 		return err
 	}
 	_, err = r.store.TransitionAutoBanAction(context.WithoutCancel(ctx), state.AccountKey, action, true, "", cooldownUntilMS, actor, source)
+	if actor == "user" {
+		err = errors.Join(err, r.store.DeleteDisableOwnership(context.WithoutCancel(ctx), state.FileName))
+	}
 	return err
 }
 
