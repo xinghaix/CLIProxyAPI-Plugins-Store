@@ -289,7 +289,7 @@ func (r *Runtime) probeInspectionAccount(ctx context.Context, settings CodexInsp
 		return base
 	}
 	if result.Disabled && result.Action == "keep" && (result.ErrorKind == "healthy" || result.ErrorKind == "inference_healthy") {
-		if _, owned, err := r.store.DisableOwnership(ctx, result.FileName); err == nil && owned {
+		if r.inspectionOwnsDisable(ctx, result) {
 			result.Action = "enable"
 			result.ActionReason = "巡检此前自动禁用的凭证已恢复健康"
 			result.AutoRecoverEligible = true
@@ -1111,11 +1111,7 @@ func resolveInspectionHTTPResult(result store.InspectionResult, response inspect
 	body := strings.ToLower(response.BodyText)
 	switch {
 	case status >= 200 && status < 300:
-		if result.Disabled {
-			result.Action, result.ActionReason, result.ErrorKind = "keep", "凭证已禁用，等待自动恢复归属校验", "disabled"
-		} else {
-			result.Action, result.ActionReason, result.ErrorKind = "keep", "provider 探测正常", "healthy"
-		}
+		result.Action, result.ActionReason, result.ErrorKind = "keep", "provider 探测正常", "healthy"
 		result = applyInspectionQuotaThreshold(result, threshold)
 	case status == http.StatusUnauthorized || strings.Contains(body, "invalid_grant") || strings.Contains(body, "invalid token"):
 		result.Action, result.ActionReason, result.ErrorKind = "reauth", "认证凭证已失效，需要重新登录", "auth_invalid"
@@ -1279,7 +1275,55 @@ func (r *Runtime) executeInspectionActions(ctx context.Context, runID int64, ids
 	return map[string]any{"detail": detail, "outcomes": outcomes}, nil
 }
 
+func (r *Runtime) inspectionOwnsDisable(ctx context.Context, result store.InspectionResult) bool {
+	ownership, owned, err := r.store.DisableOwnership(ctx, result.FileName)
+	return err == nil && owned && result.AuthIndex != "" && ownership.AuthIndex == result.AuthIndex && ownership.Provider == result.Provider && ownership.AccountID == result.AccountID
+}
+
 func (r *Runtime) executeInspectionAction(ctx context.Context, result store.InspectionResult, automatic bool) error {
+	if automatic {
+		settings := r.AutoBanSettings()
+		if settings.Enabled && settings.DryRun {
+			return fmt.Errorf("automatic account action suppressed by auto-ban dry-run")
+		}
+		r.mu.Lock()
+		list := r.authList
+		r.mu.Unlock()
+		if list == nil {
+			return fmt.Errorf("host auth callback is unavailable")
+		}
+		auths, err := list()
+		if err != nil {
+			return fmt.Errorf("current credential lookup failed: %w", err)
+		}
+		if strings.TrimSpace(result.FileName) == "" || strings.TrimSpace(result.Provider) == "" || strings.TrimSpace(result.AuthIndex) == "" {
+			return fmt.Errorf("automatic action requires credential identity")
+		}
+		matches := []pluginapi.HostAuthFileEntry{}
+		for _, auth := range auths {
+			if strings.TrimSpace(auth.Name) == "" && strings.TrimSpace(auth.ID) == "" {
+				continue
+			}
+			if firstNonEmpty(auth.Name, auth.ID) == result.FileName {
+				matches = append(matches, auth)
+			}
+		}
+		if len(matches) != 1 {
+			return fmt.Errorf("current credential is missing or ambiguous")
+		}
+		accounts := filterInspectionAccounts(matches, CodexInspectionSettings{TargetTypes: []string{result.Provider}})
+		if len(accounts) != 1 || strings.TrimSpace(accounts[0].AuthIndex) == "" || strings.TrimSpace(accounts[0].AuthIndex) != strings.TrimSpace(result.AuthIndex) || strings.TrimSpace(accounts[0].AccountID) != strings.TrimSpace(result.AccountID) {
+			return fmt.Errorf("current credential identity does not match inspection result")
+		}
+		current := accounts[0]
+		// ponytail: host lookup and PATCH/DELETE are not atomic; upstream compare-and-set is needed to close TOCTOU.
+		if result.Action == "disable" && (result.Disabled || current.Disabled) {
+			return fmt.Errorf("credential is already disabled; automatic ownership cannot be claimed")
+		}
+		if result.Action == "enable" && (!current.Disabled || !result.Disabled || !result.AutoRecoverEligible || (result.ErrorKind != "healthy" && result.ErrorKind != "inference_healthy") || !r.inspectionOwnsDisable(ctx, result) || r.autoBanBlocksInspectionRecover(result)) {
+			return fmt.Errorf("automatic recovery requires a healthy credential with matching disable ownership and no auto-ban hold")
+		}
+	}
 	var method, route string
 	var body []byte
 	switch result.Action {

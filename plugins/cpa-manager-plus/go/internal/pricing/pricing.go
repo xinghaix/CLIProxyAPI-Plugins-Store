@@ -55,10 +55,11 @@ func EstimateNotes() []string {
 	}
 }
 
-// Usage contains per-request counters. InputTokens is the OpenAI input total;
-// cached counters are subsets of that total. CachedTokens and CacheReadTokens
-// can repeat the same OpenAI count, so the larger value prevents double charge.
+// Usage contains producer counters. OpenAI input includes cached buckets;
+// Claude input excludes them. Provider/ExecutorType preserve that distinction.
+// CachedTokens is a legacy alias (Claude can alias cache creation when read is zero).
 type Usage struct {
+	Provider, ExecutorType   string
 	Model                    string
 	InputTokens              int64
 	OutputTokens             int64
@@ -99,21 +100,21 @@ type ModelSchedule struct {
 // Estimate is an API-price-equivalent estimate. A zero Amount is valid only
 // when StatusEstimated; callers must not show an unavailable estimate as zero.
 type Estimate struct {
-	Amount            float64 `json:"amount"`
-	Currency          string  `json:"currency"`
-	Basis             string  `json:"basis"`
-	Status            string  `json:"status"`
-	Model             string  `json:"model,omitempty"`
+	Amount                 float64 `json:"amount"`
+	Currency               string  `json:"currency"`
+	Basis                  string  `json:"basis"`
+	Status                 string  `json:"status"`
+	Model                  string  `json:"model,omitempty"`
 	ScheduleID             string  `json:"schedule_id,omitempty"`
 	ContextTier            string  `json:"context_tier,omitempty"`
 	ContextThresholdTokens int64   `json:"context_threshold_tokens,omitempty"`
 	ServiceTier            string  `json:"service_tier,omitempty"`
-	TierSource        string  `json:"tier_source,omitempty"`
-	UncachedInputCost float64 `json:"uncached_input_cost,omitempty"`
-	CachedInputCost   float64 `json:"cached_input_cost,omitempty"`
-	CacheWriteCost    float64 `json:"cache_write_cost,omitempty"`
-	OutputCost        float64 `json:"output_cost,omitempty"`
-	Note              string  `json:"note,omitempty"`
+	TierSource             string  `json:"tier_source,omitempty"`
+	UncachedInputCost      float64 `json:"uncached_input_cost,omitempty"`
+	CachedInputCost        float64 `json:"cached_input_cost,omitempty"`
+	CacheWriteCost         float64 `json:"cache_write_cost,omitempty"`
+	OutputCost             float64 `json:"output_cost,omitempty"`
+	Note                   string  `json:"note,omitempty"`
 }
 
 // officialRates deliberately contains only schedules verified from primary pricing data.
@@ -136,8 +137,8 @@ var officialRates = map[string]ModelSchedule{
 	},
 	"gpt-5.6-sol": {
 		ContextThresholdTokens: LongContextTokens,
-		Standard: bands(rates(4, 0.40, 5, 20, true, true), rates(8, 0.80, 10, 30, true, true)),
-		Fast:     &PriceBands{Short: rates(8, 0.80, 10, 40, true, true), Long: ratePtr(rates(16, 1.60, 20, 60, true, true))},
+		Standard:               bands(rates(4, 0.40, 5, 20, true, true), rates(8, 0.80, 10, 30, true, true)),
+		Fast:                   &PriceBands{Short: rates(8, 0.80, 10, 40, true, true), Long: ratePtr(rates(16, 1.60, 20, 60, true, true))},
 	},
 }
 
@@ -279,6 +280,9 @@ func estimateFlat(usage Usage, model string, flat FlatRates) Estimate {
 }
 
 func flatCachedRate(usage Usage, flat FlatRates) float64 {
+	if IndependentCacheBuckets(usage) {
+		return flat.CacheRead
+	}
 	if usage.CacheReadTokens > usage.CachedTokens {
 		return flat.CacheRead
 	}
@@ -321,7 +325,22 @@ func hasBillableTokens(usage Usage) bool {
 	return usage.InputTokens > 0 || usage.OutputTokens > 0 || usage.CachedTokens > 0 || usage.CacheReadTokens > 0 || usage.CacheWriteTokens > 0
 }
 
+// IndependentCacheBuckets matches CPA v7.3.9 tokenAccountingSemanticsFor,
+// including the compat override, for both pricing and cache-status filtering.
+func IndependentCacheBuckets(usage Usage) bool {
+	provider := strings.ToLower(strings.TrimSpace(usage.Provider))
+	executor := strings.ToLower(strings.TrimSpace(usage.ExecutorType))
+	if executor == "openaicompatexecutor" || provider == "openai-compatibility" || strings.HasPrefix(provider, "openai-compatible-") {
+		return false
+	}
+	value := provider + " " + executor
+	return strings.Contains(value, "claude") || strings.Contains(value, "anthropic")
+}
+
 func cachedInputCount(usage Usage) (int64, bool) {
+	if IndependentCacheBuckets(usage) {
+		return usage.CacheReadTokens, true
+	}
 	cached := max64(usage.CachedTokens, usage.CacheReadTokens)
 	if cached > usage.InputTokens || usage.CacheWriteTokens > usage.InputTokens-cached {
 		return 0, false
@@ -330,7 +349,10 @@ func cachedInputCount(usage Usage) (int64, bool) {
 }
 
 func applyRates(result Estimate, usage Usage, cached int64, inputRate, cachedRate, writeRate, outputRate float64, note string) Estimate {
-	uncached := usage.InputTokens - cached - usage.CacheWriteTokens
+	uncached := usage.InputTokens
+	if !IndependentCacheBuckets(usage) {
+		uncached -= cached + usage.CacheWriteTokens
+	}
 	divisor := float64(TokensPerPriceUnit)
 	result.UncachedInputCost = float64(uncached) / divisor * inputRate
 	result.CachedInputCost = float64(cached) / divisor * cachedRate

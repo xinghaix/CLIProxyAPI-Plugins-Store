@@ -489,6 +489,7 @@ const {t, locale} = useI18n();
 
 const data = ref(null);
 const loading = ref(false);
+let refreshSequence = 0;
 const error = ref('');
 const timeRange = ref('today');
 const customStart = ref(toLocalInput(startOfTodayMs()));
@@ -656,18 +657,20 @@ onBeforeUnmount(() => {
 async function refresh(force = false) {
   if (!props.ready) return;
   if (loading.value && !force) return;
+  const sequence = ++refreshSequence;
   loading.value = true;
   error.value = '';
   try {
     const analyticsData = await props.proxyCall({method: 'POST', path: '/v0/management/monitoring/analytics', body: buildAnalyticsRequest()});
+    if (sequence !== refreshSequence) return;
     if (analyticsData && analyticsData.error) {
       error.value = String(analyticsData.error);
     }
     data.value = analyticsData;
   } catch (e) {
-    error.value = e.message || String(e);
+    if (sequence === refreshSequence) error.value = e.message || String(e);
   } finally {
-    loading.value = false;
+    if (sequence === refreshSequence) loading.value = false;
   }
 }
 

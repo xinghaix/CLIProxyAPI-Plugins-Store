@@ -17,6 +17,10 @@ func (s *Store) Dashboard(ctx context.Context, todayStartMS, nowMS int64) (map[s
 	if err != nil {
 		return nil, err
 	}
+	rolling30m, err := s.rolling(ctx, nowMS)
+	if err != nil {
+		return nil, err
+	}
 	today := analytics["summary"]
 	models, _ := analytics["model_stats"].([]map[string]any)
 	sort.Slice(models, func(i, j int) bool { return models[i]["cost"].(float64) > models[j]["cost"].(float64) })
@@ -26,7 +30,7 @@ func (s *Store) Dashboard(ctx context.Context, todayStartMS, nowMS int64) (map[s
 	failures, _ := analytics["recent_failures"].([]map[string]any)
 	return map[string]any{
 		"today":            today,
-		"rolling_30m":      rolling(analytics["timeline"]),
+		"rolling_30m":      rolling30m,
 		"traffic_timeline": analytics["timeline"],
 		"top_models_today": models,
 		"model_cost_rank":  models,
@@ -37,15 +41,11 @@ func (s *Store) Dashboard(ctx context.Context, todayStartMS, nowMS int64) (map[s
 	}, nil
 }
 
-func rolling(value any) map[string]any {
-	rows, _ := value.([]map[string]any)
-	if len(rows) == 0 {
-		return map[string]any{"rpm": 0, "tpm": 0, "total_calls": 0, "total_tokens": 0}
-	}
+func (s *Store) rolling(ctx context.Context, nowMS int64) (map[string]any, error) {
 	var calls, tokens int64
-	for _, row := range rows[max(0, len(rows)-1):] {
-		calls += row["calls"].(int64)
-		tokens += row["tokens"].(int64)
+	err := s.db.QueryRowContext(ctx, `select count(*), coalesce(sum(total_tokens),0) from usage_events where timestamp_ms >= ? and timestamp_ms <= ?`, nowMS-30*60*1000, nowMS).Scan(&calls, &tokens)
+	if err != nil {
+		return nil, err
 	}
-	return map[string]any{"rpm": calls / 30, "tpm": tokens / 30, "total_calls": calls, "total_tokens": tokens}
+	return map[string]any{"rpm": float64(calls) / 30, "tpm": float64(tokens) / 30, "total_calls": calls, "total_tokens": tokens}, nil
 }

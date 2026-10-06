@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricing"
 )
 
 type Price struct {
@@ -29,6 +31,9 @@ type AnalyticsRequest struct {
 	Models        []string
 	Providers     []string
 	Accounts      []string
+	AuthFiles     []string
+	MinLatencyMS  int64
+	CacheStatus   string
 	APIKeyHashes  []string
 	FailedOnly    bool
 	IncludeFailed bool
@@ -169,10 +174,11 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 		query += ` and failed = 0`
 	}
 	search := strings.TrimSpace(request.Search)
-	query += ` order by timestamp_ms desc limit ?`
-	args = append(args, 10_000)
+	// ponytail: O(N) candidate memory/aggregation for this range; SQL aggregation
+	// is the upgrade path if large ranges become costly. Limit only display rows.
+	query += ` order by timestamp_ms desc`
 	// Count matches globally, not only inside the selected time/filter window.
-	// The correlation index restricts grouping to keys in this bounded candidate set.
+	// The correlation index restricts grouping to keys in this time window.
 	query = `with selected as (` + query + `), usage_matches as (
 	 select response_correlation_key, count(*) as usage_count from usage_events
 	 where response_correlation_key in (select response_correlation_key from selected)
@@ -214,6 +220,19 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 }
 
 func matches(row eventRow, request AnalyticsRequest) bool {
+	if !includes(request.AuthFiles, row.AuthID) && !includes(request.AuthFiles, accountSnapshot(row)) {
+		return false
+	}
+	if request.MinLatencyMS > 0 && (!row.LatencyMS.Valid || row.LatencyMS.Int64 < request.MinLatencyMS) {
+		return false
+	}
+	cached := max64(row.CachedTokens, row.CacheReadTokens)
+	if pricing.IndependentCacheBuckets(pricing.Usage{Provider: row.Provider, ExecutorType: row.ExecutorType}) {
+		cached = row.CacheReadTokens
+	}
+	if (request.CacheStatus == "hit" && cached <= 0) || (request.CacheStatus == "miss" && cached != 0) {
+		return false
+	}
 	return includesModel(request.Models, row) && includes(request.Providers, row.Provider) && includes(request.Accounts, accountSnapshot(row)) && includes(request.APIKeyHashes, apiKeySnapshot(row))
 }
 

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 	"time"
@@ -329,5 +330,65 @@ func TestCacheHitRateClampsMalformedValues(t *testing.T) {
 	}
 	if got := cacheHitRate(1_500, 0); got != 0 {
 		t.Fatalf("empty cache hit rate = %v, want 0", got)
+	}
+}
+
+func TestMatchesAdvertisedFilters(t *testing.T) {
+	row := eventRow{AuthID: "slow.json", AuthIndex: "slow-index", LatencyMS: sql.NullInt64{Int64: 1000, Valid: true}, CacheReadTokens: 7}
+	cases := []struct {
+		name    string
+		request AnalyticsRequest
+		row     eventRow
+		want    bool
+	}{
+		{"auth filename", AnalyticsRequest{AuthFiles: []string{"slow.json"}}, row, true},
+		{"UI account snapshot", AnalyticsRequest{AuthFiles: []string{"slow-index"}}, row, true},
+		{"other auth", AnalyticsRequest{AuthFiles: []string{"fast.json"}}, row, false},
+		{"latency equal", AnalyticsRequest{MinLatencyMS: 1000}, row, true},
+		{"latency below threshold", AnalyticsRequest{MinLatencyMS: 1001}, row, false},
+		{"latency null", AnalyticsRequest{MinLatencyMS: 1}, eventRow{LatencyMS: sql.NullInt64{Int64: 2000}}, false},
+		{"read cache hit", AnalyticsRequest{CacheStatus: "hit"}, row, true},
+		{"cached alias hit", AnalyticsRequest{CacheStatus: "hit"}, eventRow{CachedTokens: 7}, true},
+		{"read is not miss", AnalyticsRequest{CacheStatus: "miss"}, row, false},
+		{"creation is miss", AnalyticsRequest{CacheStatus: "miss"}, eventRow{CacheCreationTokens: 7}, true},
+		{"creation is not hit", AnalyticsRequest{CacheStatus: "hit"}, eventRow{CacheCreationTokens: 7}, false},
+		{"combined filters", AnalyticsRequest{AuthFiles: []string{"slow-index"}, MinLatencyMS: 1000, CacheStatus: "hit"}, row, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matches(tc.row, tc.request); got != tc.want {
+				t.Fatalf("matches=%v want=%v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMatchesProducerCacheStatus(t *testing.T) {
+	cases := []struct {
+		name, provider, executor string
+		cached, read, creation   int64
+		hit                      bool
+	}{
+		{"claude creation alias", "claude", "", 7, 0, 7, false},
+		{"anthropic creation alias", " ANTHROPIC ", "", 7, 0, 7, false},
+		{"claude executor creation alias", "custom", "ClaudeExecutor", 7, 0, 7, false},
+		{"anthropic executor creation alias", "custom", "AnthropicExecutor", 7, 0, 7, false},
+		{"claude read", "claude", "", 7, 3, 7, true},
+		{"OpenAI cached", "openai", "", 7, 0, 7, true},
+		{"OpenAI read", "openai", "", 0, 3, 7, true},
+		{"compat executor overrides Claude", "claude", "OpenAICompatExecutor", 7, 0, 7, true},
+		{"compat provider overrides Claude executor", "openai-compatibility", "ClaudeExecutor", 7, 0, 7, true},
+		{"compat prefix overrides Anthropic executor", "openai-compatible-test", "AnthropicExecutor", 7, 0, 7, true},
+	}
+	for _, tc := range cases {
+		for _, status := range []string{"hit", "miss"} {
+			t.Run(tc.name+"/"+status, func(t *testing.T) {
+				row := eventRow{Provider: tc.provider, ExecutorType: tc.executor, CachedTokens: tc.cached, CacheReadTokens: tc.read, CacheCreationTokens: tc.creation}
+				want := tc.hit == (status == "hit")
+				if got := matches(row, AnalyticsRequest{CacheStatus: status}); got != want {
+					t.Fatalf("matches(%s)=%v want=%v", status, got, want)
+				}
+			})
+		}
 	}
 }

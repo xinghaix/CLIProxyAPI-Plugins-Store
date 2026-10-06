@@ -457,12 +457,15 @@ func (r *Runtime) Close() error {
 	}
 	r.CancelInspection()
 	r.cancel()
-	done := make(chan struct{})
-	go func() { r.wait.Wait(); close(done) }()
+	done := make(chan error, 1)
+	go func() {
+		r.wait.Wait()
+		done <- r.store.Close() // Still release the store if Close times out first.
+	}()
 	select {
-	case <-done:
+	case err := <-done:
+		return err
 	case <-time.After(10 * time.Second):
 		return fmt.Errorf("local runtime did not stop within 10 seconds")
 	}
-	return r.store.Close()
 }

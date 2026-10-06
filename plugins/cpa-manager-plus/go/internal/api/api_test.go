@@ -11,6 +11,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/app"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricesync"
+	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/store"
 )
 
 func TestLocalDispatcherStoresAndQueriesPrices(t *testing.T) {
@@ -275,5 +276,40 @@ func TestLegacyAccountOpsMastersRoutes(t *testing.T) {
 	cfgMasters := cfgPayload["config"].(map[string]any)["legacyAccountOpsMasters"].(map[string]any)
 	if cfgMasters["autoBan"] != true || cfgMasters["inspection"] != false {
 		t.Fatalf("config masters = %#v", cfgMasters)
+	}
+}
+
+func TestMonitoringAnalyticsAppliesAdvertisedFilters(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := app.New([]byte("data_dir: " + t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	_, err = runtime.Store().InsertEvents(ctx, []store.Event{
+		{Hash: "slow", TimestampMS: 1000, Model: "audit", AuthID: "slow.json", LatencyMS: 10000, CachedTokens: 10, InputTokens: 100, TotalTokens: 100},
+		{Hash: "fast", TimestampMS: 1001, Model: "audit", AuthID: "fast.json", LatencyMS: 100, InputTokens: 100, TotalTokens: 100},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, filters := range []string{`{"min_latency_ms":1000}`, `{"auth_files":["slow.json"]}`, `{"cache_status":"hit"}`} {
+		raw := []byte(`{"method":"POST","path":"/v0/management/monitoring/analytics","body":{"from_ms":0,"to_ms":2000,"filters":` + filters + `}}`)
+		response := Handle(ctx, runtime, raw)
+		if response.StatusCode != 200 {
+			t.Fatalf("HTTP=%d body=%s", response.StatusCode, response.Body)
+		}
+		var payload struct {
+			Summary struct {
+				Calls int64 `json:"total_calls"`
+			} `json:"summary"`
+		}
+		if err := json.Unmarshal(response.Body, &payload); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("filters=%s calls=%d expected=1", filters, payload.Summary.Calls)
+		if payload.Summary.Calls != 1 {
+			t.Errorf("advertised filter ignored: %s", filters)
+		}
 	}
 }

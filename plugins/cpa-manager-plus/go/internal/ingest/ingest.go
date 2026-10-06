@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +18,8 @@ import (
 )
 
 type Writer struct {
+	mu          sync.Mutex
+	stopped     bool
 	queue       chan store.Event
 	store       *store.Store
 	batchSize   int
@@ -36,6 +39,12 @@ func (w *Writer) Enqueue(record pluginapi.UsageRecord) {
 }
 
 func (w *Writer) EnqueueEvent(event store.Event) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.stopped {
+		w.dropped.Add(1)
+		return
+	}
 	select {
 	case w.queue <- event:
 	default:
@@ -47,11 +56,24 @@ func (w *Writer) Run(ctx context.Context) {
 	flushEvery := time.NewTicker(500 * time.Millisecond)
 	defer flushEvery.Stop()
 	batch := make([]store.Event, 0, w.batchSize)
+	// In-flight writes and the final retry share the eight-second shutdown budget.
+	writeParent, cancelWrites := context.WithCancel(context.Background())
+	defer cancelWrites()
+	stopShutdown := context.AfterFunc(ctx, func() {
+		timer := time.NewTimer(8 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			cancelWrites()
+		case <-writeParent.Done():
+		}
+	})
+	defer stopShutdown()
 	flush := func() {
 		if len(batch) == 0 {
 			return
 		}
-		writeCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		writeCtx, cancel := context.WithTimeout(writeParent, 8*time.Second)
 		_, committed, err := w.store.InsertEventsCommitted(writeCtx, batch)
 		cancel()
 		if err != nil {
@@ -69,9 +91,39 @@ func (w *Writer) Run(ctx context.Context) {
 		}
 		batch = batch[:0]
 	}
+	shutdown := func() {
+		// Serialize acceptance with shutdown: nothing can arrive after the drain.
+		w.mu.Lock()
+		w.stopped = true
+		w.mu.Unlock()
+		for len(w.queue) > 0 {
+			batch = append(batch, <-w.queue)
+		}
+		// ponytail: one bounded final transaction; chunk only if queue size demands it.
+		shutdownCtx := writeParent
+		for len(batch) > 0 {
+			flush()
+			if len(batch) == 0 {
+				return
+			}
+			select {
+			case <-shutdownCtx.Done():
+				return
+			case <-time.After(50 * time.Millisecond):
+			}
+		}
+	}
 	for {
+		if ctx.Err() != nil {
+			shutdown()
+			return
+		}
+		queue := w.queue
+		if len(batch) >= w.batchSize {
+			queue = nil // Retained busy batches must retry before accepting more.
+		}
 		select {
-		case event := <-w.queue:
+		case event := <-queue:
 			batch = append(batch, event)
 			if len(batch) >= w.batchSize {
 				flush()
@@ -79,7 +131,7 @@ func (w *Writer) Run(ctx context.Context) {
 		case <-flushEvery.C:
 			flush()
 		case <-ctx.Done():
-			flush()
+			shutdown()
 			return
 		}
 	}
