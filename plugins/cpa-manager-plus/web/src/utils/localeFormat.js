@@ -17,9 +17,39 @@ export function formatInt(value, locale) {
   return formatNumber(value, { maximumFractionDigits: 0 }, locale);
 }
 
-export function formatDateTime(value, locale) {
+export function formatDateTime(value, locale, timeZone) {
   if (!value) return EMPTY_VALUE;
-  return new Date(Number(value)).toLocaleString(activeLocale(locale), { hour12: false });
+  const options = { hour12: false };
+  if (timeZone) options.timeZone = timeZone;
+  try {
+    return new Date(Number(value)).toLocaleString(activeLocale(locale), options);
+  } catch {
+    return new Date(Number(value)).toLocaleString(activeLocale(locale), { hour12: false });
+  }
+}
+
+/** Compact month/day hour:minute, optionally in a plugin timezone. */
+export function formatCompactDateTime(value, locale, timeZone) {
+  if (!value && value !== 0) return EMPTY_VALUE;
+  const options = {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  };
+  if (timeZone) options.timeZone = timeZone;
+  try {
+    return new Date(Number(value)).toLocaleString(activeLocale(locale), options);
+  } catch {
+    return new Date(Number(value)).toLocaleString(activeLocale(locale), {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
 }
 
 export function formatDate(value, locale) {

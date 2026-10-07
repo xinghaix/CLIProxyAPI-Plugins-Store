@@ -34,7 +34,9 @@ describe('quota cache', () => {
       fetchedAt: 1000,
       nextRequestAt: 1000 + QUOTA_PROBE_COOLDOWN_MS,
     });
-    expect(getQuotaCacheEntry('account')).toEqual(entry);
+    expect(getQuotaCacheEntry('account', 1000)).toEqual(entry);
+    expect(getQuotaCacheEntry('account', entry.nextRequestAt - 1)).toEqual(entry);
+    expect(getQuotaCacheEntry('account', entry.nextRequestAt)).toBeNull();
   });
 
   it('deduplicates concurrent requests for the same key', async () => {
@@ -53,8 +55,17 @@ describe('quota cache', () => {
     expect(second).toBe(first);
     expect(calls).toBe(0);
     resolveRequest('done');
-    await expect(first).resolves.toBe('done');
+    await expect(first).resolves.toEqual({ result: 'done', cooldownMs: QUOTA_PROBE_COOLDOWN_MS });
     expect(calls).toBe(1);
+  });
+
+  it.each([{ error: 'offline' }, { errorKind: 'probe_failed', action: 'review' }])('uses short TTL for failed probes: %j', async (result) => {
+    await expect(getOrCreateQuotaRequest('failed', () => result)).resolves.toEqual({ result, cooldownMs: QUOTA_ERROR_COOLDOWN_MS });
+  });
+
+  it('releases a rejected singleflight request for retry', async () => {
+    await expect(getOrCreateQuotaRequest('retry', () => Promise.reject(new Error('offline')))).rejects.toThrow('offline');
+    await expect(getOrCreateQuotaRequest('retry', () => 'ok')).resolves.toMatchObject({ result: 'ok' });
   });
 
   it('supports a shorter cooldown for transport errors', () => {

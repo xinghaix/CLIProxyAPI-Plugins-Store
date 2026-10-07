@@ -1,8 +1,16 @@
 <template>
   <div :class="['metric-grid', $attrs.class]">
-    <div v-for="card in cards" :key="card.label" class="metric metric-card">
-      <div class="metric-label">{{ card.label }}</div>
-      <div class="metric-value">{{ format(card.value) }}</div>
+    <div
+      v-for="card in cards"
+      :key="card.key || card.label"
+      class="metric metric-card"
+      :class="card.accent ? `metric-accent-${card.accent}` : ''"
+    >
+      <div class="metric-label">
+        <span v-if="card.iconClass" :class="['metric-icon', card.iconClass]" aria-hidden="true"></span>
+        {{ card.label }}
+      </div>
+      <div class="metric-value" :title="card.valueTitle || undefined">{{ format(card.value) }}</div>
       <div v-if="card.sub" class="metric-sub">{{ card.sub }}</div>
     </div>
   </div>
