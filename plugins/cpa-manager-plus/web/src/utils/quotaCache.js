@@ -1,3 +1,5 @@
+import { isProbeFailure } from './credentialPresentation.js';
+
 export const QUOTA_PROBE_COOLDOWN_MS = 5 * 60 * 1000;
 export const QUOTA_ERROR_COOLDOWN_MS = 60 * 1000;
 
@@ -24,8 +26,13 @@ export function quotaCacheKey(row) {
   return ['row', normalize(row?.id)].join('|');
 }
 
-export function getQuotaCacheEntry(key) {
-  return cache.get(key) || null;
+export function getQuotaCacheEntry(key, nowMs = Date.now()) {
+  const entry = cache.get(key);
+  if (!entry || nowMs >= entry.nextRequestAt) {
+    cache.delete(key);
+    return null;
+  }
+  return entry;
 }
 
 export function setQuotaCacheEntry(key, result, cooldownMs = QUOTA_PROBE_COOLDOWN_MS, fetchedAt = Date.now()) {
@@ -47,6 +54,14 @@ export function getOrCreateQuotaRequest(key, factory) {
   if (existing) return existing;
   const request = Promise.resolve()
     .then(factory)
+    // Both pages resolve the same wrapper, regardless of which factory won.
+    .then(value => {
+      const response = value && Object.hasOwn(value, 'result') ? value : { result: value };
+      return {
+        result: response.result,
+        cooldownMs: isProbeFailure(response.result) ? QUOTA_ERROR_COOLDOWN_MS : (response.cooldownMs ?? QUOTA_PROBE_COOLDOWN_MS),
+      };
+    })
     .finally(() => {
       if (inflight.get(key) === request) inflight.delete(key);
     });

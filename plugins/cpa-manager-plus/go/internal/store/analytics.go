@@ -166,17 +166,34 @@ func (s *Store) Analytics(ctx context.Context, request AnalyticsRequest) (map[st
 }
 
 func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRow, error) {
-	query := `select response_correlation_key,id,timestamp_ms,coalesce(provider,''),coalesce(executor_type,''),model,coalesce(alias,''),coalesce(response_model,''),coalesce(api_key_hash,''),coalesce(auth_id,''),coalesce(auth_index,''),coalesce(auth_type,''),coalesce(source,''),coalesce(reasoning_effort,''),coalesce(service_tier,''),input_tokens,output_tokens,reasoning_tokens,cached_tokens,cache_read_tokens,cache_creation_tokens,total_tokens,latency_ms,ttft_ms,failed,fail_status_code,fail_summary from usage_events where timestamp_ms >= ? and timestamp_ms <= ?`
-	args := []any{request.FromMS, request.ToMS}
+	where := `timestamp_ms >= ? and timestamp_ms <= ?`
 	if request.FailedOnly {
-		query += ` and failed = 1`
+		where += ` and failed = 1`
 	} else if !request.IncludeFailed {
-		query += ` and failed = 0`
+		where += ` and failed = 0`
 	}
-	search := strings.TrimSpace(request.Search)
-	// ponytail: O(N) candidate memory/aggregation for this range; SQL aggregation
-	// is the upgrade path if large ranges become costly. Limit only display rows.
-	query += ` order by timestamp_ms desc`
+	rows, err := s.enrichedEvents(ctx, where, request.FromMS, request.ToMS)
+	if err != nil {
+		return nil, err
+	}
+	providerLookup := providerSnapshots(rows)
+	results := rows[:0]
+	for _, row := range rows {
+		row.Provider = resolvedProvider(row, providerLookup)
+		if matches(row, request) && matchesSearch(row, request.Search) {
+			results = append(results, row)
+		}
+	}
+	return results, nil
+}
+
+// enrichedEvents is the common pricing-context loader. Callers supply only
+// internal SQL predicates and bound values. Provider stays raw: callers backfill
+// within their own range before identity/model filtering.
+func (s *Store) enrichedEvents(ctx context.Context, where string, args ...any) ([]eventRow, error) {
+	query := `select response_correlation_key,id,timestamp_ms,coalesce(provider,''),coalesce(executor_type,''),model,coalesce(alias,''),coalesce(response_model,''),coalesce(api_key_hash,''),coalesce(auth_id,''),coalesce(auth_index,''),coalesce(auth_type,''),coalesce(source,''),coalesce(reasoning_effort,''),coalesce(service_tier,''),input_tokens,output_tokens,reasoning_tokens,cached_tokens,cache_read_tokens,cache_creation_tokens,total_tokens,latency_ms,ttft_ms,failed,fail_status_code,fail_summary from usage_events where ` + where
+	// ponytail: O(N) candidate memory for this range; streaming with a provider
+	// evidence prepass is the upgrade path. Never limit aggregate input rows.
 	// Count matches globally, not only inside the selected time/filter window.
 	// The correlation index restricts grouping to keys in this time window.
 	query = `with selected as (` + query + `), usage_matches as (
@@ -205,18 +222,12 @@ func (s *Store) events(ctx context.Context, request AnalyticsRequest) ([]eventRo
 	if err := dbRows.Err(); err != nil {
 		return nil, err
 	}
-	providerLookup := providerSnapshots(candidates)
-	results := make([]eventRow, 0, len(candidates))
-	for _, row := range candidates {
+	for i := range candidates {
 		if s.responseObservationsSuppressed.Load() {
-			row.ResponseObservationAmbiguous = true
-		}
-		row.Provider = resolvedProvider(row, providerLookup)
-		if matches(row, request) && matchesSearch(row, search) {
-			results = append(results, row)
+			candidates[i].ResponseObservationAmbiguous = true
 		}
 	}
-	return results, nil
+	return candidates, nil
 }
 
 func matches(row eventRow, request AnalyticsRequest) bool {
@@ -474,10 +485,10 @@ func aggregate(rows []eventRow, prices map[string]Price, request AnalyticsReques
 	if granularity != "day" {
 		granularity = "hour"
 	}
-	providerLookup := providerSnapshots(rows)
+	// events resolved providers before filtering. Re-inferring here would erase
+	// conflicting evidence excluded by a model, identity, or search filter.
 	events := make([]map[string]any, 0, min(len(rows), request.Limit))
 	for _, row := range rows {
-		row.Provider = resolvedProvider(row, providerLookup)
 		price := prices[row.Model]
 		total.add(row, price)
 		addStats(byModel, row.Model, row, price)

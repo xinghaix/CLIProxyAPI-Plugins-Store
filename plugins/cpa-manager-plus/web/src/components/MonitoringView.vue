@@ -452,6 +452,7 @@
 <script setup>
 import {computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import {useI18n} from 'vue-i18n';
+import { isProbeFailure } from '../utils/credentialPresentation.js';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import { eventApiKeyDisplay, isSensitiveSource, maskSecretSummary, shortHash } from '../utils/apiKeyDisplay.js';
@@ -1123,8 +1124,9 @@ async function fetchQuotaResult(row) {
       },
     });
 
-    if (probed && !probed.error && quotaResultHasData(probed)) {
-      return {result: probed, cooldownMs: QUOTA_PROBE_COOLDOWN_MS};
+    // A current failure is authoritative; old healthy metadata must not hide it.
+    if (probed && (isProbeFailure(probed) || quotaResultHasData(probed))) {
+      return {result: probed, cooldownMs: isProbeFailure(probed) ? QUOTA_ERROR_COOLDOWN_MS : QUOTA_PROBE_COOLDOWN_MS};
     }
 
     const stored = await loadLatestInspectionResult(row);
@@ -1137,12 +1139,12 @@ async function fetchQuotaResult(row) {
     }
 
     return {
-      result: stored || {actionReason: probed?.error || t('monitoring.authCard.noQuota')},
-      cooldownMs: QUOTA_PROBE_COOLDOWN_MS,
+      result: {...(stored || {}), error: probed?.error || t('monitoring.authCard.noQuota')},
+      cooldownMs: QUOTA_ERROR_COOLDOWN_MS,
     };
   } catch (error) {
     return {
-      result: {actionReason: error.message || String(error)},
+      result: {actionReason: error.message || String(error), error: error.message || String(error)},
       cooldownMs: QUOTA_ERROR_COOLDOWN_MS,
     };
   }
@@ -1164,7 +1166,7 @@ async function queryAccountQuota(row, {force = false} = {}) {
     if (isSelectedQuotaKey(key)) applyQuotaResultForDisplay(response.result);
     return response.result;
   } catch (error) {
-    const result = {actionReason: error.message || String(error)};
+    const result = {actionReason: error.message || String(error), error: error.message || String(error)};
     setQuotaCacheEntry(key, result, QUOTA_ERROR_COOLDOWN_MS);
     if (isSelectedQuotaKey(key)) applyQuotaResultForDisplay(result);
     return result;

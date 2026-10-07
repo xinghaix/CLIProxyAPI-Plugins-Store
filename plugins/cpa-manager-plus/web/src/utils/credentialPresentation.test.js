@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildRecentStatusSlots,
   formatCompactNumber,
   formatCompactUsd,
   formatCredentialCost,
   formatRemainingPercent,
   formatSuccessRate,
-  groupRecentEventsByCredential,
   isProbeFailure,
   localizeAuthStatus,
   maskEmail,
@@ -36,6 +34,17 @@ const t = (key, params = {}) => {
 };
 
 describe('credentialPresentation', () => {
+  it.each(['quota_threshold', 'quota_exhausted'])('treats successful %s as quota state, not transport failure', (errorKind) => {
+    const probe = { action: 'disable', errorKind };
+    expect(isProbeFailure(probe)).toBe(false);
+    expect(isProbeFailure({ ...probe, error: 'offline' })).toBe(true);
+    expect(resolveAvailability({ status: 'active' }, { ...probe, error: 'offline' }, t).bucket).toBe('attention');
+  });
+
+  it('keeps unknown unprobed credentials pending', () => {
+    expect(resolveAvailability({}, null, t)).toMatchObject({ label: 'Pending', bucket: 'attention' });
+  });
+
   it('formats compact numbers and usd', () => {
     expect(formatCompactNumber(3700)).toBe('3.7K');
     expect(formatCompactNumber(454400000)).toMatch(/454\.?4?M/);
@@ -68,31 +77,6 @@ describe('credentialPresentation', () => {
     expect(result.label).toBe('5h cooldown');
     expect(result.tone).toBe('cooldown');
     expect(result.bucket).toBe('attention');
-  });
-
-  it('builds padded recent status slots oldest to newest', () => {
-    const slots = buildRecentStatusSlots(
-      [{ failed: false }, { failed: true }, { failed: false }],
-      5
-    );
-    expect(slots).toEqual([null, null, 'ok', 'fail', 'ok']);
-  });
-
-  it('groups analytics events onto credential row keys', () => {
-    const map = groupRecentEventsByCredential(
-      [
-        { auth_index: 'a1', failed: false, timestamp_ms: 3 },
-        { source: 'b.json', failed: true, timestamp_ms: 2 },
-        { auth_index: 'missing', failed: false, timestamp_ms: 1 },
-      ],
-      [
-        { rowKey: 'row-a', authIndex: 'a1', fileName: 'a.json' },
-        { rowKey: 'row-b', authIndex: 'b1', fileName: 'b.json' },
-      ]
-    );
-    expect(map.get('row-a')).toHaveLength(1);
-    expect(map.get('row-b')).toHaveLength(1);
-    expect(map.get('row-b')[0].failed).toBe(true);
   });
 
   it('shortens window labels for list denseness', () => {

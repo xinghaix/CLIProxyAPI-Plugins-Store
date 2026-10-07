@@ -2,10 +2,8 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 )
 
 // AccountWindowUsageTarget describes one previous/current window query.
@@ -23,8 +21,9 @@ type AccountWindowUsageTarget struct {
 	AuthFileSnapshot     string   `json:"auth_file_snapshot,omitempty"`
 	AuthProviderSnapshot string   `json:"auth_provider_snapshot,omitempty"`
 	AuthIndex            string   `json:"auth_index,omitempty"`
+	AuthID               string   `json:"auth_id,omitempty"`
 	Source               string   `json:"source,omitempty"`
-	ModelScopeModels     []string `json:"-"`
+	ModelScopeModels     []string `json:"model_scope_models,omitempty"`
 }
 
 // AccountWindowUsageItem is one aggregated window result.
@@ -63,13 +62,28 @@ func (s *Store) AccountWindowUsage(ctx context.Context, windows []AccountWindowU
 	if len(windows) > maxAccountWindowUsageItems {
 		return nil, fmt.Errorf("windows must be less than or equal to %d", maxAccountWindowUsageItems)
 	}
+	from, to := windows[0].FromMS, windows[0].ToMS
+	for _, window := range windows {
+		if window.FromMS <= 0 || window.ToMS <= window.FromMS {
+			return nil, fmt.Errorf("from_ms and to_ms are required and from_ms must be less than to_ms")
+		}
+		if window.FromMS < from {
+			from = window.FromMS
+		}
+		to = max64(to, window.ToMS)
+	}
+	// Load pricing context once for the batch, never run full Analytics per window.
+	rows, err := s.enrichedEvents(ctx, `timestamp_ms >= ? and timestamp_ms < ?`, from, to)
+	if err != nil {
+		return nil, err
+	}
 	prices, err := s.Prices(ctx)
 	if err != nil {
 		return nil, err
 	}
 	items := make([]AccountWindowUsageItem, 0, len(windows))
 	for _, window := range windows {
-		item, err := s.accountWindowUsageOne(ctx, window, prices)
+		item, err := accountWindowUsageOne(window, prices, rows)
 		if err != nil {
 			return nil, err
 		}
@@ -78,14 +92,13 @@ func (s *Store) AccountWindowUsage(ctx context.Context, windows []AccountWindowU
 	return items, nil
 }
 
-func (s *Store) accountWindowUsageOne(ctx context.Context, window AccountWindowUsageTarget, prices map[string]Price) (AccountWindowUsageItem, error) {
+func accountWindowUsageOne(window AccountWindowUsageTarget, prices map[string]Price, rows []eventRow) (AccountWindowUsageItem, error) {
 	window.RowKey = strings.TrimSpace(window.RowKey)
 	window.ProviderWindowID = strings.TrimSpace(window.ProviderWindowID)
 	if window.ProviderWindowID == "" {
 		window.ProviderWindowID = strings.TrimSpace(window.WindowKey)
 	}
 	window.Period = normalizeAccountWindowPeriod(window.Period)
-	window.RequestKey = strings.TrimSpace(window.RequestKey)
 	if window.RequestKey == "" {
 		window.RequestKey = strings.Join([]string{window.RowKey, window.ProviderWindowID, window.Period}, "\x00")
 	}
@@ -117,16 +130,36 @@ func (s *Store) accountWindowUsageOne(ctx context.Context, window AccountWindowU
 		return item, fmt.Errorf("account target credential identity is required")
 	}
 
-	rows, err := s.accountWindowEvents(ctx, window)
-	if err != nil {
-		return item, err
+	for _, model := range window.ModelScopeModels {
+		if model == "" || strings.TrimSpace(model) != model {
+			return item, fmt.Errorf("model_scope_models must contain nonempty exact model IDs without surrounding whitespace")
+		}
 	}
-	if len(rows) == 0 {
+	if len(window.ModelScopeModels) == 0 && !AccountWindowIsAccountScope(window.AuthProviderSnapshot, window.ProviderWindowID) {
+		item.ScopeMatchStatus = "unknown"
+		item.SyncStatus = "unknown"
+		item.CostComplete = false
 		return item, nil
 	}
 	total := stats{}
+	// ponytail: O(events * windows), capped at 200 windows; index in memory
+	// by credential if large batches become costly. Aggregate inputs are uncapped.
+	var candidates []eventRow
 	for _, row := range rows {
+		if row.TimestampMS >= window.FromMS && row.TimestampMS < window.ToMS {
+			candidates = append(candidates, row)
+		}
+	}
+	providerLookup := providerSnapshots(candidates)
+	for _, row := range candidates {
+		row.Provider = resolvedProvider(row, providerLookup)
+		if !accountWindowRowMatches(row, window) || !includes(window.ModelScopeModels, row.Model) {
+			continue
+		}
 		total.add(row, prices[row.Model])
+	}
+	if total.Calls == 0 {
+		return item, nil
 	}
 	item.Matched = true
 	item.TotalRequests = total.Calls
@@ -162,137 +195,46 @@ func normalizeAccountWindowPeriod(value string) string {
 	}
 }
 
-func accountWindowHasCredentialIdentity(window AccountWindowUsageTarget) bool {
-	authFile := strings.TrimSpace(window.AuthFileSnapshot)
-	source := strings.TrimSpace(window.Source)
-	account := strings.TrimSpace(window.AccountSnapshot)
-	label := strings.TrimSpace(window.AuthLabelSnapshot)
-	provider := strings.TrimSpace(window.AuthProviderSnapshot)
-	if authFile != "" || (source != "" && source != account && source != label) {
-		return provider != ""
+// AccountWindowIsAccountScope is shared by quota producers and usage queries.
+// New/product/family windows remain unknown until exact model IDs are supplied.
+func AccountWindowIsAccountScope(provider, id string) bool {
+	if id == "history" || id == "spark" {
+		return true
 	}
-	if provider == "" {
-		return false
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "codex":
+		return id == "five-hour" || id == "five_hour" || id == "weekly" || id == "monthly"
+	case "claude":
+		return id == "claude-five-hour" || id == "claude-seven-day"
+	case "xai":
+		return id == "xai-weekly" || id == "xai-monthly"
+	case "kimi":
+		return id == "kimi-summary"
 	}
-	return strings.TrimSpace(window.AuthIndex) != "" || account != "" || label != ""
+	return false
 }
 
-func (s *Store) accountWindowEvents(ctx context.Context, window AccountWindowUsageTarget) ([]eventRow, error) {
-	// Half-open [from, to) matching Plus window semantics. Narrow by the
-	// strongest available identity in SQL, then confirm with Go matching.
-	query := `select response_correlation_key,id,timestamp_ms,coalesce(provider,''),coalesce(executor_type,''),model,coalesce(alias,''),coalesce(response_model,''),coalesce(api_key_hash,''),coalesce(auth_id,''),coalesce(auth_index,''),coalesce(auth_type,''),coalesce(source,''),coalesce(reasoning_effort,''),coalesce(service_tier,''),input_tokens,output_tokens,reasoning_tokens,cached_tokens,cache_read_tokens,cache_creation_tokens,total_tokens,latency_ms,ttft_ms,failed,fail_status_code,fail_summary from usage_events where timestamp_ms >= ? and timestamp_ms < ?`
-	args := []any{window.FromMS, window.ToMS}
-	if authIndex := strings.TrimSpace(window.AuthIndex); authIndex != "" {
-		query += ` and auth_index = ?`
-		args = append(args, authIndex)
-	} else if authFile := strings.TrimSpace(window.AuthFileSnapshot); authFile != "" {
-		query += ` and (auth_id = ? or source = ?)`
-		args = append(args, authFile, authFile)
-	} else if source := strings.TrimSpace(window.Source); source != "" {
-		query += ` and source = ?`
-		args = append(args, source)
-	} else if account := strings.TrimSpace(window.AccountSnapshot); account != "" {
-		query += ` and (auth_index = ? or auth_id = ? or source = ?)`
-		args = append(args, account, account, account)
-	}
-	query += ` order by timestamp_ms desc limit 20000`
-
-	dbRows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer dbRows.Close()
-
-	var candidates []eventRow
-	for dbRows.Next() {
-		var row eventRow
-		var correlationKey sql.NullString
-		if err := dbRows.Scan(&correlationKey, &row.ID, &row.TimestampMS, &row.Provider, &row.ExecutorType, &row.Model, &row.Alias, &row.ResponseModel, &row.APIKeyHash, &row.AuthID, &row.AuthIndex, &row.AuthType, &row.Source, &row.ReasoningEffort, &row.ServiceTier, &row.InputTokens, &row.OutputTokens, &row.ReasoningTokens, &row.CachedTokens, &row.CacheReadTokens, &row.CacheCreationTokens, &row.TotalTokens, &row.LatencyMS, &row.TTFTMS, &row.Failed, &row.FailStatus, &row.FailSummary); err != nil {
-			return nil, err
-		}
-		if !accountWindowRowMatches(row, window) {
-			continue
-		}
-		candidates = append(candidates, row)
-	}
-	return candidates, dbRows.Err()
+func accountWindowHasCredentialIdentity(window AccountWindowUsageTarget) bool {
+	return strings.TrimSpace(window.AuthProviderSnapshot) != "" &&
+		(strings.TrimSpace(window.AuthIndex) != "" || strings.TrimSpace(window.AuthID) != "" ||
+			strings.TrimSpace(window.AuthFileSnapshot) != "" || strings.TrimSpace(window.Source) != "")
 }
 
 func accountWindowRowMatches(row eventRow, window AccountWindowUsageTarget) bool {
-	authIndex := strings.TrimSpace(window.AuthIndex)
-	authFile := strings.TrimSpace(window.AuthFileSnapshot)
-	source := strings.TrimSpace(window.Source)
-	account := strings.TrimSpace(window.AccountSnapshot)
-	provider := strings.ToLower(strings.TrimSpace(window.AuthProviderSnapshot))
-
-	matchedIdentity := false
-	if authIndex != "" && strings.TrimSpace(row.AuthIndex) == authIndex {
-		matchedIdentity = true
-	}
-	if !matchedIdentity && authFile != "" && (strings.TrimSpace(row.AuthID) == authFile || strings.TrimSpace(row.Source) == authFile) {
-		matchedIdentity = true
-	}
-	if !matchedIdentity && source != "" && strings.TrimSpace(row.Source) == source {
-		matchedIdentity = true
-	}
-	if !matchedIdentity && account != "" && (strings.TrimSpace(row.AuthIndex) == account || strings.TrimSpace(row.AuthID) == account || strings.TrimSpace(row.Source) == account) {
-		matchedIdentity = true
-	}
-	if !matchedIdentity {
+	provider := strings.TrimSpace(window.AuthProviderSnapshot)
+	rowProvider := strings.TrimSpace(row.Provider)
+	if provider != "" && rowProvider != "" && !strings.EqualFold(provider, rowProvider) {
 		return false
 	}
-	if provider == "" {
-		return true
+	authIndex, rowIndex := strings.TrimSpace(window.AuthIndex), strings.TrimSpace(row.AuthIndex)
+	// A different strong index must never fall through to shared filenames.
+	if authIndex != "" && rowIndex != "" {
+		return authIndex == rowIndex
 	}
-	rowProvider := strings.ToLower(strings.TrimSpace(row.Provider))
-	return rowProvider == "" || rowProvider == provider
-}
-
-// AccountSparklineBuckets returns recent hourly request counts for an account
-// identity, using the configured analytics timezone.
-func (s *Store) AccountSparklineBuckets(ctx context.Context, authIndex, authID, source, provider string, fromMS, toMS int64, location *time.Location, bucketCount int) ([]map[string]any, error) {
-	if bucketCount < 1 {
-		bucketCount = 24
-	}
-	if location == nil {
-		location = time.UTC
-	}
-	if toMS <= 0 {
-		toMS = time.Now().UnixMilli()
-	}
-	if fromMS <= 0 || fromMS >= toMS {
-		fromMS = toMS - int64(bucketCount)*int64(time.Hour/time.Millisecond)
-	}
-	window := AccountWindowUsageTarget{
-		AuthIndex:            authIndex,
-		AuthFileSnapshot:     authID,
-		Source:               source,
-		AuthProviderSnapshot: provider,
-		FromMS:               fromMS,
-		ToMS:                 toMS,
-		AccountSnapshot:      authIndex,
-		RowKey:               "spark",
-		ProviderWindowID:     "spark",
-		Period:               "current",
-	}
-	rows, err := s.accountWindowEvents(ctx, window)
-	if err != nil {
-		return nil, err
-	}
-	counts := map[int64]int64{}
-	for _, row := range rows {
-		bucket := AnalyticsBucketMS(row.TimestampMS, "hour", location)
-		counts[bucket]++
-	}
-	out := make([]map[string]any, 0, bucketCount)
-	start := AnalyticsBucketMS(fromMS, "hour", location)
-	step := int64(time.Hour / time.Millisecond)
-	for i := 0; i < bucketCount; i++ {
-		bucket := start + int64(i)*step
-		if bucket >= toMS {
-			break
-		}
-		out = append(out, map[string]any{"bucket_ms": bucket, "calls": counts[bucket]})
-	}
-	return out, nil
+	authID := strings.TrimSpace(window.AuthID)
+	authFile := strings.TrimSpace(window.AuthFileSnapshot)
+	source := strings.TrimSpace(window.Source)
+	return (authID != "" && authID == strings.TrimSpace(row.AuthID)) ||
+		(authFile != "" && (authFile == strings.TrimSpace(row.AuthID) || authFile == strings.TrimSpace(row.Source))) ||
+		(source != "" && source == strings.TrimSpace(row.Source))
 }

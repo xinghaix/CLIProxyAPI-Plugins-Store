@@ -31,6 +31,7 @@ type CredentialIdentity struct {
 	FileName  string
 	Source    string
 	Provider  string
+	AuthType  string
 }
 
 // CredentialEnrichment holds aggregated usage and inspection cache.
@@ -54,9 +55,19 @@ func (s *Store) EnrichCredentials(ctx context.Context, creds []CredentialIdentit
 	}
 
 	result := make(map[string]*CredentialEnrichment, len(creds))
-	lookup := make(map[string]string) // token -> key
+	lookup := make(map[string][]string) // token -> distinct credential keys
+	identities := make(map[string]CredentialIdentity, len(creds))
+	add := func(token, key string) {
+		for _, existing := range lookup[token] {
+			if existing == key {
+				return
+			}
+		}
+		lookup[token] = append(lookup[token], key)
+	}
 
 	for _, c := range creds {
+		identities[c.Key] = c
 		result[c.Key] = &CredentialEnrichment{
 			History: &CredentialUsageMetrics{
 				CostComplete: true,
@@ -64,102 +75,118 @@ func (s *Store) EnrichCredentials(ctx context.Context, creds []CredentialIdentit
 			RecentStatuses: make([]string, 8),
 		}
 		if idx := strings.TrimSpace(c.AuthIndex); idx != "" {
-			lookup["idx:"+idx] = c.Key
+			add("idx:"+idx, c.Key)
 		}
 		if id := strings.TrimSpace(c.AuthID); id != "" {
-			lookup["id:"+id] = c.Key
-			lookup["fn:"+filepath.Base(id)] = c.Key
+			add("id:"+id, c.Key)
+			add("fn:"+filepath.Base(id), c.Key)
 		}
 		if fn := strings.TrimSpace(c.FileName); fn != "" {
-			lookup["fn:"+fn] = c.Key
-			lookup["fn:"+filepath.Base(fn)] = c.Key
+			add("fn:"+fn, c.Key)
+			add("fn:"+filepath.Base(fn), c.Key)
 		}
 		if src := strings.TrimSpace(c.Source); src != "" {
-			lookup["src:"+src] = c.Key
-			lookup["fn:"+filepath.Base(src)] = c.Key
+			add("src:"+src, c.Key)
+			add("fn:"+filepath.Base(src), c.Key)
 		}
 	}
 
-	// 1. Optional: populate latest inspection cache if table exists
+	// Both history and cache use the same identity precedence. Only visit indexed
+	// candidates, and count owners rather than aliases when rejecting ambiguity.
+	match := func(authIndex, authID, source, provider, authType string) string {
+		authIndex, authID, source = strings.TrimSpace(authIndex), strings.TrimSpace(authID), strings.TrimSpace(source)
+		provider, authType = normalizeProvider(provider), normalizeAuthTypeSnapshot(authType)
+		unique := func(tokens ...string) string {
+			key := ""
+			for _, token := range tokens {
+				for _, candidate := range lookup[token] {
+					c := identities[candidate]
+					// Match the account-window contract: contradictory strong indices
+					// or providers never fall through to a shared display filename.
+					if idx := strings.TrimSpace(c.AuthIndex); idx != "" && authIndex != "" && idx != authIndex {
+						continue
+					}
+					if p := normalizeProvider(c.Provider); p != "" && provider != "" && !strings.EqualFold(p, provider) {
+						continue
+					}
+					if kind := normalizeAuthTypeSnapshot(c.AuthType); kind != "" && authType != "" && kind != authType {
+						continue
+					}
+					if key != "" && key != candidate {
+						return ""
+					}
+					key = candidate
+				}
+			}
+			return key
+		}
+		if authIndex != "" && len(lookup["idx:"+authIndex]) > 0 {
+			return unique("idx:" + authIndex)
+		}
+		if authID != "" && len(lookup["id:"+authID]) > 0 {
+			return unique("id:" + authID)
+		}
+		var tokens []string
+		if authID != "" {
+			tokens = append(tokens, "fn:"+authID, "fn:"+filepath.Base(authID))
+		}
+		if source != "" {
+			tokens = append(tokens, "src:"+source, "fn:"+source, "fn:"+filepath.Base(source))
+		}
+		return unique(tokens...)
+	}
+
+	// 1. Optional: populate latest inspection cache if table exists.
 	inspRows, err := s.db.QueryContext(ctx, `
-		select coalesce(auth_index,''), coalesce(auth_id,''), coalesce(file_name,''), coalesce(plan_type,''), coalesce(quota_windows_json,'')
+		select coalesce(auth_index,''), coalesce(auth_id,''), coalesce(file_name,''), coalesce(provider,''), coalesce(auth_type,''), coalesce(plan_type,''), coalesce(quota_windows_json,'')
 		from codex_inspection_results
-		order by id desc limit 200
+		order by id desc
 	`)
 	if err == nil {
 		defer inspRows.Close()
 		seen := make(map[string]bool)
-		for inspRows.Next() {
-			var authIndex, authID, fileName, planType, windowsJSON string
-			if err := inspRows.Scan(&authIndex, &authID, &fileName, &planType, &windowsJSON); err == nil {
-				key := ""
-				if k, ok := lookup["fn:"+strings.TrimSpace(fileName)]; ok {
-					key = k
-				} else if k, ok := lookup["id:"+strings.TrimSpace(authID)]; ok {
-					key = k
-				} else if k, ok := lookup["idx:"+strings.TrimSpace(authIndex)]; ok {
-					key = k
-				}
-				if key != "" && result[key] != nil && !seen[key] {
-					seen[key] = true
-					if planType != "" {
-						result[key].PlanLabel = planType
-					}
-					if strings.TrimSpace(windowsJSON) != "" {
-						var windows any
-						if err := json.Unmarshal([]byte(windowsJSON), &windows); err == nil {
-							result[key].QuotaWindows = windows
-						}
-					}
+		// Stream until every credential has a cache entry; a global row limit
+		// would let repeated inspections of a busy account evict quiet accounts.
+		for len(seen) < len(result) && inspRows.Next() {
+			var authIndex, authID, fileName, provider, authType, planType, windowsJSON string
+			if err := inspRows.Scan(&authIndex, &authID, &fileName, &provider, &authType, &planType, &windowsJSON); err != nil {
+				return nil, err
+			}
+			key := match(authIndex, authID, fileName, provider, authType)
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			result[key].PlanLabel = planType
+			if strings.TrimSpace(windowsJSON) != "" {
+				var windows any
+				if err := json.Unmarshal([]byte(windowsJSON), &windows); err == nil {
+					result[key].QuotaWindows = windows
 				}
 			}
 		}
+		if err := inspRows.Err(); err != nil {
+			return nil, err
+		}
+		// Store has one DB connection; release it even after the early exit.
+		if err := inspRows.Close(); err != nil {
+			return nil, err
+		}
 	}
 
-	// 2. Query usage_events in one pass
-	// ponytail: limit 50000 events, stream or chunk if larger lookback needed
-	query := `select id, timestamp_ms, coalesce(provider,''), coalesce(executor_type,''), model, coalesce(auth_id,''), coalesce(auth_index,''), coalesce(source,''), input_tokens, output_tokens, cached_tokens, cache_read_tokens, cache_creation_tokens, total_tokens, failed from usage_events where timestamp_ms >= ? order by timestamp_ms desc limit 50000`
-	rows, err := s.db.QueryContext(ctx, query, fromMS)
+	// 2. Share complete pricing context with analytics and account windows.
+	rows, err := s.enrichedEvents(ctx, `timestamp_ms >= ?`, fromMS)
 	if err != nil {
-		return result, nil // non-fatal fallback
+		return nil, err
 	}
-	defer rows.Close()
 
 	// Track recent statuses per key (max 8)
 	recentTrack := make(map[string][]string, len(creds))
 
-	for rows.Next() {
-		var id, ts, input, output, cached, read, create, total int64
-		var failed int
-		var provider, execType, model, authID, authIndex, source string
-		if err := rows.Scan(&id, &ts, &provider, &execType, &model, &authID, &authIndex, &source, &input, &output, &cached, &read, &create, &total, &failed); err != nil {
-			return nil, err
-		}
-
-		key := ""
-		if authIndex != "" {
-			if k, ok := lookup["idx:"+authIndex]; ok {
-				key = k
-			}
-		}
-		if key == "" && authID != "" {
-			if k, ok := lookup["id:"+authID]; ok {
-				key = k
-			} else if k, ok := lookup["fn:"+authID]; ok {
-				key = k
-			} else if k, ok := lookup["fn:"+filepath.Base(authID)]; ok {
-				key = k
-			}
-		}
-		if key == "" && source != "" {
-			if k, ok := lookup["src:"+source]; ok {
-				key = k
-			} else if k, ok := lookup["fn:"+source]; ok {
-				key = k
-			} else if k, ok := lookup["fn:"+filepath.Base(source)]; ok {
-				key = k
-			}
-		}
+	providerLookup := providerSnapshots(rows)
+	for _, row := range rows {
+		row.Provider = resolvedProvider(row, providerLookup)
+		key := match(row.AuthIndex, row.AuthID, row.Source, row.Provider, row.AuthType)
 		if key == "" {
 			continue
 		}
@@ -170,39 +197,27 @@ func (s *Store) EnrichCredentials(ctx context.Context, creds []CredentialIdentit
 		}
 		h := enr.History
 		h.Requests++
-		h.Tokens += total
-		if failed != 0 {
+		h.Tokens += row.TotalTokens
+		if row.Failed != 0 {
 			h.FailureCalls++
 		} else {
 			h.SuccessCalls++
 		}
-		if h.LastSeenMS == nil || ts > *h.LastSeenMS {
-			last := ts
+		if h.LastSeenMS == nil || row.TimestampMS > *h.LastSeenMS {
+			last := row.TimestampMS
 			h.LastSeenMS = &last
 		}
 
 		statuses := recentTrack[key]
 		if len(statuses) < 8 {
-			if failed != 0 {
+			if row.Failed != 0 {
 				recentTrack[key] = append(statuses, "fail")
 			} else {
 				recentTrack[key] = append(recentTrack[key], "ok")
 			}
 		}
 
-		row := eventRow{
-			TimestampMS:         ts,
-			Model:               model,
-			Provider:            provider,
-			ExecutorType:        execType,
-			InputTokens:         input,
-			OutputTokens:        output,
-			CachedTokens:        cached,
-			CacheReadTokens:     read,
-			CacheCreationTokens: create,
-			TotalTokens:         total,
-		}
-		est := estimateEventCost(row, prices[model])
+		est := estimateEventCost(row, prices[row.Model])
 		if est.Status == pricing.StatusEstimated {
 			h.Cost += est.Amount
 		} else {

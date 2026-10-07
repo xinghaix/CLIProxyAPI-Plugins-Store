@@ -5,8 +5,6 @@ import (
 	"time"
 )
 
-const analyticsHourMS = int64(time.Hour / time.Millisecond)
-
 // AnalyticsBucketMS resolves an event timestamp to the start of its local
 // analytics hour or day bucket.
 //
@@ -19,18 +17,13 @@ func AnalyticsBucketMS(timestampMS int64, granularity string, location *time.Loc
 	if granularity == "day" {
 		return time.Date(tm.Year(), tm.Month(), tm.Day(), 0, 0, 0, 0, location).UnixMilli()
 	}
-	return time.Date(tm.Year(), tm.Month(), tm.Day(), tm.Hour(), 0, 0, 0, location).UnixMilli()
-}
-
-// AnalyticsFullUTCHourRange returns the complete UTC hours contained by the
-// half-open analytics range [fromMS, toMS).
-func AnalyticsFullUTCHourRange(fromMS, toMS int64) (int64, int64) {
-	startMS := fromMS - fromMS%analyticsHourMS
-	if fromMS%analyticsHourMS != 0 {
-		startMS += analyticsHourMS
+	// Subtract elapsed minutes, keeping the event's occurrence of a repeated hour.
+	start := tm.Add(-time.Duration(tm.Minute())*time.Minute - time.Duration(tm.Second())*time.Second - time.Duration(tm.Nanosecond()))
+	// A half-hour DST change can start an hour at :30; do not cross its offset boundary.
+	if zoneStart, _ := tm.ZoneBounds(); !zoneStart.IsZero() && start.Before(zoneStart) {
+		start = zoneStart
 	}
-	endMS := toMS - toMS%analyticsHourMS
-	return startMS, endMS
+	return start.UnixMilli()
 }
 
 // ResolveAnalyticsLocation picks the first valid IANA timezone name, else Local.

@@ -46,14 +46,15 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import CredentialList from './CredentialList.vue';
 import CredentialQuotaDrawer from './CredentialQuotaDrawer.vue';
 import { isOAuthAuthType, providerChip } from '../../utils/providerTag.js';
-import { EMPTY_VALUE, formatCompactDateTime, formatDateTime } from '../../utils/localeFormat.js';
+import { EMPTY_VALUE, formatCompactDateTime } from '../../utils/localeFormat.js';
 import { formatQuotaResetRelative } from '../../utils/quotaDisplay.js';
 import {
+  QUOTA_ERROR_COOLDOWN_MS,
   getOrCreateQuotaRequest,
   getQuotaCacheEntry,
   quotaCacheKey,
@@ -61,6 +62,7 @@ import {
 } from '../../utils/quotaCache.js';
 import {
   buildAccountWindowUsageTargets,
+  credentialQuotaWindowsFromProbe,
   resolveWindowUsagePresentation,
 } from '../../utils/quotaWindowRanges.js';
 import {
@@ -102,6 +104,8 @@ const historyFromMs = ref(0);
 const historyToMs = ref(0);
 const nowMs = ref(Date.now());
 const analyticsTimeZone = ref('');
+let loadGeneration = 0;
+let quotaGeneration = 0;
 
 const selectedRow = computed(() => rows.value.find((r) => r.rowKey === selectedRowKey.value) || null);
 
@@ -227,6 +231,10 @@ function buildQuotaDisplays(row, usageMap) {
 
 async function loadCredentials() {
   if (!props.ready) return;
+  const generation = ++loadGeneration;
+  ++quotaGeneration;
+  drawerProbing.value = false;
+  enrichingRowKey.value = '';
   loading.value = true;
   error.value = '';
   try {
@@ -234,6 +242,8 @@ async function loadCredentials() {
       method: 'GET',
       path: '/v0/management/monitoring/oauth-credentials',
     });
+    if (generation !== loadGeneration) return;
+    usageByRequestKey.value = new Map();
     const items = Array.isArray(resp?.items) ? resp.items : [];
     const oauthItems = items.filter((item) => isOAuthAuthType(item.authType));
     analyticsTimeZone.value = String(resp?.time_zone || '').trim();
@@ -245,18 +255,13 @@ async function loadCredentials() {
       const chip = providerChip(item.provider, item.authType);
       const hist = item.history || null;
       const lastMs = hist?.lastSeenMs || null;
-      const quotaWindows = Array.isArray(item.quotaWindows) ? item.quotaWindows : [];
+      const cachedProbe = getQuotaCacheEntry(credentialQuotaCacheKey(item))?.result || null;
+      const quotaWindows = credentialQuotaWindowsFromProbe(cachedProbe || item, nowMs.value);
       const row = {
         ...item,
         rowKey: item.rowKey || item.authIndex || item.fileName,
         maskedEmail: maskEmail(item.email || item.displayName),
         providerChip: chip,
-        planLabel: item.planLabel || '',
-        availabilityLabel: item.disabled
-          ? t('common.disabled')
-          : (item.unavailable ? t('monitoring.authCard.unavailable') : t('monitoring.credentials.availability.available')),
-        availabilityTone: item.disabled ? 'subtle' : (item.unavailable ? 'warning' : 'ok'),
-        statusBucket: item.disabled ? 'disabled' : (item.unavailable ? 'attention' : 'available'),
         lastRequestLabel: lastMs
           ? formatCompactDateTime(lastMs, locale.value, analyticsTimeZone.value || undefined)
           : EMPTY_VALUE,
@@ -265,54 +270,40 @@ async function loadCredentials() {
           : Array.from({ length: 8 }, () => null),
         sparkValues: [],
         history: hist,
-        primaryQuota: quotaWindows[0]
-          ? { label: quotaWindows[0].label, remainingPercent: quotaWindows[0].remainingPercent }
-          : null,
-        quotaWindows,
-        quotaDisplays: [],
-        probe: null,
-        probeFailed: false,
-        probeFailureSummary: '',
       };
-      if (quotaWindows.length) {
-        row.quotaDisplays = buildQuotaDisplays(row, usageByRequestKey.value);
-      }
+      applyQuotaState(row, cachedProbe, quotaWindows);
       return row;
     });
-
-    const firstSeens = baseRows
-      .map((r) => r.history?.lastSeenMs)
-      .filter((v) => Number.isFinite(v) && v > 0);
-    if (firstSeens.length) {
-      historyFromMs.value = Math.min(...firstSeens);
-    }
 
     rows.value = baseRows;
     emit('count', baseRows.length);
   } catch (err) {
-    error.value = err?.message || String(err);
+    if (generation === loadGeneration) error.value = err?.message || String(err);
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) loading.value = false;
   }
 }
 
-async function probeCredential(row, { force = false } = {}) {
-  const cacheRow = {
+function credentialQuotaCacheKey(row) {
+  return quotaCacheKey({
     auth_index: row.authIndex,
     auth_id: row.authId,
     auth_provider_snapshot: row.provider,
     provider: row.provider,
-    source: row.fileName,
+    source: row.source || '',
     file_name: row.fileName,
     auth_type: row.authType,
-  };
-  const key = quotaCacheKey(cacheRow);
+  });
+}
+
+async function probeCredential(row, { force = false } = {}) {
+  const key = credentialQuotaCacheKey(row);
   if (!force) {
     const cached = getQuotaCacheEntry(key);
     if (cached?.result) return cached.result;
   }
   try {
-    const result = await getOrCreateQuotaRequest(key, async () => props.proxyCall({
+    const { result, cooldownMs } = await getOrCreateQuotaRequest(key, async () => props.proxyCall({
       method: 'POST',
       path: '/v0/management/account-quota-probe',
       body: {
@@ -320,15 +311,15 @@ async function probeCredential(row, { force = false } = {}) {
         authIndex: row.authIndex || '',
         authType: row.authType || 'oauth',
         provider: row.provider || '',
-        source: row.fileName || '',
+        source: row.source || '',
         fileName: row.fileName || '',
       },
     }));
-    setQuotaCacheEntry(key, result);
+    setQuotaCacheEntry(key, result, cooldownMs);
     return result;
   } catch (err) {
     const result = { actionReason: err?.message || String(err), error: err?.message || String(err) };
-    setQuotaCacheEntry(key, result);
+    setQuotaCacheEntry(key, result, QUOTA_ERROR_COOLDOWN_MS);
     return result;
   }
 }
@@ -343,12 +334,13 @@ function openDrawer(row, event, preferredTab) {
   drawerInitialTab.value = preferredTab || (row.probeFailed ? 'overview' : 'quota');
   drawerOpen.value = true;
 
-  if (!row.probe && (!row.quotaWindows || row.quotaWindows.length === 0)) {
-    refreshSelectedQuota();
-  }
+  refreshSelectedQuota({ force: false });
 }
 
 function closeDrawer() {
+  ++quotaGeneration;
+  drawerProbing.value = false;
+  enrichingRowKey.value = '';
   drawerOpen.value = false;
   drawerNotice.value = '';
   const el = focusReturnEl.value;
@@ -369,31 +361,45 @@ function closeDrawer() {
   });
 }
 
-async function refreshSelectedQuota() {
+function applyQuotaState(row, probe, windows) {
+  const availability = resolveAvailability({ ...row, quotaWindows: windows }, probe, t);
+  Object.assign(row, {
+    probe,
+    quotaWindows: windows,
+    planLabel: planLabelFrom(probe, row),
+    availabilityLabel: availability.label,
+    availabilityTone: availability.tone,
+    statusBucket: availability.bucket,
+    probeFailed: isProbeFailure(probe),
+    probeFailureSummary: isProbeFailure(probe) ? (probeFailureMessage(probe) || t('monitoring.credentials.availability.probeFailed')) : '',
+    primaryQuota: windows[0] ? { label: windows[0].label, remainingPercent: windows[0].remainingPercent } : null,
+  });
+  row.quotaDisplays = buildQuotaDisplays(row, usageByRequestKey.value);
+}
+
+async function refreshSelectedQuota({ force = true } = {}) {
   const row = selectedRow.value;
   if (!row) return;
+  const generation = ++quotaGeneration;
+  const inventoryGeneration = loadGeneration;
+  const isCurrent = () => generation === quotaGeneration && inventoryGeneration === loadGeneration && selectedRow.value === row;
   drawerProbing.value = true;
+  enrichingRowKey.value = row.rowKey;
   drawerNotice.value = '';
   try {
+    const inventoryWindows = !force && !row.probe && row.quotaWindows?.some(w => !w.stale && !(w.cycleEndMs != null && w.cycleEndMs <= Date.now()));
+    const probe = inventoryWindows
+      ? { quotaWindows: row.quotaWindows.map(w => w.raw || w) }
+      : await probeCredential(row, { force });
+    if (!isCurrent()) return;
     nowMs.value = Date.now();
-    const probe = await probeCredential(row, { force: true });
-    row.probe = probe;
-    if (isProbeFailure(probe)) {
-      const detail = probeFailureMessage(probe) || t('monitoring.credentials.availability.probeFailed');
-      drawerNotice.value = t('monitoring.credentials.refreshFailed', { error: detail });
-    }
     const { windows, targets } = buildAccountWindowUsageTargets(row, probe || {}, nowMs.value);
-    row.quotaWindows = windows;
-    row.planLabel = planLabelFrom(probe, row);
-    const availability = resolveAvailability(row, probe, t);
-    row.availabilityLabel = availability.label;
-    row.availabilityTone = availability.tone;
-    row.statusBucket = availability.bucket;
-    row.probeFailed = isProbeFailure(probe);
-    row.probeFailureSummary = row.probeFailed ? (probeFailureMessage(probe) || t('monitoring.credentials.availability.probeFailed')) : '';
-    row.primaryQuota = windows[0]
-      ? { label: windows[0].label, remainingPercent: windows[0].remainingPercent }
-      : null;
+    // A failed retry must not retain totals from the preceding query snapshot.
+    usageByRequestKey.value = new Map([...usageByRequestKey.value].filter(([key]) => !key.startsWith(`${row.rowKey}\0`)));
+    applyQuotaState(row, inventoryWindows ? null : probe, windows);
+    if (row.probeFailed) {
+      drawerNotice.value = t('monitoring.credentials.refreshFailed', { error: row.probeFailureSummary });
+    }
     const payloadTargets = targets.map(({ definition, ...target }) => target);
     if (payloadTargets.length) {
       try {
@@ -402,23 +408,32 @@ async function refreshSelectedQuota() {
           path: '/v0/management/monitoring/account-window-usage',
           body: { windows: payloadTargets },
         });
+        if (!isCurrent()) return;
+        const expected = new Map(payloadTargets.map(target => [target.request_key, target]));
         const next = new Map(usageByRequestKey.value);
-        for (const item of resp?.items || []) {
-          if (item?.request_key) next.set(item.request_key, item);
+        for (const item of Array.isArray(resp?.items) ? resp.items : []) {
+          const target = expected.get(item?.request_key);
+          if (target && item.from_ms === target.from_ms && item.to_ms === target.to_ms && item.period === target.period) {
+            next.set(item.request_key, item);
+          }
         }
         usageByRequestKey.value = next;
         row.quotaDisplays = buildQuotaDisplays(row, next);
       } catch (err) {
-        drawerNotice.value = t('monitoring.credentials.usageFailed', { error: err?.message || String(err) });
+        if (isCurrent()) drawerNotice.value = t('monitoring.credentials.usageFailed', { error: err?.message || String(err) });
       }
     }
-    rows.value = rows.value.map((r) => (r.rowKey === row.rowKey ? { ...row } : r));
   } catch (err) {
-    drawerNotice.value = t('monitoring.credentials.refreshFailed', { error: err?.message || String(err) });
+    if (isCurrent()) drawerNotice.value = t('monitoring.credentials.refreshFailed', { error: err?.message || String(err) });
   } finally {
-    drawerProbing.value = false;
+    if (isCurrent()) {
+      drawerProbing.value = false;
+      enrichingRowKey.value = '';
+    }
   }
 }
+
+onBeforeUnmount(() => { ++loadGeneration; ++quotaGeneration; });
 
 watch(() => props.ready, (ready) => {
   if (ready) loadCredentials();

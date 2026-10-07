@@ -17,6 +17,7 @@ const KIND_DURATION_SECONDS = {
 };
 
 function clampPercent(value) {
+  if (value == null || value === '') return null;
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
   return Math.max(0, Math.min(100, n));
@@ -78,6 +79,9 @@ export function normalizeCredentialQuotaWindow(window, index = 0, nowMs = Date.n
     cycleStartMs,
     cycleEndMs,
     stale,
+    sampledAtMs: nowMs,
+    modelScope: window?.modelScope || 'unknown',
+    modelScopeModels: Array.isArray(window?.modelScopeModels) ? window.modelScopeModels : [],
     raw: window,
   };
 }
@@ -99,7 +103,7 @@ export function buildQuotaUsageRanges(definition, nowMs = Date.now()) {
   }
 
   if (definition.windowMode !== 'fixed' && definition.windowMode !== 'calendar') return [];
-  if (definition.stale || definition.cycleStartMs == null || definition.cycleEndMs == null) return [];
+  if (definition.stale || definition.cycleStartMs == null || definition.cycleEndMs == null || definition.cycleEndMs <= nowMs) return [];
 
   const currentEnd = Math.min(nowMs, definition.cycleEndMs);
   const ranges = [];
@@ -131,9 +135,10 @@ export function buildAccountWindowUsageTargets(credential, probeResult, nowMs = 
   const windows = credentialQuotaWindowsFromProbe(probeResult, nowMs);
   const targets = [];
   for (const definition of windows) {
+    if (!hasKnownModelScope(definition)) continue;
     const ranges = buildQuotaUsageRanges(definition, nowMs);
     for (const range of ranges) {
-      const requestKey = `${credential.rowKey}\0${definition.providerWindowId}\0${range.period}`;
+      const requestKey = quotaUsageRequestKey(credential.rowKey, definition, range);
       targets.push({
         request_key: requestKey,
         row_key: credential.rowKey,
@@ -143,10 +148,12 @@ export function buildAccountWindowUsageTargets(credential, probeResult, nowMs = 
         from_ms: range.fromMs,
         to_ms: range.toMs,
         auth_index: credential.authIndex || '',
-        auth_file_snapshot: credential.fileName || credential.authId || '',
+        auth_id: credential.authId || '',
+        auth_file_snapshot: credential.fileName || '',
+        model_scope_models: definition.modelScopeModels,
         auth_provider_snapshot: credential.provider || '',
         account_snapshot: credential.displayName || credential.email || credential.authIndex || '',
-        source: credential.fileName || credential.source || '',
+        source: credential.source || '',
         definition,
       });
     }
@@ -154,27 +161,8 @@ export function buildAccountWindowUsageTargets(credential, probeResult, nowMs = 
   return { windows, targets };
 }
 
-/** Lifetime / historical range for list column — credential-scoped, not parent picker. */
-export function buildCredentialHistoryTarget(credential, nowMs = Date.now(), lookbackDays = 90) {
-  const fromMs = nowMs - lookbackDays * 24 * 3600 * 1000;
-  return {
-    request_key: `${credential.rowKey}\0history\0current`,
-    row_key: credential.rowKey,
-    window_key: 'history',
-    provider_window_id: 'history',
-    period: 'current',
-    from_ms: Math.max(1, fromMs),
-    to_ms: nowMs,
-    auth_index: credential.authIndex || '',
-    auth_file_snapshot: credential.fileName || credential.authId || '',
-    auth_provider_snapshot: credential.provider || '',
-    account_snapshot: credential.displayName || credential.email || credential.authIndex || '',
-    source: credential.fileName || credential.source || '',
-  };
-}
-
 export function usageItemToMetrics(item) {
-  if (!item?.matched) return null;
+  if (!item?.matched || item.scope_match_status !== 'complete' || item.sync_status !== 'ready') return null;
   return {
     requests: Number(item.total_requests) || 0,
     tokens: Number(item.total_tokens) || 0,
@@ -188,31 +176,43 @@ export function usageItemToMetrics(item) {
   };
 }
 
-export function resolveWindowUsagePresentation(definition, usageByRequestKey, credentialRowKey) {
-  const currentKey = `${credentialRowKey}\0${definition.providerWindowId}\0current`;
-  const previousKey = `${credentialRowKey}\0${definition.providerWindowId}\0previous`;
-  const previousEqualKey = `${credentialRowKey}\0${definition.providerWindowId}\0previous_equal_range`;
-  const currentItem = usageByRequestKey.get(currentKey);
-  const previousItem = usageByRequestKey.get(previousKey);
-  const previousEqualItem = usageByRequestKey.get(previousEqualKey);
+function hasKnownModelScope(definition) {
+  if (!definition?.modelScope || definition.modelScope === 'unknown') return false;
+  const models = Array.isArray(definition.modelScopeModels) ? definition.modelScopeModels : [];
+  if (models.length) return models.every(model => typeof model === 'string' && model !== '' && model.trim() === model);
+  return definition.modelScope === 'account';
+}
+
+function quotaUsageRequestKey(rowKey, definition, range) {
+  return [rowKey, definition.providerWindowId, range.period, range.fromMs, range.toMs,
+    JSON.stringify([definition.modelScope, definition.modelScopeModels, definition.usedPercent, definition.sampledAtMs])].join('\0');
+}
+
+export function resolveWindowUsagePresentation(definition, usageByRequestKey, credentialRowKey, nowMs = Date.now()) {
+  // Match the exact query snapshot, not just a window name reused next cycle.
+  const ranges = hasKnownModelScope(definition) && Number.isFinite(definition.sampledAtMs) && !definition.stale && !(definition.cycleEndMs != null && definition.cycleEndMs <= nowMs)
+    ? buildQuotaUsageRanges(definition, definition.sampledAtMs)
+    : [];
+  const itemFor = period => {
+    const range = ranges.find(range => range.period === period);
+    if (!range) return null;
+    const key = quotaUsageRequestKey(credentialRowKey, definition, range);
+    const item = usageByRequestKey.get(key);
+    return item?.request_key === key && item?.from_ms === range.fromMs && item?.to_ms === range.toMs ? item : null;
+  };
+  const currentItem = itemFor('current');
+  const previousItem = itemFor('previous') || itemFor('previous_equal_range');
   const current = usageItemToMetrics(currentItem);
-  const previous = usageItemToMetrics(previousItem) || usageItemToMetrics(previousEqualItem);
-  const previousPeriod = previousItem?.matched
-    ? 'previous'
-    : (previousEqualItem?.matched ? 'previous_equal_range' : null);
-  const forecast = estimateWindowUsage({
-    usedPercent: definition.usedPercent,
-    current,
-    previous,
-  });
+  const previous = usageItemToMetrics(previousItem);
+  const forecast = estimateWindowUsage({ usedPercent: definition.usedPercent, current, previous });
   return {
     current,
     previous,
-    forecast,
-    previousPeriod,
-    currentFromMs: currentItem?.from_ms ?? definition.cycleStartMs ?? null,
-    currentToMs: currentItem?.to_ms ?? definition.cycleEndMs ?? null,
-    previousFromMs: (previousItem || previousEqualItem)?.from_ms ?? null,
-    previousToMs: (previousItem || previousEqualItem)?.to_ms ?? null,
+    forecast: forecast?.costComplete === false ? null : forecast,
+    previousPeriod: previous ? previousItem.period : null,
+    currentFromMs: currentItem?.from_ms ?? null,
+    currentToMs: currentItem?.to_ms ?? null,
+    previousFromMs: previousItem?.from_ms ?? null,
+    previousToMs: previousItem?.to_ms ?? null,
   };
 }

@@ -26,8 +26,6 @@ const FAILURE_PROBE_KINDS = new Set([
   'timeout',
   'missing_auth_index',
   'unsupported_provider',
-  'quota_exhausted',
-  'quota_threshold',
 ]);
 
 export function formatCompactNumber(value) {
@@ -119,6 +117,8 @@ export function isProbeFailure(probe) {
   if (probe.error) return true;
   const action = String(probe.action || '').toLowerCase();
   const kind = String(probe.errorKind || '').toLowerCase();
+  // A successful quota read may request disable; that is not a transport failure.
+  if (kind === 'quota_threshold' || kind === 'quota_exhausted') return false;
   if (FAILURE_PROBE_KINDS.has(kind)) return true;
   if (ATTENTION_PROBE_ACTIONS.has(action)) return true;
   // Soft: actionReason without healthy keep + no usable windows.
@@ -243,6 +243,9 @@ export function resolveAvailability(cred, probe, t) {
       severity: 'warning',
     };
   }
+  if (!probe && !HEALTHY_AUTH_STATUSES.has(status) && !windows.length) {
+    return { label: t('monitoring.credentials.status.pending'), tone: 'warn', bucket: 'attention', severity: 'warning' };
+  }
   return {
     label: t('monitoring.credentials.availability.available'),
     tone: 'ok',
@@ -261,59 +264,6 @@ export function maskEmail(value) {
   return `${local.slice(0, 3)}***${domain}`;
 }
 
-/** Build up to `slotCount` status slots (oldest→newest) from recent events. */
-export function buildRecentStatusSlots(events, slotCount = 8) {
-  const count = Math.max(1, Math.min(12, Number(slotCount) || 8));
-  const list = Array.isArray(events) ? events.slice(0, count) : [];
-  const statuses = list
-    .slice()
-    .reverse()
-    .map((ev) => {
-      if (!ev) return null;
-      return ev.failed ? 'fail' : 'ok';
-    });
-  while (statuses.length < count) statuses.unshift(null);
-  return statuses.slice(-count);
-}
-
-/** Group analytics events by auth_index / source / auth_file for recent status. */
-export function groupRecentEventsByCredential(events, credentials) {
-  const byKey = new Map();
-  const indexKeys = new Map();
-  for (const cred of credentials || []) {
-    const keys = [
-      cred.authIndex,
-      cred.rowKey,
-      cred.fileName,
-      cred.authId,
-      cred.source,
-    ]
-      .map((v) => String(v || '').trim().toLowerCase())
-      .filter(Boolean);
-    for (const key of keys) indexKeys.set(key, cred.rowKey);
-    byKey.set(cred.rowKey, []);
-  }
-  const sorted = [...(events || [])].sort(
-    (a, b) => Number(b.timestamp_ms || 0) - Number(a.timestamp_ms || 0)
-  );
-  for (const ev of sorted) {
-    const candidates = [ev.auth_index, ev.source, ev.auth_file, ev.auth_file_snapshot, ev.auth_id]
-      .map((v) => String(v || '').trim().toLowerCase())
-      .filter(Boolean);
-    let rowKey = null;
-    for (const c of candidates) {
-      if (indexKeys.has(c)) {
-        rowKey = indexKeys.get(c);
-        break;
-      }
-    }
-    if (!rowKey) continue;
-    const bucket = byKey.get(rowKey);
-    if (bucket && bucket.length < 12) bucket.push(ev);
-  }
-  return byKey;
-}
-
 export function formatWindowRange(fromMs, toMs, formatFn) {
   if (!fromMs || !toMs || fromMs >= toMs) return '';
   return `${formatFn(fromMs)} — ${formatFn(toMs)}`;
@@ -325,6 +275,7 @@ export function planLabelFrom(probe, cred) {
     probe?.quotaMetadata?.planType ||
     probe?.plan ||
     cred?.planType ||
+    cred?.planLabel ||
     cred?.metadata?.planType ||
     ''
   );

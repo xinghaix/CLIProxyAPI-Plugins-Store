@@ -60,9 +60,6 @@ func (r *Runtime) ListOAuthCredentials(ctx context.Context, includeAPIKeys bool)
 	out := make([]OAuthCredential, 0, len(auths))
 	for _, auth := range auths {
 		authType := inspectionAuthType(auth)
-		if !includeAPIKeys && authType != "oauth" {
-			continue
-		}
 		meta := inspectionAuthMetadataFromEntry(auth, authType)
 		provider := strings.ToLower(strings.TrimSpace(firstNonEmpty(auth.Provider, auth.Type)))
 		fileName := firstNonEmpty(auth.Name, auth.ID)
@@ -114,6 +111,7 @@ func (r *Runtime) ListOAuthCredentials(ctx context.Context, includeAPIKeys bool)
 				FileName:  c.FileName,
 				Source:    c.Source,
 				Provider:  c.Provider,
+				AuthType:  c.AuthType,
 			}
 		}
 		if enrichments, err := r.store.EnrichCredentials(ctx, identities, 90*24*3600*1000); err == nil && enrichments != nil {
@@ -132,6 +130,17 @@ func (r *Runtime) ListOAuthCredentials(ctx context.Context, includeAPIKeys bool)
 		}
 	}
 
+	// Resolve against all identities before hiding API keys, otherwise a shared
+	// filename with unknown auth type falsely becomes an unambiguous OAuth match.
+	if !includeAPIKeys {
+		filtered := out[:0]
+		for _, c := range out {
+			if c.AuthType == "oauth" {
+				filtered = append(filtered, c)
+			}
+		}
+		out = filtered
+	}
 	return out, nil
 }
 

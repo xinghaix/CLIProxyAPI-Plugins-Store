@@ -44,4 +44,3 @@ func TestAccountWindowUsageAggregatesCostAndTokens(t *testing.T) {
 		t.Fatalf("cost = %#v", items[0])
 	}
 }
-

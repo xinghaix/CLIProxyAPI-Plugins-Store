@@ -246,10 +246,20 @@ jobs:
           LIB="${PLUGIN_ID}-v${VERSION}.${{ matrix.ext }}"
           ZIP_NAME="${PLUGIN_ID}_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.zip"
           rm -f "$ZIP_NAME"
+          FILES=("$LIB")
+          for DOC in NOTICE LICENSE; do
+            if [ -f "../$DOC" ]; then
+              cp "../$DOC" "$DOC"
+              FILES+=("$DOC")
+            fi
+          done
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            7z a "$ZIP_NAME" "$LIB"
+            7z a "$ZIP_NAME" "${FILES[@]}"
           else
-            zip -j "$ZIP_NAME" "$LIB"
+            zip -j "$ZIP_NAME" "${FILES[@]}"
+          fi
+          if [ "${{ matrix.goos }}" = "linux" ]; then
+            python3 ../../../scripts/check-release-package.py .. "$LIB" "$ZIP_NAME"
           fi
           if command -v shasum &>/dev/null; then
             shasum -a 256 "$ZIP_NAME" >> checksums_fragment.txt
