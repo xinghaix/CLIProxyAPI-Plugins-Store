@@ -1,10 +1,5 @@
 <template>
   <div class="credentials-tab">
-    <div v-if="enrichingRowKey" class="cred-enriching-banner" role="status" aria-live="polite">
-      <span class="cred-enriching-spinner" aria-hidden="true"></span>
-      <span>{{ t('monitoring.credentials.enrichingBanner') }}</span>
-    </div>
-
     <section v-if="error" class="notice error">{{ error }}</section>
 
     <CredentialList
@@ -66,17 +61,13 @@ import {
 } from '../../utils/quotaCache.js';
 import {
   buildAccountWindowUsageTargets,
-  buildCredentialHistoryTarget,
   resolveWindowUsagePresentation,
-  usageItemToMetrics,
 } from '../../utils/quotaWindowRanges.js';
 import {
-  buildRecentStatusSlots,
   formatCompactNumber,
   formatCredentialCost,
   formatSuccessRate,
   formatWindowRange,
-  groupRecentEventsByCredential,
   isProbeFailure,
   maskEmail,
   planLabelFrom,
@@ -97,7 +88,6 @@ const loading = ref(false);
 const error = ref('');
 const rows = ref([]);
 const usageByRequestKey = ref(new Map());
-const recentByRowKey = ref(new Map());
 const providerFilter = ref('all');
 const statusFilter = ref('all');
 const search = ref('');
@@ -197,13 +187,6 @@ function formatCostText(metrics) {
   return formatCredentialCost(metrics, t('monitoring.costEstimate.estimateUnavailable'));
 }
 
-function formatReset(resetAtMs) {
-  if (!resetAtMs) return '';
-  const absolute = formatDateTime(resetAtMs, locale.value, analyticsTimeZone.value || undefined);
-  const relative = formatQuotaResetRelative(resetAtMs, nowMs.value, locale.value);
-  return relative ? `${absolute} · ${relative}` : absolute;
-}
-
 function formatResetShort(resetAtMs) {
   if (!resetAtMs) return '';
   return formatCompactDateTime(resetAtMs, locale.value, analyticsTimeZone.value || undefined);
@@ -221,7 +204,6 @@ function buildQuotaDisplays(row, usageMap) {
       parts.push(`${formatCostText(current)} / ${fmtCompact(current.tokens)}`);
     }
     if (forecast && (forecast.cost > 0 || forecast.tokens > 0 || forecast.costComplete === false || (forecast.unpricedCalls || 0) > 0)) {
-      // Use cost helper so incomplete / unpriced never shows bare $0 (tilde only when complete).
       const fcCost = formatCostText(forecast);
       const fcShown = (fcCost === t('monitoring.costEstimate.estimateUnavailable') || fcCost.startsWith('~') || fcCost === '—')
         ? fcCost
@@ -261,153 +243,56 @@ async function loadCredentials() {
 
     const baseRows = oauthItems.map((item) => {
       const chip = providerChip(item.provider, item.authType);
-      return {
+      const hist = item.history || null;
+      const lastMs = hist?.lastSeenMs || null;
+      const quotaWindows = Array.isArray(item.quotaWindows) ? item.quotaWindows : [];
+      const row = {
         ...item,
         rowKey: item.rowKey || item.authIndex || item.fileName,
         maskedEmail: maskEmail(item.email || item.displayName),
         providerChip: chip,
-        planLabel: '',
-        availabilityLabel: t('monitoring.credentials.availability.available'),
-        availabilityTone: 'ok',
-        statusBucket: item.disabled ? 'disabled' : 'available',
-        lastRequestLabel: EMPTY_VALUE,
-        recentStatuses: Array.from({ length: 8 }, () => null),
+        planLabel: item.planLabel || '',
+        availabilityLabel: item.disabled
+          ? t('common.disabled')
+          : (item.unavailable ? t('monitoring.authCard.unavailable') : t('monitoring.credentials.availability.available')),
+        availabilityTone: item.disabled ? 'subtle' : (item.unavailable ? 'warning' : 'ok'),
+        statusBucket: item.disabled ? 'disabled' : (item.unavailable ? 'attention' : 'available'),
+        lastRequestLabel: lastMs
+          ? formatCompactDateTime(lastMs, locale.value, analyticsTimeZone.value || undefined)
+          : EMPTY_VALUE,
+        recentStatuses: Array.isArray(item.recentStatuses) && item.recentStatuses.length === 8
+          ? item.recentStatuses
+          : Array.from({ length: 8 }, () => null),
         sparkValues: [],
-        history: null,
-        primaryQuota: null,
-        quotaWindows: [],
+        history: hist,
+        primaryQuota: quotaWindows[0]
+          ? { label: quotaWindows[0].label, remainingPercent: quotaWindows[0].remainingPercent }
+          : null,
+        quotaWindows,
         quotaDisplays: [],
         probe: null,
         probeFailed: false,
         probeFailureSummary: '',
       };
+      if (quotaWindows.length) {
+        row.quotaDisplays = buildQuotaDisplays(row, usageByRequestKey.value);
+      }
+      return row;
     });
+
+    const firstSeens = baseRows
+      .map((r) => r.history?.lastSeenMs)
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (firstSeens.length) {
+      historyFromMs.value = Math.min(...firstSeens);
+    }
+
     rows.value = baseRows;
     emit('count', baseRows.length);
-
-    await enrichRows(baseRows);
   } catch (err) {
     error.value = err?.message || String(err);
   } finally {
     loading.value = false;
-  }
-}
-
-async function enrichRows(baseRows) {
-  const historyTargets = [];
-  const windowTargets = [];
-  const nextUsage = new Map(usageByRequestKey.value);
-  try {
-
-  // Probe sequentially but cache-coalesced; keep list visible with per-row enriching indicator.
-  for (const row of baseRows) {
-    enrichingRowKey.value = row.rowKey;
-    const probe = await probeCredential(row);
-    row.probe = probe;
-    const { windows, targets } = buildAccountWindowUsageTargets(row, probe || {}, nowMs.value);
-    row.quotaWindows = windows;
-    row.planLabel = planLabelFrom(probe, row);
-    const availability = resolveAvailability(row, probe, t);
-    row.availabilityLabel = availability.label;
-    row.availabilityTone = availability.tone;
-    row.statusBucket = availability.bucket;
-    row.probeFailed = isProbeFailure(probe);
-    row.probeFailureSummary = row.probeFailed ? (probeFailureMessage(probe) || t('monitoring.credentials.availability.probeFailed')) : '';
-    row.primaryQuota = windows[0]
-      ? { label: windows[0].label, remainingPercent: windows[0].remainingPercent }
-      : null;
-    windowTargets.push(...targets.map(({ definition, ...target }) => target));
-    historyTargets.push(buildCredentialHistoryTarget(row, nowMs.value, 90));
-  }
-  enrichingRowKey.value = '';
-
-  const batch = [...historyTargets, ...windowTargets];
-  if (batch.length) {
-    for (let i = 0; i < batch.length; i += 80) {
-      const chunk = batch.slice(i, i + 80);
-      try {
-        const resp = await props.proxyCall({
-          method: 'POST',
-          path: '/v0/management/monitoring/account-window-usage',
-          body: { windows: chunk },
-        });
-        for (const item of resp?.items || []) {
-          if (item?.request_key) nextUsage.set(item.request_key, item);
-        }
-      } catch (err) {
-        console.warn('account-window-usage failed', err);
-        error.value = t('monitoring.credentials.usageFailed', { error: err?.message || String(err) });
-      }
-    }
-  }
-
-  usageByRequestKey.value = nextUsage;
-
-  // One analytics pass for recent request status bars (credential-scoped grouping).
-  try {
-    const lookbackMs = nowMs.value - 14 * 24 * 3600 * 1000;
-    const analytics = await props.proxyCall({
-      method: 'POST',
-      path: '/v0/management/monitoring/analytics',
-      body: {
-        from_ms: Math.max(1, lookbackMs),
-        to_ms: nowMs.value,
-        now_ms: nowMs.value,
-        time_zone: analyticsTimeZone.value || undefined,
-        include: {
-          events_page: { limit: 2500 },
-          summary: false,
-          granularity: 'day',
-        },
-      },
-    });
-    const events = analytics?.events?.items || [];
-    recentByRowKey.value = groupRecentEventsByCredential(events, baseRows);
-  } catch (err) {
-    console.warn('recent events for credentials failed', err);
-    recentByRowKey.value = new Map();
-    // Soft: keep list usable; prefer not to overwrite a harder usage failure.
-    if (!error.value) {
-      error.value = t('monitoring.credentials.recentFailed', { error: err?.message || String(err) });
-    }
-  }
-
-  const enriched = baseRows.map((row) => {
-    const historyItem = nextUsage.get(`${row.rowKey}\0history\0current`);
-    const history = usageItemToMetrics(historyItem);
-    const lastSeen = history?.lastSeenMs;
-    const recentEvents = recentByRowKey.value.get(row.rowKey) || [];
-    const recentStatuses = buildRecentStatusSlots(recentEvents, 8);
-    if (!lastSeen && recentEvents[0]?.timestamp_ms) {
-      // fall through to recent event time below
-    }
-    const lastMs = lastSeen || recentEvents[0]?.timestamp_ms || null;
-    return {
-      ...row,
-      history,
-      lastRequestLabel: lastMs
-        ? formatCompactDateTime(lastMs, locale.value, analyticsTimeZone.value || undefined)
-        : EMPTY_VALUE,
-      recentStatuses,
-      quotaDisplays: buildQuotaDisplays(row, nextUsage),
-    };
-  });
-
-  // Prefer history first_seen for drawer stats range when available.
-  const firstSeens = enriched
-    .map((r) => {
-      const item = nextUsage.get(`${r.rowKey}\0history\0current`);
-      return item?.matched ? Number(item.from_ms) : null;
-    })
-    .filter((v) => Number.isFinite(v) && v > 0);
-  if (firstSeens.length) {
-    historyFromMs.value = Math.min(...firstSeens);
-  }
-
-  rows.value = enriched;
-  emit('count', enriched.length);
-  } finally {
-    enrichingRowKey.value = '';
   }
 }
 
@@ -455,12 +340,12 @@ function openDrawer(row, event, preferredTab) {
     : (document.activeElement instanceof HTMLElement ? document.activeElement : null);
   selectedRowKey.value = row.rowKey;
   drawerNotice.value = '';
-  if (preferredTab) {
-    drawerInitialTab.value = preferredTab;
-  } else {
-    drawerInitialTab.value = (row.probeFailed || isProbeFailure(row.probe)) ? 'diagnostics' : 'quota';
-  }
+  drawerInitialTab.value = preferredTab || (row.probeFailed ? 'overview' : 'quota');
   drawerOpen.value = true;
+
+  if (!row.probe && (!row.quotaWindows || row.quotaWindows.length === 0)) {
+    refreshSelectedQuota();
+  }
 }
 
 function closeDrawer() {
@@ -473,7 +358,6 @@ function closeDrawer() {
     if (el && typeof el.focus === 'function' && el.isConnected) {
       try { el.focus(); return; } catch { /* ignore */ }
     }
-    // Fallback: visible row/card matching the closed credential.
     if (!rowKey || typeof document === 'undefined') return;
     const nodes = document.querySelectorAll(`[data-cred-row-key="${CSS.escape(rowKey)}"]`);
     for (const node of nodes) {

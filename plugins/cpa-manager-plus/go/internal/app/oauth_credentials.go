@@ -10,31 +10,35 @@ import (
 
 // OAuthCredential is a read-only auth-file summary focused on OAuth accounts.
 type OAuthCredential struct {
-	RowKey        string                      `json:"rowKey"`
-	FileName      string                      `json:"fileName"`
-	DisplayName   string                      `json:"displayName"`
-	Email         string                      `json:"email,omitempty"`
-	Provider      string                      `json:"provider"`
-	AuthID        string                      `json:"authId,omitempty"`
-	AuthIndex     string                      `json:"authIndex,omitempty"`
-	AuthType      string                      `json:"authType"`
-	AccountID     string                      `json:"accountId,omitempty"`
-	Status        string                      `json:"status,omitempty"`
-	Disabled      bool                        `json:"disabled"`
-	Unavailable   bool                        `json:"unavailable,omitempty"`
-	Note          string                      `json:"note,omitempty"`
-	Path          string                      `json:"path,omitempty"`
-	Priority      *int                        `json:"priority,omitempty"`
-	Weight        *int                        `json:"weight,omitempty"`
-	Source        string                      `json:"source,omitempty"`
-	Label         string                      `json:"label,omitempty"`
-	ProjectID     string                      `json:"projectId,omitempty"`
-	ModTime       string                      `json:"modTime,omitempty"`
-	CreatedAt     string                      `json:"createdAt,omitempty"`
-	UpdatedAt     string                      `json:"updatedAt,omitempty"`
-	LastRefresh   string                      `json:"lastRefresh,omitempty"`
-	StatusMessage string                      `json:"statusMessage,omitempty"`
-	Metadata      *store.InspectionAuthMetadata `json:"metadata,omitempty"`
+	RowKey         string                        `json:"rowKey"`
+	FileName       string                        `json:"fileName"`
+	DisplayName    string                        `json:"displayName"`
+	Email          string                        `json:"email,omitempty"`
+	Provider       string                        `json:"provider"`
+	AuthID         string                        `json:"authId,omitempty"`
+	AuthIndex      string                        `json:"authIndex,omitempty"`
+	AuthType       string                        `json:"authType"`
+	AccountID      string                        `json:"accountId,omitempty"`
+	Status         string                        `json:"status,omitempty"`
+	Disabled       bool                          `json:"disabled"`
+	Unavailable    bool                          `json:"unavailable,omitempty"`
+	Note           string                        `json:"note,omitempty"`
+	Path           string                        `json:"path,omitempty"`
+	Priority       *int                          `json:"priority,omitempty"`
+	Weight         *int                          `json:"weight,omitempty"`
+	Source         string                        `json:"source,omitempty"`
+	Label          string                        `json:"label,omitempty"`
+	ProjectID      string                        `json:"projectId,omitempty"`
+	ModTime        string                        `json:"modTime,omitempty"`
+	CreatedAt      string                        `json:"createdAt,omitempty"`
+	UpdatedAt      string                        `json:"updatedAt,omitempty"`
+	LastRefresh    string                        `json:"lastRefresh,omitempty"`
+	StatusMessage  string                        `json:"statusMessage,omitempty"`
+	Metadata       *store.InspectionAuthMetadata `json:"metadata,omitempty"`
+	History        *store.CredentialUsageMetrics `json:"history,omitempty"`
+	RecentStatuses []string                      `json:"recentStatuses,omitempty"`
+	PlanLabel      string                        `json:"planLabel,omitempty"`
+	QuotaWindows   any                           `json:"quotaWindows,omitempty"`
 }
 
 // ListOAuthCredentials returns CPA auth-files filtered to OAuth (and oauth2).
@@ -99,6 +103,35 @@ func (r *Runtime) ListOAuthCredentials(ctx context.Context, includeAPIKeys bool)
 			Metadata:      &metaCopy,
 		})
 	}
+
+	if r.store != nil && len(out) > 0 {
+		identities := make([]store.CredentialIdentity, len(out))
+		for i, c := range out {
+			identities[i] = store.CredentialIdentity{
+				Key:       c.RowKey,
+				AuthIndex: c.AuthIndex,
+				AuthID:    c.AuthID,
+				FileName:  c.FileName,
+				Source:    c.Source,
+				Provider:  c.Provider,
+			}
+		}
+		if enrichments, err := r.store.EnrichCredentials(ctx, identities, 90*24*3600*1000); err == nil && enrichments != nil {
+			for i := range out {
+				if enr, ok := enrichments[out[i].RowKey]; ok && enr != nil {
+					out[i].History = enr.History
+					out[i].RecentStatuses = enr.RecentStatuses
+					if enr.PlanLabel != "" {
+						out[i].PlanLabel = enr.PlanLabel
+					}
+					if enr.QuotaWindows != nil {
+						out[i].QuotaWindows = enr.QuotaWindows
+					}
+				}
+			}
+		}
+	}
+
 	return out, nil
 }
 

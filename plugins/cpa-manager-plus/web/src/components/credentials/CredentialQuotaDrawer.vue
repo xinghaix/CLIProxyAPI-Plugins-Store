@@ -64,6 +64,9 @@
             <div v-if="credential.note"><span class="muted">{{ t('monitoring.authCard.note') }}</span><strong>{{ credential.note }}</strong></div>
             <div v-if="credential.lastRefresh"><span class="muted">{{ t('monitoring.credentials.drawer.lastRefresh') }}</span><strong>{{ credential.lastRefresh }}</strong></div>
             <div v-if="credential.updatedAt"><span class="muted">{{ t('monitoring.credentials.drawer.updatedAt') }}</span><strong>{{ credential.updatedAt }}</strong></div>
+            <div v-if="hasDetailValue(credential.statusMessage)"><span class="muted">{{ t('monitoring.credentials.drawer.statusMessage') }}</span><strong>{{ credential.statusMessage }}</strong></div>
+            <div v-if="hasDetailValue(credential.probe?.actionReason)"><span class="muted">{{ t('monitoring.credentials.drawer.probeReason') }}</span><strong>{{ credential.probe.actionReason }}</strong></div>
+            <div v-if="hasDetailValue(credential.probe?.error)"><span class="muted">{{ t('monitoring.credentials.drawer.probeError') }}</span><strong>{{ credential.probe.error }}</strong></div>
           </div>
         </div>
         <div v-if="credential.quotaWindows?.length" class="cred-overview-section">
@@ -155,36 +158,7 @@
         </article>
       </div>
 
-      <div v-else-if="activeTab === 'settings'" class="cred-drawer-body">
-        <div class="detail-grid cred-overview-grid">
-          <div><span class="muted">{{ t('monitoring.authCard.priority') }}</span><strong>{{ credential.priority ?? EMPTY_VALUE }}</strong></div>
-          <div><span class="muted">{{ t('monitoring.credentials.drawer.weight') }}</span><strong>{{ credential.weight ?? EMPTY_VALUE }}</strong></div>
-          <div><span class="muted">{{ t('monitoring.authCard.note') }}</span><strong>{{ credential.note || EMPTY_VALUE }}</strong></div>
-          <div><span class="muted">{{ t('monitoring.credentials.drawer.disabled') }}</span><strong>{{ credential.disabled ? t('common.disabled') : t('common.enabled') }}</strong></div>
-        </div>
-        <div class="cred-stub-panel" role="note">
-          <p class="muted small-text">{{ t('monitoring.credentials.drawer.readOnlyHint') }}</p>
-        </div>
-      </div>
 
-      <div v-else-if="activeTab === 'models'" class="cred-drawer-body">
-        <p class="muted small-text">{{ t('monitoring.credentials.drawer.modelsHint') }}</p>
-        <div v-if="credential.probe?.models?.length" class="cred-model-list">
-          <span v-for="m in credential.probe.models" :key="m" class="chip">{{ m }}</span>
-        </div>
-        <div v-else class="cred-stub-panel empty" role="status">{{ t('monitoring.credentials.drawer.stubTab') }}</div>
-      </div>
-
-      <div v-else class="cred-drawer-body">
-        <div class="detail-grid cred-overview-grid">
-          <div><span class="muted">{{ t('monitoring.credentials.drawer.status') }}</span><strong>{{ statusLabel }}</strong></div>
-          <div v-if="hasDetailValue(credential.statusMessage)"><span class="muted">{{ t('monitoring.credentials.drawer.statusMessage') }}</span><strong>{{ credential.statusMessage }}</strong></div>
-          <div><span class="muted">{{ t('monitoring.credentials.columns.availability') }}</span><strong>{{ credential.availabilityLabel || EMPTY_VALUE }}</strong></div>
-          <div v-if="hasDetailValue(credential.probe?.actionReason)"><span class="muted">{{ t('monitoring.credentials.drawer.probeReason') }}</span><strong>{{ credential.probe.actionReason }}</strong></div>
-          <div v-if="hasDetailValue(credential.probe?.error)"><span class="muted">{{ t('monitoring.credentials.drawer.probeError') }}</span><strong>{{ credential.probe.error }}</strong></div>
-          <div v-if="hasDetailValue(credential.probe?.errorDetail) && credential.probe?.errorDetail !== credential.probe?.error"><span class="muted">{{ t('monitoring.credentials.drawer.probeError') }}</span><strong>{{ credential.probe.errorDetail }}</strong></div>
-        </div>
-      </div>
 
       <div v-if="actionNotice" class="notice error cred-drawer-notice" role="alert" aria-live="assertive">{{ actionNotice }}</div>
 
@@ -248,11 +222,7 @@ watch(() => props.credential?.rowKey, () => {
 
 function applyInitialTab() {
   const tab = props.initialTab || 'quota';
-  if (tab === 'diagnostics' || props.credential?.probeFailed) {
-    activeTab.value = 'diagnostics';
-    return;
-  }
-  if (['overview', 'quota', 'settings', 'models', 'diagnostics'].includes(tab)) {
+  if (['overview', 'quota'].includes(tab)) {
     activeTab.value = tab;
     return;
   }
@@ -293,11 +263,8 @@ onBeforeUnmount(() => {
 });
 
 const tabs = computed(() => [
-  { key: 'overview', label: t('monitoring.credentials.drawer.tabs.overview') },
   { key: 'quota', label: t('monitoring.credentials.drawer.tabs.quota') },
-  { key: 'settings', label: t('monitoring.credentials.drawer.tabs.settings') },
-  { key: 'models', label: t('monitoring.credentials.drawer.tabs.models') },
-  { key: 'diagnostics', label: t('monitoring.credentials.drawer.tabs.diagnostics') },
+  { key: 'overview', label: t('monitoring.credentials.drawer.tabs.overview') },
 ]);
 
 const title = computed(() => props.credential?.maskedEmail || props.credential?.displayName || props.credential?.fileName || EMPTY_VALUE);
