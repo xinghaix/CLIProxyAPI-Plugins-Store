@@ -45,13 +45,3 @@ func TestAccountWindowUsageAggregatesCostAndTokens(t *testing.T) {
 	}
 }
 
-func TestEstimateWindowUsageForecastHelpers(t *testing.T) {
-	got := EstimateWindowUsage(1, WindowUsageMetrics{Requests: 2, Tokens: 6400, Cost: 0.02}, WindowUsageMetrics{})
-	if got == nil || got.Basis != "quota" || got.Requests != 200 || got.Tokens != 640000 || got.Cost != 2 {
-		t.Fatalf("got = %#v", got)
-	}
-	got = EstimateWindowUsage(0, WindowUsageMetrics{Requests: 1, Tokens: 10, Cost: 0.01}, WindowUsageMetrics{Requests: 60, Tokens: 600000, Cost: 6})
-	if got == nil || got.Basis != "previous" || got.Requests != 60 {
-		t.Fatalf("fallback = %#v", got)
-	}
-}

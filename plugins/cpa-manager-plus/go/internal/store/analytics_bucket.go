@@ -33,26 +33,6 @@ func AnalyticsFullUTCHourRange(fromMS, toMS int64) (int64, int64) {
 	return startMS, endMS
 }
 
-// CanMapUTCWholeHours reports whether every complete UTC hour in the supplied
-// aligned range maps to one local analytics bucket without being split.
-func CanMapUTCWholeHours(fromMS, toMS int64, granularity string, location *time.Location) bool {
-	if fromMS >= toMS || fromMS%analyticsHourMS != 0 || toMS%analyticsHourMS != 0 {
-		return false
-	}
-	if location == nil {
-		location = time.UTC
-	}
-	if granularity != "day" {
-		granularity = "hour"
-	}
-	for hourMS := fromMS; hourMS < toMS; hourMS += analyticsHourMS {
-		if AnalyticsBucketMS(hourMS, granularity, location) != AnalyticsBucketMS(hourMS+analyticsHourMS-1, granularity, location) {
-			return false
-		}
-	}
-	return true
-}
-
 // ResolveAnalyticsLocation picks the first valid IANA timezone name, else Local.
 func ResolveAnalyticsLocation(names ...string) *time.Location {
 	for _, name := range names {
