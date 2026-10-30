@@ -165,7 +165,7 @@
 </template>
 
 <script setup>
-import {computed, onBeforeUnmount, onMounted, reactive, ref, watch} from 'vue';
+import {computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch} from 'vue';
 import {useI18n} from 'vue-i18n';
 import DataCard from './components/DataCard.vue';
 import MonitoringView from './components/MonitoringView.vue';
@@ -378,12 +378,13 @@ function fallbackVisibleTab() {
   return 'dashboard';
 }
 
-function selectTab(tab) {
+async function selectTab(tab) {
   if (!isAccountOpsTabVisible(tab, accountOpsMasters.value)) {
     activeTab.value = fallbackVisibleTab();
   } else {
     activeTab.value = tab;
   }
+  await nextTick();
   refreshActive();
 }
 
@@ -393,21 +394,24 @@ function openInspectionTab() {
 }
 
 async function refreshActive() {
-  if (loading.value) return;
+  await nextTick();
+  const targetTab = activeTab.value;
   loading.value = true;
-  errors[activeTab.value] = '';
+  errors[targetTab] = '';
   try {
-    if (activeTab.value === 'dashboard') await (dashboardView.value ? dashboardView.value.refresh(true) : Promise.resolve());
-    if (activeTab.value === 'monitoring') await (monitoringView.value ? monitoringView.value.refresh(true) : Promise.resolve());
-    if (activeTab.value === 'credentials') await (credentialsView.value ? credentialsView.value.refresh() : Promise.resolve());
-    if (activeTab.value === 'inspection') await (inspectionView.value ? inspectionView.value.refresh(true) : Promise.resolve());
-    if (activeTab.value === 'config') await loadConfig();
-    if (activeTab.value === 'model-prices') await (modelPricesView.value ? modelPricesView.value.refresh(true) : Promise.resolve());
-    if (activeTab.value === 'account-actions') await (accountActionsView.value ? accountActionsView.value.refresh(true) : Promise.resolve());
+    if (targetTab === 'dashboard') await (dashboardView.value ? dashboardView.value.refresh(true) : Promise.resolve());
+    if (targetTab === 'monitoring') await (monitoringView.value ? monitoringView.value.refresh(true) : Promise.resolve());
+    if (targetTab === 'credentials') await (credentialsView.value ? credentialsView.value.refresh() : Promise.resolve());
+    if (targetTab === 'inspection') await (inspectionView.value ? inspectionView.value.refresh(true) : Promise.resolve());
+    if (targetTab === 'config') await loadConfig();
+    if (targetTab === 'model-prices') await (modelPricesView.value ? modelPricesView.value.refresh(true) : Promise.resolve());
+    if (targetTab === 'account-actions') await (accountActionsView.value ? accountActionsView.value.refresh(true) : Promise.resolve());
   } catch (e) {
-    errors[activeTab.value] = e.message || String(e);
+    errors[targetTab] = e.message || String(e);
   } finally {
-    loading.value = false;
+    if (activeTab.value === targetTab) {
+      loading.value = false;
+    }
   }
 }
 
@@ -530,11 +534,17 @@ function clearCPAKey() {
   health.text = t(health.messageKey);
 }
 
-function handleOpenMonitoring() {
+async function handleOpenMonitoring(event) {
+  const payload = event?.detail || null;
+  const wasMonitoring = activeTab.value === 'monitoring';
   activeTab.value = 'monitoring';
-  setTimeout(() => {
+  await nextTick();
+  if (monitoringView.value?.consumePendingMonitoringFilter) {
+    monitoringView.value.consumePendingMonitoringFilter(payload);
+  }
+  if (wasMonitoring) {
     refreshActive();
-  }, 0);
+  }
 }
 
 function handleOpenTab(event) {

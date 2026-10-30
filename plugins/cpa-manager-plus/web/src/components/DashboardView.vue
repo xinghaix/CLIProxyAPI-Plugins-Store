@@ -308,7 +308,7 @@ import { useI18n } from 'vue-i18n';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
-import { buildUsageIOC } from '../utils/usageBreakdown.js';
+import { buildUsageIOC, cacheTokenCount } from '../utils/usageBreakdown.js';
 import { localeRef } from '../localeBridge.js';
 import {
   EMPTY_VALUE,
@@ -403,9 +403,22 @@ const heatmapRaw = computed(() => analyticsData.value?.heatmap || []);
 const anomalyRows = computed(() => analyticsData.value?.anomaly_points || []);
 const filterOptions = computed(() => analyticsData.value?.filter_options || {});
 
-const modelOptions = computed(() => unique([...(filterOptions.value.model_stats || []).map(x => x.model), ...modelRows.value.map(x => x.model)]));
-const providerOptions = computed(() => unique([...(filterOptions.value.providers || []), ...modelRows.value.map(x => x.provider || x.auth_provider_snapshot), ...apiKeyRows.value.map(x => x.provider || x.auth_provider_snapshot)]));
-const authFileOptions = computed(() => unique([...(filterOptions.value.auth_files || []), ...credentialRows.value.map(x => x.auth_file || x.authFile || x.source)]));
+const modelOptions = computed(() => unique([
+  ...(filterOptions.value.model_stats || []).map(x => x.model),
+  ...modelRows.value.map(x => x.model),
+  filters.value.model !== 'all' ? filters.value.model : '',
+]));
+const providerOptions = computed(() => unique([
+  ...(filterOptions.value.providers || []),
+  ...modelRows.value.map(x => x.provider || x.auth_provider_snapshot),
+  ...apiKeyRows.value.map(x => x.provider || x.auth_provider_snapshot),
+  filters.value.provider !== 'all' ? filters.value.provider : '',
+]));
+const authFileOptions = computed(() => unique([
+  ...(filterOptions.value.auth_files || []),
+  ...credentialRows.value.map(x => x.auth_file || x.authFile || x.source),
+  filters.value.authFile !== 'all' ? filters.value.authFile : '',
+]));
 
 const granularityLabel = computed(() => {
   const g = analyticsData.value?.granularity || 'auto';
@@ -428,7 +441,7 @@ const activeAnalyticsNote = computed(() => {
 
 const analyticsKpi = computed(() => {
   const s = aSummary.value;
-  const cacheTokens = Number(s.cached_tokens ?? 0) + Number(s.cache_read_tokens ?? 0) + Number(s.cache_creation_tokens ?? 0);
+  const cacheTokens = Number(s.cache_tokens ?? cacheTokenCount(s));
   const totalTokens = Math.max(Number(s.total_tokens ?? 0), 0);
   const rangeLabel = filters.value.timeRange === 'today'
     ? t('dashboard.range.today')
@@ -823,7 +836,7 @@ function openMonitoringWithPayload(payload) {
   } catch {
     // sessionStorage may be unavailable.
   }
-  window.dispatchEvent(new CustomEvent('cpa-manager-plus:open-monitoring'));
+  window.dispatchEvent(new CustomEvent('cpa-manager-plus:open-monitoring', { detail: payload }));
 }
 
 function openMonitoringForModel(row) {
