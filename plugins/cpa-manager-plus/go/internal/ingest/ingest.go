@@ -260,9 +260,12 @@ func sanitize(value string, limit int) string {
 
 func selectHeaders(headers map[string][]string) map[string][]string {
 	result := map[string][]string{}
-	for _, key := range []string{"X-Request-ID", "X-Trace-ID", "X-Ratelimit-Reset", "Retry-After"} {
-		if values := headers[key]; len(values) > 0 {
-			result[key] = append([]string(nil), values...)
+	targets := []string{"X-Request-ID", "Request-ID", "X-Goog-Request-ID", "X-Trace-ID", "X-Ratelimit-Reset", "Retry-After"}
+	for _, target := range targets {
+		for k, values := range headers {
+			if strings.EqualFold(k, target) && len(values) > 0 {
+				result[target] = append(result[target], values...)
+			}
 		}
 	}
 	return result

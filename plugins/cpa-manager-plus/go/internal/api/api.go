@@ -688,6 +688,10 @@ type analyticsPayload struct {
 		EventsPage struct {
 			Limit int `json:"limit"`
 		} `json:"events_page"`
+		DrilldownPreview struct {
+			BucketMS int64 `json:"bucket_ms"`
+			Limit    int   `json:"limit"`
+		} `json:"drilldown_preview"`
 		Granularity string `json:"granularity"`
 	} `json:"include"`
 	TimeZone string `json:"time_zone"`
@@ -703,21 +707,23 @@ func analyticsRequest(raw []byte) (store.AnalyticsRequest, error) {
 		includeFailed = *payload.Filters.IncludeFailed
 	}
 	return store.AnalyticsRequest{
-		FromMS:        payload.FromMS,
-		ToMS:          payload.ToMS,
-		Limit:         payload.Include.EventsPage.Limit,
-		Models:        payload.Filters.Models,
-		Providers:     payload.Filters.Providers,
-		Accounts:      payload.Filters.Accounts,
-		AuthFiles:     payload.Filters.AuthFiles,
-		MinLatencyMS:  payload.Filters.MinLatencyMS,
-		CacheStatus:   payload.Filters.CacheStatus,
-		APIKeyHashes:  payload.Filters.APIKeyHashes,
-		FailedOnly:    payload.Filters.FailedOnly,
-		IncludeFailed: includeFailed,
-		Search:        payload.Search,
-		Granularity:   payload.Include.Granularity,
-		TimeZone:      strings.TrimSpace(payload.TimeZone),
+		FromMS:            payload.FromMS,
+		ToMS:              payload.ToMS,
+		Limit:             payload.Include.EventsPage.Limit,
+		Models:            payload.Filters.Models,
+		Providers:         payload.Filters.Providers,
+		Accounts:          payload.Filters.Accounts,
+		AuthFiles:         payload.Filters.AuthFiles,
+		MinLatencyMS:      payload.Filters.MinLatencyMS,
+		CacheStatus:       payload.Filters.CacheStatus,
+		APIKeyHashes:      payload.Filters.APIKeyHashes,
+		FailedOnly:        payload.Filters.FailedOnly,
+		IncludeFailed:     includeFailed,
+		Search:            payload.Search,
+		Granularity:       payload.Include.Granularity,
+		DrilldownBucketMS: payload.Include.DrilldownPreview.BucketMS,
+		DrilldownLimit:    payload.Include.DrilldownPreview.Limit,
+		TimeZone:          strings.TrimSpace(payload.TimeZone),
 	}, nil
 }
 

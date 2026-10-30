@@ -424,3 +424,90 @@ func TestMatchesProducerCacheStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestAnalyticsFilterOptionsRetainAllWindowItemsWhenFiltered(t *testing.T) {
+	ctx := context.Background()
+	database, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if _, err := database.InsertEvents(ctx, []Event{
+		{Hash: "ev-gemini", TimestampMS: 1_000, Provider: "gemini", Model: "gemini-2.5-pro", AuthIndex: "idx-gem", Source: "gem@example.com", AuthType: "oauth", APIKeyHash: "key-gem", TotalTokens: 100},
+		{Hash: "ev-codex", TimestampMS: 2_000, Provider: "codex", Model: "gpt-5", Alias: "g5-alias", AuthIndex: "idx-codex", Source: "codex@example.com", AuthType: "oauth", APIKeyHash: "key-codex", TotalTokens: 200, Failed: true, FailStatusCode: 429},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := database.Analytics(ctx, AnalyticsRequest{
+		FromMS:        0,
+		ToMS:          5_000,
+		Limit:         10,
+		Providers:     []string{"GEMINI"},
+		IncludeFailed: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := result["events"].(map[string]any)["items"].([]map[string]any)
+	if len(events) != 1 || events[0]["event_hash"] != "ev-gemini" {
+		t.Fatalf("filtered events = %#v", events)
+	}
+	filterOpts := result["filter_options"].(map[string]any)
+	providers := filterOpts["providers"].([]string)
+	if len(providers) != 2 || providers[0] != "codex" || providers[1] != "gemini" {
+		t.Fatalf("expected all window providers in filter_options, got %#v", providers)
+	}
+	accounts := filterOpts["accounts"].([]map[string]any)
+	if len(accounts) != 2 {
+		t.Fatalf("expected all window accounts in filter_options, got %#v", accounts)
+	}
+	apiKeys := filterOpts["api_keys"].([]map[string]any)
+	if len(apiKeys) != 2 {
+		t.Fatalf("expected all window api_keys in filter_options, got %#v", apiKeys)
+	}
+}
+
+func TestEventJSONPopulatesMetadataAndDeduplicatesMirroredCacheTokens(t *testing.T) {
+	ctx := context.Background()
+	database, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if _, err := database.InsertEvents(ctx, []Event{
+		{
+			Hash:                   "real-hash-1",
+			TimestampMS:            1_000,
+			Provider:               "codex",
+			Model:                  "gpt-5",
+			InputTokens:            1000,
+			OutputTokens:           100,
+			CachedTokens:           600,
+			CacheReadTokens:        600,
+			TotalTokens:            1100,
+			LatencyMS:              250,
+			TTFTMS:                 0,
+			ResponseCorrelationKey: "corr-123",
+			ResponseHeadersJSON:    `{"X-Trace-ID":["trace-abc"],"Retry-After":["30"]}`,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := database.Analytics(ctx, AnalyticsRequest{FromMS: 0, ToMS: 5_000, Limit: 10, IncludeFailed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := result["summary"].(map[string]any)
+	if summary["cache_tokens"] != int64(600) || summary["cache_hit_tokens"] != int64(600) {
+		t.Fatalf("expected deduplicated cache tokens 600, got summary=%#v", summary)
+	}
+	item := result["events"].(map[string]any)["items"].([]map[string]any)[0]
+	if item["event_hash"] != "real-hash-1" || item["request_id"] != "corr-123" || item["header_trace_id"] != "trace-abc" {
+		t.Fatalf("unexpected event metadata: %#v", item)
+	}
+	if item["ttft_ms"] != nil || item["fail_status_code"] != nil {
+		t.Fatalf("zero ttft_ms and fail_status_code should be nil: %#v", item)
+	}
+}
