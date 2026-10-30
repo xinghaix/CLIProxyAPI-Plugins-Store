@@ -334,4 +334,99 @@ describe('latest refresh snapshots', () => {
     await latestRun;
     expect(state.loading).toBe(false);
   });
+
+  it('retains full time-window filter options when filtered to a single sub-item', async () => {
+    const proxyCall = vi.fn().mockResolvedValue({
+      summary: { total_calls: 1, cached_tokens: 500, cache_read_tokens: 500, cache_tokens: 500, total_tokens: 600 },
+      events: { items: [{ id: 1, event_hash: 'h1', provider: 'gemini', model: 'gemini-2.5-pro' }] },
+      model_stats: [{ model: 'gemini-2.5-pro', calls: 1 }],
+      account_stats: [{ account_snapshot: 'idx-gem', calls: 1 }],
+      api_key_stats: [{ api_key_hash: 'hash-gem-12345678', calls: 1 }],
+      filter_options: {
+        providers: ['antigravity', 'codex', 'gemini'],
+        model_stats: [{ model: 'gemini-2.5-pro' }, { model: 'gpt-5' }],
+        accounts: [
+          { value: 'idx-gem', account_snapshot: 'idx-gem', source: 'gem@example.com', auth_type: 'oauth' },
+          { value: 'idx-codex', account_snapshot: 'idx-codex', source: 'codex@example.com', auth_type: 'oauth' },
+        ],
+        api_keys: [
+          { value: 'hash-gem-12345678', api_key_hash: 'hash-gem-12345678', source: 'gem@example.com', auth_type: 'oauth' },
+          { value: 'hash-codex-87654321', api_key_hash: 'hash-codex-87654321', account_snapshot: 'unknown' },
+        ],
+      },
+    });
+    app = renderer.createApp({ ...MonitoringView, render: () => null }, { ready: true, proxyCall });
+    app.use(createI18n({ legacy: false, locale: 'en', messages: { en } }));
+    app.provide(ssrContextKey, {});
+    const state = app.mount({}).$.setupState;
+    await nextTick();
+    await nextTick();
+
+    state.filters.provider = 'gemini';
+    await nextTick();
+    expect(state.optionProviders).toEqual(['antigravity', 'codex', 'gemini']);
+    expect(state.optionModels).toEqual(['gemini-2.5-pro', 'gpt-5']);
+    expect(state.optionAccounts).toEqual([
+      { value: 'idx-gem', label: 'gem@example.com · idx-gem' },
+      { value: 'idx-codex', label: 'codex@example.com · idx-codex' },
+    ]);
+    expect(state.optionApiKeys).toEqual([
+      { value: 'hash-gem-12345678', label: 'hash-ge…45678 · gem@example.com' },
+      { value: 'hash-codex-87654321', label: 'hash-co…54321' },
+    ]);
+    expect(state.summaryCards[7].value).toBe('500');
+  });
+
+  it('does not fabricate priority tier from reasoning_effort or fallback ttftMs to latencyMs', () => {
+    const proxyCall = vi.fn();
+    app = renderer.createApp({ ...MonitoringView, render: () => null }, { ready: false, proxyCall });
+    app.use(createI18n({ legacy: false, locale: 'en', messages: { en } }));
+    app.provide(ssrContextKey, {});
+    const state = app.mount({}).$.setupState;
+
+    const reasoningOnly = state.buildEventTableRow({
+      model: 'gpt-5',
+      reasoning_effort: 'high',
+      latency_ms: 1200,
+      ttft_ms: 0,
+    }, new Map());
+    expect(reasoningOnly.intensityDisplay).toBe('high');
+    expect(reasoningOnly.tierDisplay).toBe('—');
+    expect(reasoningOnly.tier).toBe('default');
+    expect(reasoningOnly.ttftMs).toBeNull();
+
+    const tierOnly = state.buildEventTableRow({
+      model: 'gpt-5',
+      service_tier: 'priority',
+      latency_ms: 800,
+    }, new Map());
+    expect(tierOnly.intensityDisplay).toBe('—');
+    expect(tierOnly.intensity).toBe('-');
+    expect(tierOnly.tierDisplay).toBe('priority');
+    expect(tierOnly.tier).toBe('priority');
+  });
+
+  it('applies external filter payload without duplicate refresh calls', async () => {
+    const proxyCall = vi.fn().mockResolvedValue({ events: { items: [] } });
+    app = renderer.createApp({ ...MonitoringView, render: () => null }, { ready: true, proxyCall });
+    app.use(createI18n({ legacy: false, locale: 'en', messages: { en } }));
+    app.provide(ssrContextKey, {});
+    const state = app.mount({}).$.setupState;
+    await nextTick();
+    proxyCall.mockClear();
+
+    state.activeDataTab = 'models';
+    state.setModelFilter({ model: 'gpt-5' });
+    await nextTick();
+    expect(state.activeDataTab).toBe('events');
+    expect(state.filters.model).toBe('gpt-5');
+    expect(proxyCall).toHaveBeenCalledTimes(1);
+
+    proxyCall.mockClear();
+    state.consumePendingMonitoringFilter({ authFile: 'codex-a.json' });
+    await nextTick();
+    expect(state.filters.account).toBe('codex-a.json');
+    expect(state.filters.model).toBe('all');
+    expect(proxyCall).toHaveBeenCalledTimes(1);
+  });
 });

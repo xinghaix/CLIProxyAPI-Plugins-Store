@@ -460,7 +460,7 @@ import { isOAuthAuthType, providerChip } from '../utils/providerTag.js';
 import { EMPTY_VALUE, formatDate, formatDateTime, formatInt, formatTime } from '../utils/localeFormat.js';
 import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
 import { requestProtocol, requestProtocolLabel } from '../utils/requestProtocol.js';
-import { buildUsageIOC } from '../utils/usageBreakdown.js';
+import { buildUsageIOC, cacheTokenCount } from '../utils/usageBreakdown.js';
 import { aggregateCostCoverage as formatAggregateCostCoverage, aggregateCostText as formatAggregateCostText, eventCostAmount as formatEventCostAmount, eventCostMeta as formatEventCostMeta, eventCostTooltip as formatEventCostTooltip } from '../utils/costEstimateDisplay.js';
 import { canApplySelectedFilter, rowIdentity } from '../utils/rowFilter.js';
 import { buildEventHints, buildModelMeta, formatCacheSub, formatCallsSub, formatTpsSub, hasModelRouteDetails, hasResponseModelConflict, hasResponseModelDifference, hasResponseModelMismatch, mappedModelName, requestedModelName, responseModelName, responseModelSource } from '../utils/eventStreamDisplay.js';
@@ -530,7 +530,7 @@ const summary = computed(() => data.value?.summary || {});
 const eventRows = computed(() => (data.value?.events?.items || []).map((row, idx) => ({...row, __id: idx})));
 const summaryCards = computed(() => {
   const s = summary.value;
-  const totalCacheTokens = Number(s.cached_tokens ?? 0) + Number(s.cache_read_tokens ?? 0) + Number(s.cache_creation_tokens ?? 0);
+  const totalCacheTokens = Number(s.cache_tokens ?? cacheTokenCount(s));
   const cacheHitRate = computeCacheHitRate(s);
   const tokenMix = (n) => s.total_tokens > 0 ? `${fmtPct(n / s.total_tokens)}` : EMPTY_VALUE;
   return [
@@ -567,16 +567,74 @@ const accountApiKeyRows = computed(() => data.value?.account_api_key_stats || []
 const failureRows = computed(() => [...(data.value?.failure_sources || []), ...(data.value?.recent_failures || [])]);
 const taskRows = computed(() => data.value?.task_buckets || []);
 
-const optionModels = computed(() => unique([...(data.value?.filter_options?.model_stats || []).map(x => x.model), ...modelRows.value.map(x => x.model)]));
-const optionProviders = computed(() => unique([...(data.value?.filter_options?.providers || []), ...eventRows.value.map(x => x.auth_provider_snapshot)]));
-const optionAccounts = computed(() => uniqueObjects(accountRows.value.map(row => ({
-  value: row.id || row.account_snapshot || row.account || '',
-  label: row.account_snapshot || row.auth_label_snapshot || row.id || row.account || ''
-}))));
-const optionApiKeys = computed(() => uniqueObjects(apiKeyRows.value.map(row => ({
-  value: row.api_key_hash || row.id || '',
-  label: `${shortHash(row.api_key_hash || row.id)} · ${row.account_snapshot || row.auth_label_snapshot || ''}`
-}))));
+function formatAccountOptionLabel(row) {
+  const value = String(row?.value || row?.account_snapshot || row?.id || row?.account || '').trim();
+  const rawSource = String(row?.source || '').trim();
+  const source = rawSource && rawSource !== 'unknown' && rawSource !== EMPTY_VALUE
+    ? (isSensitiveSource(rawSource, row?.auth_type) ? maskSecretSummary(rawSource) : rawSource)
+    : '';
+  if (source && value && source !== value && value !== 'unknown') {
+    return `${source} · ${value}`;
+  }
+  return source || value || String(row?.auth_label_snapshot || '').trim();
+}
+
+function formatApiKeyOptionLabel(row) {
+  const hash = String(row?.api_key_hash || row?.value || row?.id || '').trim();
+  if (!hash) return '';
+  const short = shortHash(hash);
+  const rawSource = String(row?.source || '').trim();
+  const source = rawSource && rawSource !== 'unknown' && rawSource !== EMPTY_VALUE
+    ? (isSensitiveSource(rawSource, row?.auth_type) ? maskSecretSummary(rawSource) : rawSource)
+    : '';
+  const acct = String(row?.account_snapshot || row?.auth_label_snapshot || '').trim();
+  const suffix = source || (acct && acct !== 'unknown' && acct !== hash ? acct : '');
+  return suffix ? `${short} · ${suffix}` : short;
+}
+
+const optionModels = computed(() => unique([
+  ...(data.value?.filter_options?.model_stats || []).map(x => x.model),
+  ...modelRows.value.map(x => x.model),
+  filters.value.model !== 'all' ? filters.value.model : '',
+]));
+const optionProviders = computed(() => unique([
+  ...(data.value?.filter_options?.providers || []),
+  ...eventRows.value.map(x => x.auth_provider_snapshot || x.provider),
+  filters.value.provider !== 'all' ? filters.value.provider : '',
+]));
+const optionAccounts = computed(() => {
+  const candidates = [
+    ...(data.value?.filter_options?.accounts || []),
+    ...accountRows.value,
+    ...(data.value?.filter_options?.auth_files || []).map(v => ({ value: v, account_snapshot: v })),
+  ];
+  if (filters.value.account && filters.value.account !== 'all') {
+    candidates.push({ value: filters.value.account, account_snapshot: filters.value.account });
+  }
+  return uniqueObjects(candidates.map(row => {
+    const value = String(row?.value || row?.id || row?.account_snapshot || row?.account || '').trim();
+    return {
+      value,
+      label: formatAccountOptionLabel(row) || value,
+    };
+  }));
+});
+const optionApiKeys = computed(() => {
+  const candidates = [
+    ...(data.value?.filter_options?.api_keys || []),
+    ...apiKeyRows.value,
+  ];
+  if (filters.value.apiKeyHash && filters.value.apiKeyHash !== 'all') {
+    candidates.push({ api_key_hash: filters.value.apiKeyHash });
+  }
+  return uniqueObjects(candidates.map(row => {
+    const value = String(row?.api_key_hash || row?.value || row?.id || '').trim();
+    return {
+      value,
+      label: formatApiKeyOptionLabel(row) || value,
+    };
+  }));
+});
 
 const modelColumns = computed(() => [
   ['model', t('monitoring.modelColumns.model')],
@@ -591,7 +649,7 @@ const modelColumns = computed(() => [
 
 const eventDetailCards = computed(() => selectedEvent.value ? [
   {label: t('monitoring.labels.status'), value: selectedEvent.value.failed ? t('monitoring.labels.failed') : t('monitoring.labels.success')},
-  {label: t('monitoring.labels.token'), value: selectedEvent.value.total_tokens ?? 0},
+  {label: t('monitoring.labels.token'), value: fmtInt(selectedEvent.value.total_tokens ?? 0)},
   {label: t('monitoring.labels.latency'), value: fmtMs(selectedEvent.value.latency_ms)},
   {label: t('monitoring.labels.cost'), value: fmtMoney(eventCostAmount(selectedEvent.value)), sub: eventCostMeta(selectedEvent.value)},
 ] : []);
@@ -637,7 +695,67 @@ watch(() => props.ready, (ready) => {
   setupTimer();
   if (!data.value) refresh(true);
 });
+function applyExternalFilterPayload(payload) {
+  if (!payload || typeof payload !== 'object') return false;
+  const next = defaultFilters();
+  let changed = false;
+  if (payload.model && payload.model !== 'all') {
+    next.model = String(payload.model);
+    changed = true;
+  }
+  if (payload.provider && payload.provider !== 'all') {
+    next.provider = String(payload.provider);
+    changed = true;
+  }
+  if (payload.apiKeyHash && payload.apiKeyHash !== 'all') {
+    next.apiKeyHash = String(payload.apiKeyHash);
+    changed = true;
+  }
+  if ((payload.account && payload.account !== 'all') || (payload.authFile && payload.authFile !== 'all')) {
+    next.account = String(payload.account || payload.authFile);
+    changed = true;
+  }
+  if (payload.status && payload.status !== 'all') {
+    next.status = String(payload.status);
+    changed = true;
+  }
+  if (!changed) return false;
+  filters.value = next;
+  activeDataTab.value = 'events';
+  return true;
+}
+
+function consumePendingMonitoringFilter(directPayload = null) {
+  if (directPayload && applyExternalFilterPayload(directPayload)) {
+    try {
+      window.sessionStorage?.removeItem('cpa-manager-plus:pending-monitoring-filter');
+    } catch {}
+    return true;
+  }
+  try {
+    const raw = window.sessionStorage?.getItem('cpa-manager-plus:pending-monitoring-filter');
+    if (!raw) return false;
+    window.sessionStorage?.removeItem('cpa-manager-plus:pending-monitoring-filter');
+    return applyExternalFilterPayload(JSON.parse(raw));
+  } catch {
+    return false;
+  }
+}
+
+function handleExternalOpenMonitoring(event) {
+  consumePendingMonitoringFilter(event?.detail || null);
+}
+
+function handleDetailEscape(event) {
+  if (event?.key === 'Escape' && selectedEvent.value) {
+    selectedEvent.value = null;
+  }
+}
+
 onMounted(() => {
+  window.addEventListener?.('cpa-manager-plus:open-monitoring', handleExternalOpenMonitoring);
+  window.addEventListener?.('keydown', handleDetailEscape);
+  consumePendingMonitoringFilter();
   quotaClockTimer = window.setInterval(() => {
     quotaNowMs.value = Date.now();
   }, 30000);
@@ -647,6 +765,8 @@ onMounted(() => {
   }
 });
 onBeforeUnmount(() => {
+  window.removeEventListener?.('cpa-manager-plus:open-monitoring', handleExternalOpenMonitoring);
+  window.removeEventListener?.('keydown', handleDetailEscape);
   clearTimer();
   clearKeyCollapseTimers();
   if (quotaClockTimer) window.clearInterval(quotaClockTimer);
@@ -724,14 +844,26 @@ function resolveRange() {
   if (timeRange.value === '7d') return {fromMs: now - 7 * 86400000, toMs: now};
   if (timeRange.value === '14d') return {fromMs: now - 14 * 86400000, toMs: now};
   if (timeRange.value === '30d') return {fromMs: now - 30 * 86400000, toMs: now};
-  if (timeRange.value === 'custom') return {fromMs: Date.parse(customStart.value), toMs: Date.parse(customEnd.value)};
+  if (timeRange.value === 'custom') {
+    const start = Date.parse(customStart.value);
+    const end = Date.parse(customEnd.value);
+    const validStart = Number.isFinite(start) ? start : now - 86400000;
+    const validEnd = Number.isFinite(end) ? end : now;
+    return validStart < validEnd
+      ? {fromMs: validStart, toMs: validEnd}
+      : {fromMs: Math.min(validStart, validEnd) - 60000, toMs: Math.max(validStart, validEnd)};
+  }
   return {fromMs: 0, toMs: now};
 }
 
 function resetFilters() {
+  const prevJson = JSON.stringify(filters.value);
   filters.value = defaultFilters();
   searchQuery.value = '';
-  refresh(true);
+  if (JSON.stringify(filters.value) === prevJson) {
+    eventPage.value = 1;
+    refresh(true);
+  }
 }
 
 function eventKeyId(row, field) {
@@ -853,11 +985,15 @@ function sameAccountIdentity(event, row) {
   if (eventType && rowType && eventType !== rowType) return false;
   if (row?.auth_index) return String(event?.auth_index || '') === String(row.auth_index);
   if (row?.auth_id) return String(event?.auth_file_snapshot || event?.auth_id || '') === String(row.auth_id);
+  if (row?.api_key_hash && row.api_key_hash !== 'unknown') {
+    return String(event?.api_key_hash || '') === String(row.api_key_hash);
+  }
   return String(event?.source || '').trim() === accountSource(row);
 }
 
 function matchInspectionResult(results, row) {
-  const source = accountSource(row).toLowerCase();
+  const rawSource = String(row?.source || '').trim().toLowerCase();
+  const source = rawSource && rawSource !== 'unknown' && rawSource !== EMPTY_VALUE.toLowerCase() ? rawSource : '';
   const provider = String(row?.auth_provider_snapshot || '').trim().toLowerCase();
   const authType = String(row?.auth_type || '').trim().toLowerCase();
   const authIndex = String(row?.auth_index || '').trim();
@@ -870,8 +1006,8 @@ function matchInspectionResult(results, row) {
   const items = (results || []).filter(sameIdentity);
   return items.find(item => authIndex && String(item.authIndex || '').trim() === authIndex)
     || items.find(item => authId && String(item.authId || '').trim() === authId)
-    || items.find(item => String(item.displayAccount || '').trim().toLowerCase() === source)
-    || items.find(item => String(item.fileName || '').trim().toLowerCase().includes(source))
+    || (source && items.find(item => String(item.displayAccount || '').trim().toLowerCase() === source))
+    || (source && source.length >= 3 && items.find(item => String(item.fileName || '').trim().toLowerCase().includes(source)))
     || null;
 }
 
@@ -1119,7 +1255,7 @@ async function fetchQuotaResult(row) {
         authIndex: row.auth_index || '',
         authType: row.auth_type || '',
         provider: row.auth_provider_snapshot || '',
-        source: accountSource(row),
+        source: String(row?.source || '').trim() === 'unknown' ? '' : String(row?.source || '').trim(),
         fileName: row.file_name || '',
       },
     });
@@ -1176,21 +1312,42 @@ async function queryAccountQuota(row, {force = false} = {}) {
 }
 
 function filterAccountAPIKey(row) {
-  filters.value.account = 'all';
-  filters.value.apiKeyHash = 'all';
+  const prevJson = JSON.stringify(filters.value);
+  const acctCandidate = String(row?.auth_index || row?.auth_id || row?.id || '').trim();
+  const keyCandidate = String(row?.api_key_hash || '').trim();
   const source = accountSource(row);
-  searchQuery.value = source === EMPTY_VALUE || source === 'unknown' ? '' : source;
-  refresh(true);
+  if (row?.auth_type === 'apikey' && keyCandidate && keyCandidate !== 'unknown') {
+    filters.value.apiKeyHash = keyCandidate;
+    filters.value.account = 'all';
+    searchQuery.value = '';
+  } else if (acctCandidate && acctCandidate !== 'unknown') {
+    filters.value.account = acctCandidate;
+    filters.value.apiKeyHash = 'all';
+    searchQuery.value = '';
+  } else {
+    filters.value.account = 'all';
+    filters.value.apiKeyHash = 'all';
+    searchQuery.value = source === EMPTY_VALUE || source === 'unknown' ? '' : source;
+  }
+  activeDataTab.value = 'events';
+  if (JSON.stringify(filters.value) === prevJson) {
+    eventPage.value = 1;
+    refresh(true);
+  }
 }
 
 function setAccountFilter(row) {
+  const prev = filters.value.account;
   filters.value.account = row.id || row.account_snapshot || row.account || 'all';
-  refresh(true);
+  activeDataTab.value = 'events';
+  if (filters.value.account === prev) refresh(true);
 }
 
 function setApiKeyFilter(row) {
+  const prev = filters.value.apiKeyHash;
   filters.value.apiKeyHash = row.api_key_hash || row.id || 'all';
-  refresh(true);
+  activeDataTab.value = 'events';
+  if (filters.value.apiKeyHash === prev) refresh(true);
 }
 
 function selectModel(row) {
@@ -1203,8 +1360,10 @@ function applyModelFilter(row) {
 }
 
 function setModelFilter(row) {
+  const prev = filters.value.model;
   filters.value.model = row.model || 'all';
-  refresh(true);
+  activeDataTab.value = 'events';
+  if (filters.value.model === prev) refresh(true);
 }
 
 function setupTimer() {
@@ -1339,7 +1498,7 @@ function decodeDetailObject(obj) {
 }
 
 function exportEventsCsv() {
-  const cols = ['timestamp_ms', 'failed', 'protocol', 'executor_type', 'model', 'alias', 'requested_model', 'resolved_model', 'auth_index', 'account_snapshot', 'api_key_hash', 'method', 'path', 'total_tokens', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'latency_ms', 'fail_status_code', 'fail_summary', 'header_trace_id'];
+  const cols = ['timestamp_ms', 'failed', 'protocol', 'executor_type', 'provider', 'source', 'model', 'alias', 'requested_model', 'resolved_model', 'response_model', 'reasoning_effort', 'service_tier', 'response_service_tier', 'auth_index', 'account_snapshot', 'api_key_hash', 'input_tokens', 'output_tokens', 'reasoning_tokens', 'cached_tokens', 'cache_read_tokens', 'cache_creation_tokens', 'total_tokens', 'cache_hit_tokens', 'cache_hit_input_tokens', 'cache_hit_rate', 'ttft_ms', 'latency_ms', 'cost', 'fail_status_code', 'fail_summary', 'header_trace_id'];
   const csv = [cols.join(','), ...eventRows.value.map(row => cols.map(c => csvCell(row[c])).join(','))].join('\n');
   const blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
@@ -1352,47 +1511,38 @@ function exportEventsCsv() {
 
 function buildEventGroupMap(events) {
   const sortedAsc = [...(events || [])].sort(
-      (a, b) => Number(a.timestamp_ms || 0) - Number(b.timestamp_ms || 0) || String(a.__id).localeCompare(String(b.__id))
+    (a, b) => Number(a.timestamp_ms || 0) - Number(b.timestamp_ms || 0) || Number(b.__id ?? 0) - Number(a.__id ?? 0)
   );
-  const metricsByStream = new Map();
-  const groupsByStream = new Map();
-  for (const event of sortedAsc) {
-    const key = eventGroupKey(event);
-    const prev = metricsByStream.get(key) ?? {total: 0, success: 0, pattern: []};
-    const statsIncluded = event.failed === true || Number(event.input_tokens || 0) > 0 || Number(event.output_tokens || 0) > 0;
-    const requestCount = prev.total + (statsIncluded ? 1 : 0);
-    const successCount = prev.success + (statsIncluded && !event.failed ? 1 : 0);
-    const pattern = [...prev.pattern, !event.failed].slice(-10);
-    metricsByStream.set(key, {total: requestCount, success: successCount, pattern});
-    const group = groupsByStream.get(key) ?? {calls: 0, successCalls: 0, failureCalls: 0, events: []};
-    group.calls += 1;
-    group.successCalls += event.failed ? 0 : 1;
-    group.failureCalls += event.failed ? 1 : 0;
-    group.events.push(event);
-    groupsByStream.set(key, group);
-  }
   const map = new Map();
-  for (const [key, group] of groupsByStream) {
-    group.events.sort((a, b) => Number(b.timestamp_ms || 0) - Number(a.timestamp_ms || 0));
-    map.set(key, group);
-  }
-  map._slidingWindow = new Map();
   const sw = new Map();
+  const slidingByStream = new Map();
   for (const event of sortedAsc) {
     const key = eventGroupKey(event);
     const prev = sw.get(key) ?? {total: 0, success: 0, pattern: []};
-    const statsIncluded = event.failed === true || Number(event.input_tokens || 0) > 0 || Number(event.output_tokens || 0) > 0;
-    const requestCount = prev.total + (statsIncluded ? 1 : 0);
-    const successCount = prev.success + (statsIncluded && !event.failed ? 1 : 0);
+    const requestCount = prev.total + 1;
+    const successCount = prev.success + (event.failed ? 0 : 1);
     const pattern = [...prev.pattern, !event.failed].slice(-10);
     sw.set(key, {total: requestCount, success: successCount, pattern});
-    if (!map._slidingWindow.has(key)) map._slidingWindow.set(key, new Map());
-    map._slidingWindow.get(key).set(event.event_hash || event.request_id || `${event.timestamp_ms}-${event.__id}`, {
+
+    const group = map.get(key) ?? {calls: 0, successCalls: 0, failureCalls: 0};
+    group.calls += 1;
+    group.successCalls += event.failed ? 0 : 1;
+    group.failureCalls += event.failed ? 1 : 0;
+    map.set(key, group);
+
+    let streamWindow = slidingByStream.get(key);
+    if (!streamWindow) {
+      streamWindow = new Map();
+      slidingByStream.set(key, streamWindow);
+    }
+    const eventId = event.event_hash || event.request_id || `${event.timestamp_ms}-${event.__id}`;
+    streamWindow.set(eventId, {
       requestCount,
       successRate: requestCount > 0 ? successCount / requestCount : 1,
       recentPattern: pattern,
     });
   }
+  map._slidingWindow = slidingByStream;
   return map;
 }
 
@@ -1403,6 +1553,8 @@ function buildEventTableRow(row, groupMap) {
   const latencyMs = numberOrNull(row.latency_ms);
   const outputTokens = Number(row.output_tokens || 0);
   const sourceName = String(row.source || '').trim() || EMPTY_VALUE;
+  const resolvedIntensity = String(row.reasoning_effort || '').trim();
+  const resolvedTier = String(row.response_service_tier || row.service_tier || '').trim();
   const built = {
     id: eventId,
     raw: row,
@@ -1428,19 +1580,19 @@ function buildEventTableRow(row, groupMap) {
       ...row,
     }),
     hasModelDetails: hasModelRouteDetails(row),
-    intensity: row.reasoning_effort || row.response_service_tier || row.service_tier || '-',
-    intensityDisplay: String(row.reasoning_effort || '').trim() || EMPTY_VALUE,
-    tier: row.response_service_tier || row.service_tier || (row.reasoning_effort && row.reasoning_effort !== '-' ? 'priority' : 'default'),
-    tierDisplay: String(row.response_service_tier || row.service_tier || '').trim() || EMPTY_VALUE,
+    intensity: resolvedIntensity || '-',
+    intensityDisplay: resolvedIntensity || EMPTY_VALUE,
+    tier: resolvedTier || 'default',
+    tierDisplay: resolvedTier || EMPTY_VALUE,
     recentPattern: (sliding?.recentPattern || []).slice(-5),
     failed: Boolean(row.failed),
     protocol: requestProtocol(row),
     protocolLabel: requestProtocolLabel(row, t),
-    httpStatus: numberOrNull(row.http_status_code ?? row.status_code ?? row.response_status_code ?? row.fail_status_code),
+    httpStatus: positiveNumberOrNull(row.http_status_code ?? row.status_code ?? row.response_status_code ?? row.fail_status_code),
     successRate: sliding?.successRate ?? (row.failed ? 0 : 1),
     totalCalls: sliding?.requestCount ?? 1,
     tps: latencyMs && latencyMs > 0 ? outputTokens / (latencyMs / 1000) : null,
-    ttftMs: numberOrNull(row.ttft_ms) ?? latencyMs,
+    ttftMs: positiveNumberOrNull(row.ttft_ms),
     latencyMs,
     timestampMs: row.timestamp_ms,
     totalTokens: Number(row.total_tokens || 0),
@@ -1449,7 +1601,7 @@ function buildEventTableRow(row, groupMap) {
     cost: eventCostAmount(row),
     costMeta: eventCostMeta(row),
     costTooltip: '',
-    failStatusCode: numberOrNull(row.fail_status_code),
+    failStatusCode: positiveNumberOrNull(row.fail_status_code),
     failSummary: row.fail_summary || '',
   };
   built.modelMeta = buildModelMeta(built, t);
@@ -1482,8 +1634,15 @@ function eventGroupKey(row) {
 }
 
 function numberOrNull(v) {
+  if (v == null || v === '') return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function positiveNumberOrNull(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function buildUsageText(row) {
@@ -1625,10 +1784,10 @@ function pickObject(obj, keys) {
 
 function csvCell(v) {
   const s = v == null ? '' : String(v);
-  return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+  return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 }
 
-defineExpose({refresh});
+defineExpose({refresh, applyExternalFilterPayload, consumePendingMonitoringFilter});
 
 const SimpleTable = defineComponent({
   props: {
