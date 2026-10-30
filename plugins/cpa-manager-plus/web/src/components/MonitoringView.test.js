@@ -367,11 +367,11 @@ describe('latest refresh snapshots', () => {
     expect(state.optionProviders).toEqual(['antigravity', 'codex', 'gemini']);
     expect(state.optionModels).toEqual(['gemini-2.5-pro', 'gpt-5']);
     expect(state.optionAccounts).toEqual([
-      { value: 'idx-gem', label: 'gem@example.com · idx-gem' },
-      { value: 'idx-codex', label: 'codex@example.com · idx-codex' },
+      { value: 'idx-gem', label: 'g••••m@example.com · idx-gem' },
+      { value: 'idx-codex', label: 'c••••x@example.com · idx-codex' },
     ]);
     expect(state.optionApiKeys).toEqual([
-      { value: 'hash-gem-12345678', label: 'hash-ge…45678 · gem@example.com' },
+      { value: 'hash-gem-12345678', label: 'hash-ge…45678 · g••••m@example.com' },
       { value: 'hash-codex-87654321', label: 'hash-co…54321' },
     ]);
     expect(state.summaryCards[7].value).toBe('500');
@@ -428,5 +428,31 @@ describe('latest refresh snapshots', () => {
     expect(state.filters.account).toBe('codex-a.json');
     expect(state.filters.model).toBe('all');
     expect(proxyCall).toHaveBeenCalledTimes(1);
+  });
+
+  it('collapses email sources by default and auto-collapses again after fixed timeout when expanded', () => {
+    vi.useFakeTimers();
+    app = renderer.createApp({ ...MonitoringView, render: () => null }, { ready: false, proxyCall: vi.fn() });
+    app.use(createI18n({ legacy: false, locale: 'en', messages: { en } }));
+    app.provide(ssrContextKey, {});
+    const state = app.mount({}).$.setupState;
+
+    const built = state.buildEventTableRow({
+      event_hash: 'ev-email-1',
+      source: 'zhangsan@gmail.com',
+      auth_type: 'oauth',
+      model: 'gpt-5',
+    }, new Map());
+    expect(built.sourceIsApiKey).toBe(true);
+    expect(state.isEventKeyExpanded(built, 'source')).toBe(false);
+    expect(state.eventApiKeyDisplay(built.sourceName, state.isEventKeyExpanded(built, 'source'))).toBe('zh••••an@gmail.com');
+
+    state.toggleEventKey(built, 'source');
+    expect(state.isEventKeyExpanded(built, 'source')).toBe(true);
+    expect(state.eventApiKeyDisplay(built.sourceName, state.isEventKeyExpanded(built, 'source'))).toBe('zhangsan@gmail.com');
+
+    vi.advanceTimersByTime(10000);
+    expect(state.isEventKeyExpanded(built, 'source')).toBe(false);
+    expect(state.eventApiKeyDisplay(built.sourceName, state.isEventKeyExpanded(built, 'source'))).toBe('zh••••an@gmail.com');
   });
 });

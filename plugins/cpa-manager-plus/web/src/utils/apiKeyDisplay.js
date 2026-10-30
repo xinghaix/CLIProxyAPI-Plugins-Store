@@ -8,14 +8,33 @@ export function looksLikeApiKey(value) {
   return text.length > 8 && /^(?:sk[-_]|rk[-_]|pk[-_]|xai-|AIza|key[-_])/i.test(text);
 }
 
+export function looksLikeEmail(value) {
+  const text = String(value || '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
+}
+
 function headTailMask(text, head, tail, separator = '••••') {
   if (text.length <= head + tail) return '••••';
   return `${text.slice(0, head)}${separator}${text.slice(-tail)}`;
 }
 
+function maskEmailSummary(text) {
+  const atIndex = text.indexOf('@');
+  const local = text.slice(0, atIndex);
+  const domain = text.slice(atIndex + 1);
+  if (local.length <= 2) {
+    return `${local.slice(0, 1)}••••@${domain}`;
+  }
+  if (local.length <= 5) {
+    return `${local.slice(0, 1)}••••${local.slice(-1)}@${domain}`;
+  }
+  return `${local.slice(0, 2)}••••${local.slice(-2)}@${domain}`;
+}
+
 export function maskSecretSummary(value) {
   const text = String(value || '').trim();
   if (!text) return '—';
+  if (looksLikeEmail(text)) return maskEmailSummary(text);
   if (text.length <= 8) return '••••';
   if (text.length <= 14) return headTailMask(text, 2, 2);
   if (text.length <= 24) return headTailMask(text, 3, 4);
@@ -25,7 +44,9 @@ export function maskSecretSummary(value) {
 export function isSensitiveSource(value, authType) {
   const text = String(value || '').trim().toLowerCase();
   const type = String(authType || '').trim().toLowerCase();
-  return !!text && text !== '—' && text !== 'unknown' && type !== 'oauth' && type !== 'oauth2';
+  if (!text || text === '—' || text === 'unknown') return false;
+  if (looksLikeEmail(text)) return true;
+  return type !== 'oauth' && type !== 'oauth2';
 }
 
 export function maskApiKey(value) {

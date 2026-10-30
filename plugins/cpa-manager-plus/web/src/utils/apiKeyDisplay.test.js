@@ -15,14 +15,24 @@ describe('API Key display helpers', () => {
     expect(looksLikeApiKey('account@example.com')).toBe(false);
   });
 
-  it('only leaves OAuth and unknown sources unmasked', () => {
-    expect(isSensitiveSource('oauth@example.com', 'oauth')).toBe(false);
-    expect(isSensitiveSource('oauth@example.com', 'oauth2')).toBe(false);
+  it('treats email sources as collapsible even for OAuth while leaving non-email OAuth and unknown sources unmasked', () => {
+    expect(isSensitiveSource('oauth@example.com', 'oauth')).toBe(true);
+    expect(isSensitiveSource('oauth@example.com', 'oauth2')).toBe(true);
+    expect(isSensitiveSource('oauth-profile-name', 'oauth')).toBe(false);
+    expect(isSensitiveSource('oauth-profile-name', 'oauth2')).toBe(false);
     expect(isSensitiveSource('unknown', 'apikey')).toBe(false);
     expect(isSensitiveSource('', 'apikey')).toBe(false);
     expect(isSensitiveSource('oauth@example.com', '')).toBe(true);
     expect(isSensitiveSource('vertex-project', 'vertex')).toBe(true);
     expect(isSensitiveSource('sk-example-secret-value', 'apikey')).toBe(true);
+  });
+
+  it('masks email addresses in collapsed state and reveals full email when expanded', () => {
+    expect(maskSecretSummary('a@example.com')).toBe('a••••@example.com');
+    expect(maskSecretSummary('gem@example.com')).toBe('g••••m@example.com');
+    expect(maskSecretSummary('zhangsan@gmail.com')).toBe('zh••••an@gmail.com');
+    expect(eventApiKeyDisplay('zhangsan@gmail.com', false)).toBe('zh••••an@gmail.com');
+    expect(eventApiKeyDisplay('zhangsan@gmail.com', true)).toBe('zhangsan@gmail.com');
   });
 
   it('masks every length range without depending on a key prefix', () => {

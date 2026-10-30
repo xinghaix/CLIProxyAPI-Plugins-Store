@@ -80,6 +80,7 @@
         <table>
           <thead>
           <tr>
+            <th :title="t('monitoring.eventHints.timeHeader')">{{ t('monitoring.eventColumns.time') }}</th>
             <th :title="t('monitoring.eventHints.sourceHeader')">{{ t('monitoring.eventColumns.sourceApiKey') }}</th>
             <th :title="t('monitoring.eventHints.modelHeader')">{{ t('monitoring.eventColumns.model') }}</th>
             <th :title="t('monitoring.eventHints.effortHeader')">{{ t('monitoring.eventColumns.effort') }}</th>
@@ -87,7 +88,6 @@
             <th :title="t('monitoring.eventHints.healthHeader')">{{ t('monitoring.eventColumns.health') }}</th>
             <th :title="t('monitoring.eventHints.latencyHeader')">{{ t('monitoring.eventColumns.latency') }}</th>
             <th :title="t('monitoring.eventHints.tpsHeader')">{{ t('monitoring.eventColumns.tps') }}</th>
-            <th :title="t('monitoring.eventHints.timeHeader')">{{ t('monitoring.eventColumns.time') }}</th>
             <th :title="t('monitoring.eventHints.usageHeader')">{{ t('monitoring.eventColumns.usage') }}</th>
             <th :title="t('monitoring.eventHints.costHeader')">{{ t('monitoring.eventColumns.cache') }}</th>
             <th :title="t('monitoring.eventHints.costHeader')">{{ t('monitoring.eventColumns.cost') }}</th>
@@ -95,6 +95,10 @@
           </thead>
           <tbody>
           <tr v-for="row in pagedEvents" :key="row.id" @click="selectedEvent = row.raw" class="clickable">
+            <td class="event-time-cell" :title="t('monitoring.eventHints.timeHeader')">
+              <div>{{ formatDate(row.timestampMs) }}</div>
+              <div>{{ formatTime(row.timestampMs) }}</div>
+            </td>
             <td class="event-source-cell" :title="t('monitoring.eventHints.sourceHeader')">
               <div class="event-source-identity">
                 <strong v-if="row.sourceIsApiKey" class="sensitive-value">
@@ -185,10 +189,6 @@
             <td class="event-tps-cell" :title="row.hints.speed">
               <strong v-if="row.tps != null">{{ fmtTps(row.tps) }}</strong>
               <span v-else>{{ EMPTY_VALUE }}</span>
-            </td>
-            <td :title="t('monitoring.eventHints.timeHeader')">
-              <div>{{ formatDate(row.timestampMs) }}</div>
-              <div>{{ formatTime(row.timestampMs) }}</div>
             </td>
             <td class="usage-cell" :title="row.hints.usage">
               <strong>{{ fmtCompact(row.totalTokens) }}</strong>
@@ -923,13 +923,13 @@ function toggleAccountSource(row) {
 
 function clearKeyCollapseTimer(timers, key) {
   const timer = timers.get(key);
-  if (timer) window.clearTimeout(timer);
+  if (timer) clearTimeout(timer);
   timers.delete(key);
 }
 
 function scheduleKeyCollapse(expandedKeys, timers, key) {
   clearKeyCollapseTimer(timers, key);
-  timers.set(key, window.setTimeout(() => {
+  timers.set(key, setTimeout(() => {
     const next = new Set(expandedKeys.value);
     next.delete(key);
     expandedKeys.value = next;
