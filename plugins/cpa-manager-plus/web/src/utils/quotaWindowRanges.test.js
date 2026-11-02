@@ -165,4 +165,17 @@ describe('quota usage snapshot isolation', () => {
       ...buildAccountWindowUsageTargets(idOnly, { quotaWindows: [window] }, now).targets,
     ]) expect(target).toMatchObject({ auth_id: 'id', auth_index: '', auth_file_snapshot: '', source: '' });
   });
+
+  it('infers account modelScope for legacy cached codex windows and antigravity standard buckets', () => {
+    const legacyCodexWindow = { id: 'five-hour', kind: 'five_hour', usedPercent: 74, periodHours: 5, resetAt: '2026-09-17T11:52:00Z' };
+    const codexTargets = buildAccountWindowUsageTargets(credential, { quotaWindows: [legacyCodexWindow] }, now);
+    expect(codexTargets.windows[0].modelScope).toBe('account');
+    expect(codexTargets.targets).toHaveLength(2);
+
+    const agCred = { ...credential, provider: 'antigravity' };
+    const agBucket = { id: 'bucket-1', kind: 'antigravity_bucket', label: 'Weekly Limit Remaining', usedPercent: 0, remainingPercent: 100, resetAt: '2026-09-20T11:52:00Z' };
+    const agTargets = buildAccountWindowUsageTargets(agCred, { quotaWindows: [agBucket] }, now);
+    expect(agTargets.windows[0]).toMatchObject({ kind: 'weekly', modelScope: 'account', durationSeconds: 7 * 24 * 3600 });
+    expect(agTargets.targets).toHaveLength(2);
+  });
 });

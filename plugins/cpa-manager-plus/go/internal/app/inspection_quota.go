@@ -368,7 +368,8 @@ func quotaMetadata(result store.InspectionResult, metadata map[string]any, windo
 		}
 		for _, window := range windows {
 			window["modelScope"] = "unknown"
-			if store.AccountWindowIsAccountScope(provider, firstString(window, "id")) {
+			if store.AccountWindowIsAccountScope(provider, firstString(window, "id")) ||
+				store.AccountWindowIsAccountScope(provider, firstString(window, "label")) {
 				window["modelScope"] = "account"
 			}
 		}
@@ -948,15 +949,11 @@ func normalizeAntigravityFraction(value any) (float64, bool) {
 	return 0, false
 }
 
-func antigravityPeriodHours(window string) any {
-	switch strings.ToLower(strings.TrimSpace(window)) {
-	case "5h", "five-hour", "five_hour":
-		return 5.0
-	case "weekly", "week":
-		return 168.0
-	default:
-		return nil
+func antigravityPeriodHours(values ...string) any {
+	if hours, ok := store.InferStandardWindowPeriodHours(values...); ok {
+		return hours
 	}
+	return nil
 }
 
 func buildAntigravityQuota(root map[string]any) (groups []map[string]any, windows []map[string]any) {
@@ -1011,7 +1008,7 @@ func buildAntigravityQuota(root map[string]any) (groups []map[string]any, window
 			if description := firstString(bucket, "description"); description != "" {
 				parsedBucket["description"] = description
 			}
-			if period := antigravityPeriodHours(firstString(bucket, "window")); period != nil {
+			if period := antigravityPeriodHours(firstString(bucket, "window"), bucketLabel, bucketID); period != nil {
 				parsedBucket["periodHours"] = period
 			}
 			buckets = append(buckets, parsedBucket)

@@ -440,7 +440,7 @@ async function refreshSelectedQuota({ force = true } = {}) {
   enrichingRowKey.value = row.rowKey;
   drawerNotice.value = '';
   try {
-    const inventoryWindows = !force && !row.probe && row.quotaWindows?.some(w => !w.stale && !(w.cycleEndMs != null && w.cycleEndMs <= Date.now()));
+    const inventoryWindows = !force && !row.probe && row.quotaWindows?.some(w => !w.stale && !(w.cycleEndMs != null && w.cycleEndMs <= Date.now()) && w.modelScope && w.modelScope !== 'unknown');
     const probe = inventoryWindows
       ? { quotaWindows: row.quotaWindows.map(w => w.raw || w) }
       : await probeCredential(row, { force });

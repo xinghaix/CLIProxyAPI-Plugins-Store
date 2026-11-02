@@ -210,6 +210,17 @@ func (s *Store) migrate(ctx context.Context) error {
 			disabled_at_ms integer not null,
 			updated_at_ms integer not null
 		)`,
+		`create table if not exists credential_quota_snapshots (
+			account_key text primary key,
+			auth_index text not null default '',
+			auth_id text not null default '',
+			file_name text not null default '',
+			provider text not null default '',
+			auth_type text not null default '',
+			plan_type text not null default '',
+			quota_windows_json text not null default '',
+			updated_at_ms integer not null
+		)`,
 		`create table if not exists dead_letter_events (id integer primary key autoincrement, payload text not null, error text not null, created_at_ms integer not null)`,
 	}
 	for _, statement := range statements {

@@ -24,12 +24,45 @@ function clampPercent(value) {
 }
 
 function inferKind(window) {
+  const haystack = [window?.kind, window?.id, window?.label, window?.window]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  if (haystack.includes('five') || haystack.includes('5h') || haystack.includes('5-hour') || haystack.includes('5 hour')) return 'five_hour';
+  if (haystack.includes('week') || haystack.includes('seven_day') || haystack.includes('seven-day') || haystack.includes('7-day')) return 'weekly';
+  if (haystack.includes('month')) return 'monthly';
+  if (haystack.includes('day') || haystack.includes('daily')) return 'daily';
   const raw = String(window?.kind || window?.id || window?.label || '').toLowerCase();
-  if (raw.includes('five') || raw.includes('5h') || raw.includes('5-hour') || raw.includes('5 hour')) return 'five_hour';
-  if (raw.includes('week')) return 'weekly';
-  if (raw.includes('month')) return 'monthly';
-  if (raw.includes('day') || raw.includes('daily')) return 'daily';
   return raw || 'unknown';
+}
+
+function normalizeScopeSlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function isAccountScopeWindowForProvider(provider, window) {
+  const prov = String(provider || '').trim().toLowerCase();
+  const candidates = [window?.id, window?.label].map(normalizeScopeSlug).filter(Boolean);
+  for (const slug of candidates) {
+    if (slug === 'history' || slug === 'spark') return true;
+    if (prov === 'codex' && (slug === 'five-hour' || slug === 'weekly' || slug === 'monthly')) return true;
+    if (prov === 'claude' && (slug === 'claude-five-hour' || slug === 'claude-seven-day')) return true;
+    if (prov === 'xai' && (slug === 'xai-weekly' || slug === 'xai-monthly')) return true;
+    if (prov === 'kimi' && slug === 'kimi-summary') return true;
+    if (prov === 'antigravity' && [
+      'five-hour', '5h', '5-hour', 'five-hour-limit', 'five-hour-limit-remaining',
+      'weekly', 'week', 'weekly-limit', 'weekly-limit-remaining',
+      'daily', 'day', 'daily-limit', 'daily-limit-remaining',
+      'monthly', 'month', 'monthly-limit', 'monthly-limit-remaining',
+    ].includes(slug)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function durationSecondsFor(window) {
@@ -52,7 +85,7 @@ function isIntervalWindow(window) {
 /**
  * Normalize a probe quota window into a display + range-ready definition.
  */
-export function normalizeCredentialQuotaWindow(window, index = 0, nowMs = Date.now()) {
+export function normalizeCredentialQuotaWindow(window, index = 0, nowMs = Date.now(), provider = '') {
   const kind = inferKind(window);
   const usedPercent = clampPercent(window?.usedPercent);
   let remainingPercent = clampPercent(window?.remainingPercent);
@@ -66,6 +99,10 @@ export function normalizeCredentialQuotaWindow(window, index = 0, nowMs = Date.n
   }
   const windowMode = cycleStartMs != null && cycleEndMs != null ? 'fixed' : durationSeconds != null ? 'rolling' : 'unknown';
   const stale = windowMode === 'fixed' && cycleEndMs != null && cycleEndMs <= nowMs;
+  const hasExplicitScope = Boolean(window && Object.prototype.hasOwnProperty.call(window, 'modelScope'));
+  const resolvedScope = hasExplicitScope
+    ? (window?.modelScope || 'unknown')
+    : (isAccountScopeWindowForProvider(provider, window) ? 'account' : 'unknown');
   return {
     key: String(window?.id || window?.key || `${kind}-${index}`),
     providerWindowId: String(window?.id || window?.key || `${kind}-${index}`),
@@ -80,7 +117,7 @@ export function normalizeCredentialQuotaWindow(window, index = 0, nowMs = Date.n
     cycleEndMs,
     stale,
     sampledAtMs: nowMs,
-    modelScope: window?.modelScope || 'unknown',
+    modelScope: resolvedScope,
     modelScopeModels: Array.isArray(window?.modelScopeModels) ? window.modelScopeModels : [],
     raw: window,
   };
@@ -118,12 +155,13 @@ export function buildQuotaUsageRanges(definition, nowMs = Date.now()) {
   return ranges.filter((r) => Number.isFinite(r.fromMs) && Number.isFinite(r.toMs) && r.fromMs > 0 && r.fromMs < r.toMs);
 }
 
-export function credentialQuotaWindowsFromProbe(probeResult, nowMs = Date.now()) {
+export function credentialQuotaWindowsFromProbe(probeResult, nowMs = Date.now(), provider = '') {
+  const resolvedProvider = provider || probeResult?.provider || probeResult?.quotaMetadata?.provider || '';
   const rawWindows = Array.isArray(probeResult?.quotaWindows)
     ? probeResult.quotaWindows
     : (Array.isArray(probeResult?.quotaMetadata?.windows) ? probeResult.quotaMetadata.windows : []);
   return rawWindows
-    .map((window, index) => normalizeCredentialQuotaWindow(window, index, nowMs))
+    .map((window, index) => normalizeCredentialQuotaWindow(window, index, nowMs, resolvedProvider))
     .filter((window) => isIntervalWindow(window) || window.resetAtMs != null || window.usedPercent != null);
 }
 
@@ -132,7 +170,7 @@ export function credentialQuotaWindowsFromProbe(probeResult, nowMs = Date.now())
  * Does NOT use Monitoring's global from/to.
  */
 export function buildAccountWindowUsageTargets(credential, probeResult, nowMs = Date.now()) {
-  const windows = credentialQuotaWindowsFromProbe(probeResult, nowMs);
+  const windows = credentialQuotaWindowsFromProbe(probeResult, nowMs, credential?.provider || '');
   const targets = [];
   for (const definition of windows) {
     if (!hasKnownModelScope(definition)) continue;

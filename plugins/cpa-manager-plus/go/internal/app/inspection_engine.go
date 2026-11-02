@@ -839,7 +839,11 @@ func (r *Runtime) ProbeAccountQuotaWithIdentity(ctx context.Context, authIndex, 
 	}
 	settings := r.CodexInspectionSettings()
 	settings.XAIInferenceEnabled = false
-	return r.probeInspectionAccount(ctx, settings, account), nil
+	result := r.probeInspectionAccount(ctx, settings, account)
+	if r.store != nil && strings.TrimSpace(result.Error) == "" && (result.PlanType != "" || len(asWindowSlice(result.QuotaWindows)) > 0) {
+		_ = r.store.SaveCredentialQuotaSnapshot(ctx, result)
+	}
+	return result, nil
 }
 
 func findInspectionAccount(auths []pluginapi.HostAuthFileEntry, authIndex, provider, source string) (store.InspectionAccount, bool) {

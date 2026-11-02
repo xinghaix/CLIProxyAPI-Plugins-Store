@@ -24,7 +24,11 @@ func TestQuotaMetadataDeclaresScope(t *testing.T) {
 			"code_review_rate_limit": map[string]any{"primary_window": map[string]any{"used_percent": 20, "limit_window_seconds": 18000}},
 			"additional_rate_limits": []any{map[string]any{"limit_name": "Special", "rate_limit": map[string]any{"primary_window": map[string]any{"used_percent": 30, "limit_window_seconds": 18000}}}},
 		}), []string{"account", "unknown", "unknown"}},
-		{"antigravity", []map[string]any{{"id": "claude-bucket", "kind": "antigravity_bucket"}}, []string{"unknown"}},
+		{"antigravity", []map[string]any{
+			{"id": "claude-bucket", "kind": "antigravity_bucket"},
+			{"id": "bucket-1", "kind": "antigravity_bucket", "label": "Weekly Limit Remaining"},
+			{"id": "bucket-2", "kind": "antigravity_bucket", "label": "Five Hour Limit Remaining"},
+		}, []string{"unknown", "account", "account"}},
 		{"xai", []map[string]any{{"id": "xai-weekly"}, {"id": "xai-product-0"}}, []string{"account", "unknown"}},
 	} {
 		t.Run(tc.provider, func(t *testing.T) {

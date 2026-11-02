@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -210,14 +211,154 @@ func AccountWindowIsAccountScope(provider, id string) bool {
 		return id == "xai-weekly" || id == "xai-monthly"
 	case "kimi":
 		return id == "kimi-summary"
+	case "antigravity":
+		return isAntigravityAccountScopeWindow(id)
 	}
 	return false
+}
+
+func isAntigravityAccountScopeWindow(raw string) bool {
+	slug := normalizeWindowScopeSlug(raw)
+	switch slug {
+	case "five-hour", "5h", "5-hour", "five-hour-limit", "five-hour-limit-remaining",
+		"weekly", "week", "weekly-limit", "weekly-limit-remaining",
+		"daily", "day", "daily-limit", "daily-limit-remaining",
+		"monthly", "month", "monthly-limit", "monthly-limit-remaining":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeWindowScopeSlug(raw string) string {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	lastDash := false
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+		} else if !lastDash && b.Len() > 0 {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+// InferStandardWindowPeriodHours infers standard periodHours (5 / 24 / 168 / 720)
+// from window metadata when upstream responses or cached snapshots omit it.
+func InferStandardWindowPeriodHours(values ...string) (float64, bool) {
+	for _, raw := range values {
+		slug := normalizeWindowScopeSlug(raw)
+		if slug == "" {
+			continue
+		}
+		switch {
+		case slug == "5h" || strings.Contains(slug, "five-hour") || strings.Contains(slug, "5-hour"):
+			return 5, true
+		case slug == "weekly" || slug == "week" || strings.Contains(slug, "weekly") || strings.Contains(slug, "seven-day") || strings.Contains(slug, "7-day"):
+			return 168, true
+		case slug == "daily" || slug == "day" || strings.Contains(slug, "daily"):
+			return 24, true
+		case slug == "monthly" || slug == "month" || strings.Contains(slug, "monthly"):
+			return 720, true
+		}
+	}
+	return 0, false
+}
+
+// NormalizeQuotaWindows enriches cached or cross-module quota windows with
+// modelScope and periodHours so consumers work even when another module wrote
+// an older snapshot format. Non-map elements are preserved verbatim.
+func NormalizeQuotaWindows(provider string, raw any) any {
+	switch typed := raw.(type) {
+	case []map[string]any:
+		out := make([]map[string]any, len(typed))
+		for i, w := range typed {
+			out[i] = normalizeOneQuotaWindowMap(provider, w)
+		}
+		return out
+	case []any:
+		out := make([]any, len(typed))
+		for i, item := range typed {
+			if m, ok := item.(map[string]any); ok && m != nil {
+				out[i] = normalizeOneQuotaWindowMap(provider, m)
+			} else {
+				out[i] = item
+			}
+		}
+		return out
+	default:
+		return raw
+	}
+}
+
+func normalizeOneQuotaWindowMap(provider string, window map[string]any) map[string]any {
+	if window == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(window)+2)
+	for k, v := range window {
+		cloned[k] = v
+	}
+	id := strings.TrimSpace(fmt.Sprint(cloned["id"]))
+	if id == "<nil>" {
+		id = ""
+	}
+	label := strings.TrimSpace(fmt.Sprint(cloned["label"]))
+	if label == "<nil>" {
+		label = ""
+	}
+	winText := strings.TrimSpace(fmt.Sprint(cloned["window"]))
+	if winText == "<nil>" {
+		winText = ""
+	}
+	scope := strings.TrimSpace(fmt.Sprint(cloned["modelScope"]))
+	if scope == "<nil>" {
+		scope = ""
+	}
+	if scope == "" || scope == "unknown" {
+		if AccountWindowIsAccountScope(provider, id) || AccountWindowIsAccountScope(provider, label) {
+			cloned["modelScope"] = "account"
+		} else if scope == "" {
+			cloned["modelScope"] = "unknown"
+		}
+	}
+	if _, hasPeriod := cloned["periodHours"]; !hasPeriod {
+		if _, hasSnake := cloned["period_hours"]; !hasSnake {
+			if hours, ok := InferStandardWindowPeriodHours(winText, id, label); ok {
+				cloned["periodHours"] = hours
+			}
+		}
+	}
+	return cloned
 }
 
 func accountWindowHasCredentialIdentity(window AccountWindowUsageTarget) bool {
 	return strings.TrimSpace(window.AuthProviderSnapshot) != "" &&
 		(strings.TrimSpace(window.AuthIndex) != "" || strings.TrimSpace(window.AuthID) != "" ||
 			strings.TrimSpace(window.AuthFileSnapshot) != "" || strings.TrimSpace(window.Source) != "")
+}
+
+func matchExactOrBaseName(expected, candidate string) bool {
+	expected = strings.TrimSpace(expected)
+	candidate = strings.TrimSpace(candidate)
+	if expected == "" || candidate == "" {
+		return false
+	}
+	if expected == candidate {
+		return true
+	}
+	expBase := filepath.Base(expected)
+	candBase := filepath.Base(candidate)
+	if expBase == "." || expBase == "/" || candBase == "." || candBase == "/" {
+		return false
+	}
+	return expBase == candBase
 }
 
 func accountWindowRowMatches(row eventRow, window AccountWindowUsageTarget) bool {
@@ -234,7 +375,9 @@ func accountWindowRowMatches(row eventRow, window AccountWindowUsageTarget) bool
 	authID := strings.TrimSpace(window.AuthID)
 	authFile := strings.TrimSpace(window.AuthFileSnapshot)
 	source := strings.TrimSpace(window.Source)
-	return (authID != "" && authID == strings.TrimSpace(row.AuthID)) ||
-		(authFile != "" && (authFile == strings.TrimSpace(row.AuthID) || authFile == strings.TrimSpace(row.Source))) ||
-		(source != "" && source == strings.TrimSpace(row.Source))
+	rowID := strings.TrimSpace(row.AuthID)
+	rowSource := strings.TrimSpace(row.Source)
+	return (authID != "" && authID == rowID) ||
+		(authFile != "" && (matchExactOrBaseName(authFile, rowID) || matchExactOrBaseName(authFile, rowSource))) ||
+		(source != "" && matchExactOrBaseName(source, rowSource))
 }
