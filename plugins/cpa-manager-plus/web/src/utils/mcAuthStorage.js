@@ -8,10 +8,9 @@
 
 export const MC_STORAGE_KEY_AUTH = 'cli-proxy-auth';
 
-const ENC_PREFIX = 'enc::v1::';
+const ENC_PREFIX = 'enc::v2::';
+const LEGACY_ENC_PREFIX = 'enc::v1::';
 const SECRET_SALT = 'cli-proxy-api-webui::secure-storage';
-
-let cachedKeyBytes = null;
 
 function encodeText(text) {
   return new TextEncoder().encode(text);
@@ -21,16 +20,16 @@ function decodeText(bytes) {
   return new TextDecoder().decode(bytes);
 }
 
-function getKeyBytes() {
-  if (cachedKeyBytes) return cachedKeyBytes;
+function getKeyBytes(legacy = false) {
   try {
     const host = window.location.host;
-    const ua = navigator.userAgent;
-    cachedKeyBytes = encodeText(`${SECRET_SALT}|${host}|${ua}`);
+    // v2 仅拼接 host，不再依赖 navigator.userAgent；v1 保留旧版拼接方式以维持向后兼容。
+    return encodeText(
+      legacy ? `${SECRET_SALT}|${host}|${navigator.userAgent}` : `${SECRET_SALT}|${host}`,
+    );
   } catch {
-    cachedKeyBytes = encodeText(SECRET_SALT);
+    return encodeText(SECRET_SALT);
   }
-  return cachedKeyBytes;
 }
 
 function xorBytes(data, keyBytes) {
@@ -50,19 +49,27 @@ function fromBase64(base64) {
   return bytes;
 }
 
-export function isObfuscated(value) {
+export function isCurrentObfuscated(value) {
   return typeof value === 'string' && value.startsWith(ENC_PREFIX);
+}
+
+export function isObfuscated(value) {
+  return (
+    isCurrentObfuscated(value) ||
+    (typeof value === 'string' && value.startsWith(LEGACY_ENC_PREFIX))
+  );
 }
 
 /** @param {string} payload */
 export function deobfuscateData(payload) {
-  if (!payload || !payload.startsWith(ENC_PREFIX)) {
+  if (!payload || !isObfuscated(payload)) {
     return payload;
   }
   try {
-    const encodedBody = payload.slice(ENC_PREFIX.length);
+    const legacy = payload.startsWith(LEGACY_ENC_PREFIX);
+    const encodedBody = payload.slice(legacy ? LEGACY_ENC_PREFIX.length : ENC_PREFIX.length);
     const encrypted = fromBase64(encodedBody);
-    const decrypted = xorBytes(encrypted, getKeyBytes());
+    const decrypted = xorBytes(encrypted, getKeyBytes(legacy));
     return decodeText(decrypted);
   } catch {
     return payload;

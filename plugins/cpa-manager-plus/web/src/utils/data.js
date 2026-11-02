@@ -1,5 +1,5 @@
 import { translate } from '../i18n/index.js';
-import { readManagementKeyFromMCStorage } from './mcAuthStorage.js';
+import { isObfuscated, readManagementKeyFromMCStorage } from './mcAuthStorage.js';
 import { EMPTY_VALUE, formatNumber } from './localeFormat.js';
 
 // API gateway path (formerly /proxy). proxyCall keeps the internal name and payload shape.
@@ -49,7 +49,7 @@ function readManagementKeyFromParentRuntime() {
     const key = state?.managementKey;
     if (typeof key !== 'string') return '';
     const trimmed = key.trim();
-    if (!trimmed || trimmed.startsWith('enc::v1::')) return '';
+    if (!trimmed || isObfuscated(trimmed)) return '';
     return trimmed;
   } catch {
     return '';
