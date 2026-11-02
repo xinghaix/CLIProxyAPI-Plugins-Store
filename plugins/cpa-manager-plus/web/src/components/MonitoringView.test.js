@@ -455,4 +455,68 @@ describe('latest refresh snapshots', () => {
     expect(state.isEventKeyExpanded(built, 'source')).toBe(false);
     expect(state.eventApiKeyDisplay(built.sourceName, state.isEventKeyExpanded(built, 'source'))).toBe('zh••••an@gmail.com');
   });
+
+  it('merges dashboard summary and usage analytics into unified KPIs, vertical timeline, and rank cards', async () => {
+    const proxyCall = vi.fn().mockImplementation(({ path }) => {
+      if (path === '/v0/management/dashboard/summary') {
+        return Promise.resolve({
+          today: { total_calls: 120, total_cost: 8.5, zero_token_calls: 1, average_latency_ms: 950 },
+          rolling_30m: { rpm: 14.2, tpm: 48000, total_calls: 426 },
+          channel_health: [{ channel: 'codex', success_rate: 0.995, calls: 100 }],
+          recent_failures: [{ event_hash: 'f1', fail_status_code: 429, model: 'gpt-5', fail_summary: 'Rate limit', timestamp_ms: 1700000000000 }],
+        });
+      }
+      return Promise.resolve({
+        granularity: 'hour',
+        summary: {
+          total_calls: 500,
+          success_calls: 495,
+          failure_calls: 5,
+          success_rate: 0.99,
+          total_cost: 35.2,
+          average_cost_per_call: 0.0704,
+          total_tokens: 100000,
+          input_tokens: 30000,
+          output_tokens: 10000,
+          cache_tokens: 60000,
+        },
+        timeline: [
+          { bucket_ms: 1700003600000, label: '11-15 09:00', calls: 80, tokens: 20000, cost: 5.2 },
+          { bucket_ms: 1700000000000, label: '11-15 08:00', calls: 40, tokens: 10000, cost: 2.6 },
+        ],
+        model_stats: [
+          { model: 'gpt-5', provider: 'codex', calls: 300, total_tokens: 70000, cost: 25.0, success_rate: 0.99 },
+          { model: 'claude-sonnet-4-6', provider: 'claude', calls: 200, total_tokens: 30000, cost: 10.2, success_rate: 0.99 },
+        ],
+        credential_stats: [
+          { id: 'codex-1.json', auth_file: 'codex-1.json', provider: 'codex', calls: 300, total_tokens: 70000, cost: 25.0, success_rate: 0.99 },
+        ],
+        api_key_stats: [
+          { api_key_hash: 'sk-cpa-1234567890abcdef', provider: 'codex', calls: 500, total_tokens: 100000, cost: 35.2, success_rate: 0.99 },
+        ],
+      });
+    });
+
+    app = renderer.createApp({ ...DashboardView, render: () => null }, { ready: true, proxyCall });
+    app.use(createI18n({ legacy: false, locale: 'en', messages: { en } }));
+    app.provide(ssrContextKey, {});
+    const state = app.mount({}).$.setupState;
+    await nextTick();
+    await nextTick();
+
+    expect(state.aSummary.total_calls).toBe(500);
+    expect(state.dSummary.total_calls).toBe(120);
+    expect(state.rolling.rpm).toBe(14.2);
+    expect(state.unifiedTokenMix.map(s => s.key)).toEqual(['in', 'cache', 'out']);
+    expect(state.chartTimelineRows.map(r => r.calls)).toEqual([40, 80]);
+    expect(state.topModels[0].model).toBe('gpt-5');
+    expect(state.topCredentials[0].auth_file).toBe('codex-1.json');
+    expect(state.topApiKeys[0].calls).toBe(500);
+
+    state.filters.provider = 'codex';
+    state.filters.status = 'failed';
+    expect(state.activeFilterCount).toBe(2);
+    state.resetAnalyticsFilters();
+    expect(state.activeFilterCount).toBe(0);
+  });
 });

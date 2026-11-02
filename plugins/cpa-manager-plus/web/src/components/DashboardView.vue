@@ -1,118 +1,67 @@
 <template>
-  <section class="monitoring-page">
-    <!-- ====== Today overview ====== -->
-    <section class="dashboard-zone">
-      <div class="dashboard-zone-head">
-        <h2 class="dashboard-zone-title">{{ t('dashboard.todayOverview') }}</h2>
-        <span class="muted small-text">{{ t('dashboard.todayOverviewSub') }}</span>
-      </div>
-    <MetricGrid :cards="dashboardKpi" />
-
-    <!-- ====== Traffic overview ====== -->
-    <DataCard :title="t('dashboard.trafficTitle')" :subtitle="t('dashboard.trafficSubtitle')">
-      <div class="timeline-bars" v-if="trafficTimeline.length">
-        <div v-for="point in trafficTimeline" :key="point.bucket_ms || point.label" class="timeline-row">
-          <span class="timeline-label">{{ formatTimelineLabel(point) }}</span>
-          <div class="timeline-track"><i :style="{width: trafficBarWidth(point)}"></i></div>
-          <span class="timeline-value">{{ fmtInt(point.calls || point.requests || 0) }}</span>
-          <span class="timeline-sub">{{ fmtCompact(point.tokens || 0) }} tok</span>
+  <section class="monitoring-page dash-unified-page">
+    <!-- ====== Unified Command & Quick Filter Bar ====== -->
+    <div class="card dash-command-bar">
+      <div class="dash-command-top">
+        <div class="dash-range-pills segmented-control" role="group" :aria-label="t('dashboard.usageAnalytics')">
+          <button
+            v-for="opt in timeRangeOptions"
+            :key="opt.value"
+            type="button"
+            :class="['segment-btn', { active: filters.timeRange === opt.value }]"
+            @click="setTimeRange(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
         </div>
-      </div>
-      <div v-else class="empty">{{ t('dashboard.empty.traffic') }}</div>
-    </DataCard>
 
-    <!-- ====== Model cost rank + Health alerts ====== -->
-    <div class="split">
-      <DataCard :title="t('dashboard.modelCostRank')" :subtitle="t('dashboard.modelCostRankSub')">
-        <div v-if="modelCostRank.length" class="rank-list">
-          <div v-for="(model, idx) in modelCostRank" :key="model.model" class="rank-item">
-            <div class="rank-index">{{ idx + 1 }}</div>
-            <div class="rank-info">
-              <div class="rank-model-name">{{ model.model }}</div>
-              <div class="rank-track"><div class="rank-bar" :style="{width: `${(model.cost_share || 0) * 100}%`}"></div></div>
-            </div>
-            <div class="rank-value">
-              <div class="rank-cost">{{ fmtMoney(model.cost) }}</div>
-              <div class="rank-share">{{ ((model.cost_share || 0) * 100).toFixed(1) }}%</div>
-            </div>
+        <div class="dash-command-right">
+          <div class="dash-live-pill" :title="t('dashboard.trafficTitle')">
+            <span class="dash-live-dot"></span>
+            <span>RPM <b>{{ fmtCompact(rolling.rpm) }}</b></span>
+            <span class="dash-live-sep">·</span>
+            <span>TPM <b>{{ fmtCompact(rolling.tpm) }}</b></span>
           </div>
-        </div>
-        <div v-else class="empty">{{ dashLoading ? t('common.loading') : t('dashboard.empty.rank') }}</div>
-      </DataCard>
-      <DataCard :title="t('dashboard.healthAlerts')" :subtitle="t('dashboard.healthAlertsSub')">
-        <div v-if="recentFailures.length" class="failure-list">
-          <div v-for="fail in recentFailures" :key="fail.event_hash || fail.timestamp_ms" class="failure-item">
-            <span :class="['failure-severity', fail.severity || 'bad']">{{ fail.fail_status_code || 'ERR' }}</span>
-            <div>
-              <div class="failure-model">{{ fail.model || EMPTY_VALUE }}</div>
-              <div class="failure-summary muted small-text">{{ maskSummary(fail.fail_summary) }}</div>
-            </div>
-            <span class="failure-time small-text">{{ formatTime(fail.timestamp_ms) }}</span>
-          </div>
-        </div>
-        <div v-else-if="channelHealth.length" class="channel-health-list">
-          <div v-for="ch in channelHealth" :key="ch.channel || ch.provider" class="channel-health-item">
-            <span class="channel-name">{{ ch.channel || ch.provider || EMPTY_VALUE }}</span>
-            <span :class="['channel-status', ch.health === 'good' ? 'good-text' : ch.health === 'warn' ? 'warn-text' : 'bad-text']">{{ ch.success_rate != null ? fmtPct(ch.success_rate) : EMPTY_VALUE }}</span>
-            <span class="muted small-text">{{ t('dashboard.channelCalls', { count: ch.calls || 0 }) }}</span>
-          </div>
-        </div>
-        <div v-else class="empty">{{ dashLoading ? t('common.loading') : t('dashboard.empty.alerts') }}</div>
-      </DataCard>
-    </div>
 
-    <!-- ====== Token mix ====== -->
-    <DataCard v-if="tokenMix.length" :title="t('dashboard.tokenMix')" :subtitle="t('dashboard.tokenMixSub')">
-      <div class="token-mix-bar">
-        <div v-for="seg in tokenMix" :key="seg.label" class="token-mix-seg" :style="{width: `${(seg.share || 0) * 100}%`, '--mix-color':(seg.color) }">
-          <span>{{ seg.label }} {{ ((seg.share || 0) * 100).toFixed(0) }}%</span>
+          <button
+            type="button"
+            :class="['btn', 'dash-filter-toggle', { active: showAdvancedFilters || activeFilterCount > 0 }]"
+            @click="showAdvancedFilters = !showAdvancedFilters"
+          >
+            {{ t('monitoring.labels.filter') }}
+            <span v-if="activeFilterCount > 0" class="dash-filter-badge">{{ activeFilterCount }}</span>
+          </button>
+
+          <button
+            type="button"
+            class="btn primary"
+            :disabled="dashLoading || analyticsLoading || !ready"
+            @click="refreshAll"
+          >
+            {{ (dashLoading || analyticsLoading) ? t('common.loading') : t('common.refresh') }}
+          </button>
         </div>
       </div>
-      <div class="token-mix-legend">
-        <div v-for="seg in tokenMix" :key="seg.label" class="token-mix-legend-item">
-          <span class="mix-dot" :style="{background: seg.color}"></span>
-          <span>{{ seg.label }}: {{ fmtCompact(seg.tokens || 0) }} ({{ ((seg.share || 0) * 100).toFixed(1) }}%)</span>
-        </div>
-      </div>
-    </DataCard>
 
-    </section>
-
-    <!-- ====== Usage analytics ====== -->
-    <section class="dashboard-zone dashboard-zone-analytics">
-      <div class="dashboard-zone-head">
-        <h2 class="dashboard-zone-title">{{ t('dashboard.usageAnalytics') }}</h2>
-        <span class="muted small-text">{{ t('dashboard.usageAnalyticsSub') }}</span>
+      <!-- Custom Time Range Row -->
+      <div v-if="filters.timeRange === 'custom'" class="dash-custom-range">
+        <label>{{ t('monitoring.customStart') }} <input v-model="customStartInput" type="datetime-local" class="control compact" /></label>
+        <label>{{ t('monitoring.customEnd') }} <input v-model="customEndInput" type="datetime-local" class="control compact" /></label>
+        <button type="button" class="btn primary" @click="refreshAnalytics(true)">{{ t('common.apply') }}</button>
       </div>
 
-    <!-- Analytics filter bar -->
-    <div class="card filter-card usage-filterbar">
-      <div class="filterbar-row">
-        <select v-model="filters.timeRange" class="control compact" @change="refreshAnalytics(true)">
-          <option value="24h">{{ t('dashboard.filters.h24') }}</option>
-          <option value="today">{{ t('dashboard.filters.today') }}</option>
-          <option value="yesterday">{{ t('dashboard.filters.yesterday') }}</option>
-          <option value="7d">{{ t('dashboard.filters.d7') }}</option>
-          <option value="30d">{{ t('dashboard.filters.d30') }}</option>
-          <option value="custom">{{ t('dashboard.filters.custom') }}</option>
-        </select>
-        <select v-model="filters.granularity" class="control compact" @change="refreshAnalytics(true)">
-          <option value="auto">{{ t('dashboard.filters.autoGranularity') }}</option>
-          <option value="hour">{{ t('dashboard.filters.hour') }}</option>
-          <option value="day">{{ t('dashboard.filters.day') }}</option>
-        </select>
-        <input v-model.trim="filters.searchQuery" class="control wide" :placeholder="t('dashboard.filters.searchPlaceholder')" @keyup.enter="refreshAnalytics(true)" />
-        <select v-model="filters.status" class="control compact" @change="refreshAnalytics(true)">
-          <option value="all">{{ t('monitoring.filters.allStatuses') }}</option>
-          <option value="success">{{ t('monitoring.filters.successOnly') }}</option>
-          <option value="failed">{{ t('monitoring.filters.failedOnly') }}</option>
-        </select>
+      <!-- Collapsible Advanced Filters -->
+      <div v-if="showAdvancedFilters" class="dash-filter-drawer">
+        <input
+          v-model.trim="filters.searchQuery"
+          class="control wide"
+          :placeholder="t('dashboard.filters.searchPlaceholder')"
+          @keyup.enter="refreshAnalytics(true)"
+        />
         <select v-model="filters.provider" class="control compact" @change="refreshAnalytics(true)">
           <option value="all">{{ t('monitoring.filters.allProviders') }}</option>
           <option v-for="p in providerOptions" :key="p" :value="p">{{ p }}</option>
         </select>
-      </div>
-      <div class="filterbar-row">
         <select v-model="filters.model" class="control compact" @change="refreshAnalytics(true)">
           <option value="all">{{ t('monitoring.filters.allModels') }}</option>
           <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
@@ -120,6 +69,11 @@
         <select v-model="filters.authFile" class="control compact" @change="refreshAnalytics(true)">
           <option value="all">{{ t('dashboard.filters.allCredentials') }}</option>
           <option v-for="f in authFileOptions" :key="f" :value="f">{{ f }}</option>
+        </select>
+        <select v-model="filters.status" class="control compact" @change="refreshAnalytics(true)">
+          <option value="all">{{ t('monitoring.filters.allStatuses') }}</option>
+          <option value="success">{{ t('monitoring.filters.successOnly') }}</option>
+          <option value="failed">{{ t('monitoring.filters.failedOnly') }}</option>
         </select>
         <select v-model="filters.minLatencyMs" class="control compact" @change="refreshAnalytics(true)">
           <option value="all">{{ t('dashboard.filters.allLatency') }}</option>
@@ -132,129 +86,551 @@
           <option value="hit">{{ t('dashboard.filters.cacheHit') }}</option>
           <option value="miss">{{ t('dashboard.filters.cacheMiss') }}</option>
         </select>
-      </div>
-      <div v-if="filters.timeRange === 'custom'" class="filterbar-row">
-        <label>{{ t('monitoring.customStart') }} <input v-model="customStartInput" type="datetime-local" class="control" /></label>
-        <label>{{ t('monitoring.customEnd') }} <input v-model="customEndInput" type="datetime-local" class="control" /></label>
-        <button class="btn primary" @click="refreshAnalytics(true)">{{ t('common.apply') }}</button>
+        <button v-if="activeFilterCount > 0" type="button" class="btn" @click="resetAnalyticsFilters">
+          {{ t('monitoring.reset') }}
+        </button>
       </div>
     </div>
 
     <section v-if="analyticsError" class="notice error">{{ analyticsError }}</section>
 
-    <!-- Analytics KPI -->
-    <MetricGrid :cards="analyticsKpi" />
+    <!-- ====== Unified 4-Card High-Density KPI Matrix ====== -->
+    <section class="dash-kpi-strip">
+      <!-- 1. Requests & Throughput -->
+      <article class="dash-kpi-card">
+        <div class="dash-kpi-head">
+          <span class="dash-kpi-label">{{ t('dashboard.analyticsKpi.requests') }}</span>
+          <span class="dash-kpi-chip">{{ t('dashboard.kpi.todayRequests') }} {{ fmtCompact(dSummary.total_calls) }}</span>
+        </div>
+        <div class="dash-kpi-value">{{ fmtInt(aSummary.total_calls) }}</div>
+        <div class="dash-kpi-foot">
+          <span class="good-text">{{ t('monitoring.labels.success') }} {{ fmtCompact(aSummary.success_calls) }}</span>
+          <span class="dash-kpi-sep">·</span>
+          <span :class="Number(aSummary.failure_calls) > 0 ? 'bad-text' : 'muted'">
+            {{ t('monitoring.labels.failed') }} {{ fmtInt(aSummary.failure_calls) }}
+          </span>
+        </div>
+      </article>
 
-    <!-- Analytics tabs -->
-    <div class="monitor-tabs card">
+      <!-- 2. Success Rate & Latency -->
+      <article class="dash-kpi-card">
+        <div class="dash-kpi-head">
+          <span class="dash-kpi-label">{{ t('dashboard.analyticsKpi.successRate') }}</span>
+          <span class="dash-kpi-chip">{{ fmtDuration(aSummary.average_latency_ms ?? dSummary.average_latency_ms) }}</span>
+        </div>
+        <div :class="['dash-kpi-value', rateToneClass(aSummary.success_rate)]">
+          {{ fmtPct(aSummary.success_rate) }}
+        </div>
+        <div class="dash-kpi-foot">
+          <span>{{ t('dashboard.analyticsKpi.riskWindowsSub', { count: anomalyRows.length }) }}</span>
+          <span class="dash-kpi-sep">·</span>
+          <span>{{ t('dashboard.kpi.zeroTokenSub', { count: fmtInt(dSummary.zero_token_calls) }) }}</span>
+        </div>
+      </article>
+
+      <!-- 3. Estimated Spend -->
+      <article class="dash-kpi-card">
+        <div class="dash-kpi-head">
+          <span class="dash-kpi-label">{{ t('dashboard.analyticsKpi.spend') }}</span>
+          <span class="dash-kpi-chip">{{ t('dashboard.analyticsKpi.avgCostSub', { value: fmtMoney(aSummary.average_cost_per_call) }) }}</span>
+        </div>
+        <div class="dash-kpi-value dash-kpi-money">{{ fmtMoney(aSummary.total_cost) }}</div>
+        <div class="dash-kpi-foot">
+          <span>{{ t('dashboard.kpi.todaySpend') }} <b>{{ fmtMoney(dSummary.total_cost) }}</b></span>
+          <span class="dash-kpi-sep">·</span>
+          <span>{{ t('dashboard.kpi.callsSub', { count: fmtCompact(rolling.total_calls) }) }}</span>
+        </div>
+      </article>
+
+      <!-- 4. Total Tokens & Embedded Token Mix -->
+      <article class="dash-kpi-card">
+        <div class="dash-kpi-head">
+          <span class="dash-kpi-label">{{ t('dashboard.analyticsKpi.totalTokens') }}</span>
+          <span class="dash-kpi-chip">{{ t('monitoring.kpi.hitRateSub', { value: fmtCacheHitRate(computeCacheHitRate(aSummary)) }) }}</span>
+        </div>
+        <div class="dash-kpi-value">{{ fmtCompact(aSummary.total_tokens) }}</div>
+        <div class="dash-mini-mix" v-if="unifiedTokenMix.length">
+          <div class="dash-mini-mix-bar">
+            <span
+              v-for="seg in unifiedTokenMix"
+              :key="seg.key"
+              :style="{ width: seg.widthPct, background: seg.color }"
+              :title="seg.tooltip"
+            ></span>
+          </div>
+          <div class="dash-mini-mix-legend">
+            <span v-for="seg in unifiedTokenMix" :key="seg.key">
+              <i :style="{ background: seg.color }"></i>{{ seg.label }} {{ fmtCompact(seg.tokens) }}
+            </span>
+          </div>
+        </div>
+        <div v-else class="dash-kpi-foot">
+          <span>{{ t('dashboard.analyticsKpi.inputTokens') }} {{ fmtCompact(aSummary.input_tokens) }}</span>
+          <span class="dash-kpi-sep">·</span>
+          <span>{{ t('dashboard.analyticsKpi.outputTokens') }} {{ fmtCompact(aSummary.output_tokens) }}</span>
+        </div>
+      </article>
+    </section>
+
+    <!-- ====== Sub-View Navigation Tabs ====== -->
+    <div class="monitor-tabs card dash-subtabs">
       <div class="monitor-tabs-list">
-        <button v-for="tab in analyticsTabs" :key="tab.key" :class="['tab', {active: analyticsTab === tab.key}]" @click="analyticsTab = tab.key">{{ tab.label }}</button>
+        <button
+          v-for="tab in analyticsTabs"
+          :key="tab.key"
+          type="button"
+          :class="['tab', { active: analyticsTab === tab.key }]"
+          @click="analyticsTab = tab.key"
+        >
+          {{ tab.label }}
+          <span v-if="tab.count != null" class="segment-count">{{ tab.count }}</span>
+        </button>
       </div>
       <span v-if="activeAnalyticsNote" class="monitor-tabs-note">{{ activeAnalyticsNote }}</span>
     </div>
 
-    <!-- Overview -->
-    <div v-if="analyticsTab === 'overview'" class="usage-tab-content">
-      <DataCard :title="t('dashboard.cards.timeline')" :subtitle="granularityLabel">
-        <div class="timeline-bars" v-if="timelineRows.length">
-          <div v-for="point in timelineRows" :key="point.bucket_ms" class="timeline-row" :class="{selected: selectedBucketMs === point.bucket_ms}" @click="selectBucket(point)">
-            <span class="timeline-label">{{ point.label }}</span>
-            <div class="timeline-track"><i :style="{width: barWidth(point.calls)}"></i></div>
-            <span class="timeline-value">{{ fmtInt(point.calls) }}</span>
-            <span class="timeline-sub">{{ fmtCompact(point.tokens) }} tok · {{ fmtMoney(point.cost) }}</span>
+    <!-- ====== VIEW 1: Unified Overview & Interactive Trend ====== -->
+    <div v-if="analyticsTab === 'overview' || analyticsTab === 'trends'" class="usage-tab-content dash-overview-stack">
+      <!-- Compact Interactive Vertical Bar Chart Card -->
+      <div class="card dash-trend-card">
+        <div class="dash-card-head">
+          <div class="dash-card-head-title">
+            <h3>{{ t('dashboard.cards.timeline') }}</h3>
+            <span class="muted small-text">{{ granularityLabel }}</span>
+          </div>
+          <div class="dash-trend-toolbar">
+            <div class="segmented-control dash-mini-seg">
+              <button
+                v-for="m in trendMetrics"
+                :key="m.key"
+                type="button"
+                :class="['segment-btn', { active: trendMetric === m.key }]"
+                @click="trendMetric = m.key"
+              >
+                {{ m.label }}
+              </button>
+            </div>
+            <select v-model="filters.granularity" class="control compact dash-granularity-select" @change="refreshAnalytics(true)">
+              <option value="auto">{{ t('dashboard.filters.autoGranularity') }}</option>
+              <option value="hour">{{ t('dashboard.filters.hour') }}</option>
+              <option value="day">{{ t('dashboard.filters.day') }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div v-if="chartTimelineRows.length" class="dash-vchart-wrap">
+          <div class="dash-vchart" role="list">
+            <button
+              v-for="point in chartTimelineRows"
+              :key="point.bucket_ms"
+              type="button"
+              :class="['dash-vbar-col', { selected: selectedBucketMs === point.bucket_ms, 'has-fail': Number(point.failure_calls || point.failures || 0) > 0 }]"
+              :title="formatPointTooltip(point)"
+              @click="selectBucket(point)"
+            >
+              <span class="dash-vbar-val">{{ formatTrendValue(point) }}</span>
+              <span class="dash-vbar-track">
+                <i class="dash-vbar-fill" :style="{ height: trendBarWidth(point) }"></i>
+              </span>
+              <span class="dash-vbar-label">{{ shortBucketLabel(point.label) }}</span>
+            </button>
           </div>
         </div>
         <div v-else class="empty">{{ t('dashboard.empty.timeline') }}</div>
-      </DataCard>
-      <div class="split">
-        <DataCard :title="t('dashboard.cards.modelRank')" :subtitle="t('dashboard.cards.topN', { n: 8 })">
-          <SimpleTable :rows="topModels" :columns="rankColumns" selectable :selected-id="selectedModelId" @select="row => selectedModelId = row.id || row.model" />
-        </DataCard>
-        <DataCard :title="t('dashboard.cards.apiKeyRank')" :subtitle="t('dashboard.cards.topN', { n: 8 })">
-          <SimpleTable :rows="topApiKeys" :columns="apiKeyRankColumns" selectable :selected-id="selectedApiKeyHash" @select="row => { selectedApiKeyHash = row.api_key_hash || row.id; loadSelectedApiKeyTimeline(); }" />
-        </DataCard>
+
+        <!-- Inline Bucket Drilldown Preview -->
+        <div v-if="selectedBucketMs && drilldownRows.length" class="dash-drilldown-box">
+          <div class="dash-drilldown-head">
+            <strong>{{ t('dashboard.cards.drilldown') }} ({{ drilldownRows.length }})</strong>
+            <button type="button" class="btn btn-xs" @click="selectedBucketMs = null">{{ t('common.close') }}</button>
+          </div>
+          <div class="dash-compact-list">
+            <div v-for="(d, idx) in drilldownRows" :key="idx" class="dash-compact-item">
+              <div class="dash-compact-main">
+                <strong>{{ d.model || EMPTY_VALUE }}</strong>
+                <span class="muted small-text">{{ d.provider || EMPTY_VALUE }} · {{ shortHash(d.api_key_hash) }}</span>
+              </div>
+              <div class="dash-compact-metrics">
+                <span>{{ fmtCompact(d.total_tokens) }} tok</span>
+                <strong>{{ fmtMoney(d.cost) }}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <DataCard v-if="selectedBucketMs && drilldownRows.length" :title="t('dashboard.cards.drilldown')" :subtitle="t('dashboard.cards.drilldownSub')">
-        <SimpleTable :rows="drilldownRows" :columns="drilldownColumns" />
-      </DataCard>
-      <DataCard v-if="anomalyRows.length" :title="t('dashboard.cards.riskWindows')" :subtitle="t('dashboard.cards.riskWindowsSub', { count: anomalyRows.length })">
-        <SimpleTable :rows="anomalyRows" :columns="anomalyColumns" />
-      </DataCard>
-    </div>
 
-    <!-- Trends -->
-    <div v-if="analyticsTab === 'trends'" class="usage-tab-content">
-      <DataCard>
-        <div class="trend-controls">
-          <button v-for="m in trendMetrics" :key="m.key" :class="['tab', {active: trendMetric === m.key}]" @click="trendMetric = m.key">{{ m.label }}</button>
+      <!-- 3-Column Bento Grid: Top Models | Top Credentials/API Keys | Health & Alerts -->
+      <div class="dash-bento-grid">
+        <!-- Col 1: Top Models by Cost / Calls -->
+        <div class="card dash-bento-card">
+          <div class="dash-card-head">
+            <div class="dash-card-head-title">
+              <h3>{{ t('dashboard.cards.modelRank') }}</h3>
+              <span class="muted small-text">{{ t('dashboard.cards.topN', { n: topModels.length || 6 }) }}</span>
+            </div>
+            <button v-if="modelRows.length > 6" type="button" class="btn btn-xs" @click="analyticsTab = 'models'">
+              {{ t('common.all') }} ({{ modelRows.length }})
+            </button>
+          </div>
+
+          <div v-if="topModels.length" class="dash-rank-list">
+            <div
+              v-for="(m, idx) in topModels.slice(0, 6)"
+              :key="m.model || idx"
+              class="dash-rank-row clickable"
+              @click="openMonitoringForModel(m)"
+            >
+              <span class="dash-rank-idx">{{ idx + 1 }}</span>
+              <div class="dash-rank-body">
+                <div class="dash-rank-top">
+                  <strong class="dash-rank-name" :title="m.model">{{ m.model || EMPTY_VALUE }}</strong>
+                  <span class="dash-rank-cost">{{ fmtMoney(m.cost) }}</span>
+                </div>
+                <div class="dash-rank-bar-track">
+                  <i :style="{ width: modelShareWidth(m) }"></i>
+                </div>
+                <div class="dash-rank-meta muted small-text">
+                  <span>{{ fmtInt(m.calls) }} {{ t('dashboard.columns.requests') }}</span>
+                  <span>·</span>
+                  <span>{{ fmtCompact(m.total_tokens) }} tok</span>
+                  <span>·</span>
+                  <span :class="rateToneClass(m.success_rate)">{{ fmtPct(m.success_rate) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="empty">{{ t('dashboard.empty.rank') }}</div>
         </div>
-        <div class="timeline-bars" v-if="timelineRows.length">
-          <div v-for="point in timelineRows" :key="point.bucket_ms" class="timeline-row" :class="{selected: selectedBucketMs === point.bucket_ms}" @click="selectBucket(point)">
-            <span class="timeline-label">{{ point.label }}</span>
-            <div class="timeline-track"><i :style="{width: trendBarWidth(point)}"></i></div>
-            <span class="timeline-value">{{ formatTrendValue(point) }}</span>
+
+        <!-- Col 2: Top Credentials / API Keys (Switchable) -->
+        <div class="card dash-bento-card">
+          <div class="dash-card-head">
+            <div class="dash-card-head-title">
+              <h3>{{ overviewSourceMode === 'credentials' ? t('dashboard.cards.credentials') : t('dashboard.cards.apiKeyRank') }}</h3>
+              <span class="muted small-text">{{ t('dashboard.cards.topN', { n: 6 }) }}</span>
+            </div>
+            <div class="segmented-control dash-mini-seg">
+              <button
+                type="button"
+                :class="['segment-btn', { active: overviewSourceMode === 'credentials' }]"
+                @click="overviewSourceMode = 'credentials'"
+              >
+                {{ t('dashboard.tabs.credentials') }}
+              </button>
+              <button
+                type="button"
+                :class="['segment-btn', { active: overviewSourceMode === 'apiKeys' }]"
+                @click="overviewSourceMode = 'apiKeys'"
+              >
+                {{ t('dashboard.tabs.apiKeys') }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="overviewSourceMode === 'credentials' && topCredentials.length" class="dash-rank-list">
+            <div
+              v-for="(c, idx) in topCredentials.slice(0, 6)"
+              :key="c.id || c.auth_file || idx"
+              class="dash-rank-row clickable"
+              @click="openMonitoringForCredential(c)"
+            >
+              <span class="dash-rank-idx">{{ idx + 1 }}</span>
+              <div class="dash-rank-body">
+                <div class="dash-rank-top">
+                  <strong class="dash-rank-name" :title="c.auth_file || c.authFile || c.id">
+                    {{ c.auth_file || c.authFile || c.account_snapshot || c.id || EMPTY_VALUE }}
+                  </strong>
+                  <span class="dash-rank-cost">{{ fmtMoney(c.cost) }}</span>
+                </div>
+                <div class="dash-rank-bar-track">
+                  <i :style="{ width: credShareWidth(c) }"></i>
+                </div>
+                <div class="dash-rank-meta muted small-text">
+                  <span v-if="c.provider">{{ c.provider }} · </span>
+                  <span>{{ fmtInt(c.calls) }} {{ t('dashboard.columns.requests') }}</span>
+                  <span>·</span>
+                  <span>{{ fmtCompact(c.total_tokens) }} tok</span>
+                  <span>·</span>
+                  <span :class="rateToneClass(c.success_rate)">{{ fmtPct(c.success_rate) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="overviewSourceMode === 'apiKeys' && topApiKeys.length" class="dash-rank-list">
+            <div
+              v-for="(k, idx) in topApiKeys.slice(0, 6)"
+              :key="k.api_key_hash || k.id || idx"
+              class="dash-rank-row clickable"
+              @click="openMonitoringForApiKey(k)"
+            >
+              <span class="dash-rank-idx">{{ idx + 1 }}</span>
+              <div class="dash-rank-body">
+                <div class="dash-rank-top">
+                  <strong class="dash-rank-name">{{ shortHash(k.api_key_hash || k.id) }}</strong>
+                  <span class="dash-rank-cost">{{ fmtMoney(k.cost) }}</span>
+                </div>
+                <div class="dash-rank-bar-track">
+                  <i :style="{ width: apiKeyShareWidth(k) }"></i>
+                </div>
+                <div class="dash-rank-meta muted small-text">
+                  <span v-if="k.account_snapshot">{{ k.account_snapshot }} · </span>
+                  <span>{{ fmtInt(k.calls) }} {{ t('dashboard.columns.requests') }}</span>
+                  <span>·</span>
+                  <span>{{ fmtCompact(k.total_tokens) }} tok</span>
+                  <span>·</span>
+                  <span :class="rateToneClass(k.success_rate)">{{ fmtPct(k.success_rate) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="empty">{{ t('common.noData') }}</div>
+        </div>
+
+        <!-- Col 3: Channel Health & Recent Alerts -->
+        <div class="card dash-bento-card">
+          <div class="dash-card-head">
+            <div class="dash-card-head-title">
+              <h3>{{ t('dashboard.healthAlerts') }}</h3>
+              <span class="muted small-text">{{ t('dashboard.healthAlertsSub') }}</span>
+            </div>
+          </div>
+
+          <!-- Channel Health Chips -->
+          <div v-if="channelHealth.length" class="dash-channel-pills">
+            <div v-for="ch in channelHealth" :key="ch.channel || ch.provider" class="dash-channel-pill">
+              <span class="dash-channel-name">{{ ch.channel || ch.provider || EMPTY_VALUE }}</span>
+              <strong :class="rateToneClass(ch.success_rate)">
+                {{ ch.success_rate != null ? fmtPct(ch.success_rate) : EMPTY_VALUE }}
+              </strong>
+              <span class="muted small-text">({{ fmtCompact(ch.calls || 0) }})</span>
+            </div>
+          </div>
+
+          <!-- Recent Failures -->
+          <div v-if="recentFailures.length" class="dash-alert-list">
+            <div v-for="fail in recentFailures.slice(0, 5)" :key="fail.event_hash || fail.timestamp_ms" class="dash-alert-item">
+              <span :class="['failure-severity', fail.severity || 'bad']">{{ fail.fail_status_code || 'ERR' }}</span>
+              <div class="dash-alert-body">
+                <div class="dash-alert-top">
+                  <strong>{{ fail.model || EMPTY_VALUE }}</strong>
+                  <span class="muted small-text">{{ formatTime(fail.timestamp_ms) }}</span>
+                </div>
+                <div class="dash-alert-msg muted small-text">{{ maskSummary(fail.fail_summary) }}</div>
+              </div>
+            </div>
+          </div>
+          <!-- Risk Windows if no recentFailures -->
+          <div v-else-if="anomalyRows.length" class="dash-alert-list">
+            <div v-for="(anom, idx) in anomalyRows.slice(0, 4)" :key="idx" class="dash-alert-item">
+              <span class="failure-severity warn">{{ anom.severity || 'RISK' }}</span>
+              <div class="dash-alert-body">
+                <div class="dash-alert-top">
+                  <strong>{{ anom.label }}</strong>
+                  <span class="bad-text small-text">{{ t('dashboard.columns.failureRate') }} {{ fmtPct(anom.failure_rate) }}</span>
+                </div>
+                <div class="dash-alert-msg muted small-text">
+                  {{ fmtInt(anom.calls) }} {{ t('dashboard.columns.requests') }} · {{ fmtMoney(anom.cost) }}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="!channelHealth.length" class="empty">
+            {{ dashLoading ? t('common.loading') : t('dashboard.empty.alerts') }}
           </div>
         </div>
-        <div v-else class="empty">{{ t('dashboard.empty.trends') }}</div>
-      </DataCard>
-      <DataCard v-if="selectedBucketMs && drilldownRows.length" :title="t('dashboard.cards.drilldown')" :subtitle="t('dashboard.cards.drilldownSub')">
-        <SimpleTable :rows="drilldownRows" :columns="drilldownColumns" />
-      </DataCard>
+      </div>
     </div>
 
-    <!-- Models -->
+    <!-- ====== VIEW 2: Models Dimension (Responsive Card Grid) ====== -->
     <div v-if="analyticsTab === 'models'" class="usage-tab-content">
-      <DataCard>
-        <SimpleTable :rows="modelRows" :columns="modelColumns" selectable :selected-id="selectedModelId" @select="row => selectedModelId = row.id || row.model" />
-      </DataCard>
-      <DataCard v-if="selectedModel" :title="t('dashboard.cards.modelDetail')" :subtitle="selectedModel.model || EMPTY_VALUE">
-        <div class="detail-card-head-action"><button class="btn" @click="openMonitoringForModel(selectedModel)">{{ t('dashboard.actions.viewRequestDetail') }}</button></div>
-        <DetailGrid :items="buildModelDetail(selectedModel)" />
-      </DataCard>
+      <div v-if="modelRows.length" class="dash-entity-grid">
+        <article
+          v-for="(row, idx) in modelRows"
+          :key="row.id || row.model || idx"
+          :class="['card', 'dash-entity-card', 'clickable', { 'selected-row': (row.id || row.model) === (selectedModel?.id || selectedModel?.model) }]"
+          @click="selectedModelId = row.id || row.model"
+        >
+          <div class="dash-entity-head">
+            <div class="dash-entity-title-wrap">
+              <strong class="dash-entity-title" :title="row.model">{{ row.model || EMPTY_VALUE }}</strong>
+              <span v-if="row.provider" class="dash-kpi-chip">{{ row.provider }}</span>
+            </div>
+            <button type="button" class="btn btn-xs" @click.stop="openMonitoringForModel(row)">
+              {{ t('dashboard.actions.viewRequestDetail') }}
+            </button>
+          </div>
+
+          <div class="dash-rank-bar-track">
+            <i :style="{ width: modelShareWidth(row) }"></i>
+          </div>
+
+          <div class="dash-entity-stats">
+            <div>
+              <span>{{ t('dashboard.columns.requests') }}</span>
+              <strong>{{ fmtInt(row.calls) }}</strong>
+            </div>
+            <div>
+              <span>{{ t('dashboard.columns.successRate') }}</span>
+              <strong :class="rateToneClass(row.success_rate)">{{ fmtPct(row.success_rate) }}</strong>
+            </div>
+            <div>
+              <span>{{ t('dashboard.columns.token') }}</span>
+              <strong>{{ fmtCompact(row.total_tokens) }}</strong>
+            </div>
+            <div>
+              <span>{{ t('dashboard.columns.cost') }}</span>
+              <strong>{{ fmtMoney(row.cost) }}</strong>
+            </div>
+          </div>
+          <div class="muted small-text dash-entity-sub">
+            {{ buildUsageIOC(row, fmtCompact) }}
+          </div>
+        </article>
+      </div>
+      <div v-else class="empty">{{ t('common.noData') }}</div>
     </div>
 
-    <!-- API Keys -->
-    <div v-if="analyticsTab === 'apiKeys'" class="usage-tab-content">
-      <DataCard>
-        <SimpleTable :rows="apiKeyRows" :columns="apiKeyColumns" selectable :selected-id="selectedApiKeyHash" @select="row => { selectedApiKeyHash = row.api_key_hash || row.id; loadSelectedApiKeyTimeline(); }" />
-      </DataCard>
-      <DataCard v-if="selectedApiKeyTimeline.length" :title="t('dashboard.cards.apiKeyTrend')" :subtitle="selectedApiKey?.api_key_hash || selectedApiKey?.id || EMPTY_VALUE">
-        <div class="timeline-bars">
-          <div v-for="point in selectedApiKeyTimeline" :key="point.bucket_ms" class="timeline-row">
-            <span class="timeline-label">{{ point.label }}</span>
-            <div class="timeline-track"><i :style="{width: trendBarWidth(point)}"></i></div>
-            <span class="timeline-value">{{ formatTrendValue(point) }}</span>
+    <!-- ====== VIEW 3: Credentials Dimension (Card Grid + Trend) ====== -->
+    <div v-if="analyticsTab === 'credentials'" class="usage-tab-content dash-overview-stack">
+      <div v-if="selectedCredential && selectedCredentialTimelineRows.length" class="card dash-trend-card">
+        <div class="dash-card-head">
+          <div class="dash-card-head-title">
+            <h3>{{ t('dashboard.cards.credentialTrend') }}</h3>
+            <span class="muted small-text">{{ selectedCredential.auth_file || selectedCredential.authFile || selectedCredential.id }}</span>
+          </div>
+          <button type="button" class="btn btn-xs" @click="openMonitoringForCredential(selectedCredential)">
+            {{ t('dashboard.actions.viewRequestDetail') }}
+          </button>
+        </div>
+        <div class="dash-vchart-wrap">
+          <div class="dash-vchart">
+            <div v-for="point in selectedCredentialTimelineRows.slice().reverse()" :key="point.bucket_ms" class="dash-vbar-col">
+              <span class="dash-vbar-val">{{ fmtCompact(point.calls) }}</span>
+              <span class="dash-vbar-track">
+                <i class="dash-vbar-fill" :style="{ height: credentialTrendBarWidth(point) }"></i>
+              </span>
+              <span class="dash-vbar-label">{{ shortBucketLabel(point.label) }}</span>
+            </div>
           </div>
         </div>
-      </DataCard>
-      <DataCard v-if="selectedApiKey" :title="t('dashboard.cards.apiKeyDetail')" :subtitle="selectedApiKey.api_key_hash || selectedApiKey.id || EMPTY_VALUE">
-        <div class="detail-card-head-action"><button class="btn" @click="openMonitoringForApiKey(selectedApiKey)">{{ t('dashboard.actions.viewRequestDetail') }}</button></div>
-        <DetailGrid :items="buildApiKeyDetail(selectedApiKey)" />
-      </DataCard>
+      </div>
+
+      <div v-if="credentialRows.length" class="dash-entity-grid">
+        <article
+          v-for="(row, idx) in credentialRows"
+          :key="row.id || row.auth_file || idx"
+          :class="['card', 'dash-entity-card', 'clickable', { 'selected-row': (row.id || row.auth_file) === (selectedCredential?.id || selectedCredential?.auth_file) }]"
+          @click="selectedCredentialId = row.id || row.auth_file || row.authFile"
+        >
+          <div class="dash-entity-head">
+            <div class="dash-entity-title-wrap">
+              <strong class="dash-entity-title" :title="row.auth_file || row.authFile || row.id">
+                {{ row.auth_file || row.authFile || row.id || EMPTY_VALUE }}
+              </strong>
+              <span v-if="row.provider" class="dash-kpi-chip">{{ row.provider }}</span>
+            </div>
+            <button type="button" class="btn btn-xs" @click.stop="openMonitoringForCredential(row)">
+              {{ t('dashboard.actions.viewRequestDetail') }}
+            </button>
+          </div>
+          <div class="dash-entity-stats">
+            <div>
+              <span>{{ t('dashboard.columns.requests') }}</span>
+              <strong>{{ fmtInt(row.calls) }}</strong>
+            </div>
+            <div>
+              <span>{{ t('dashboard.columns.successRate') }}</span>
+              <strong :class="rateToneClass(row.success_rate)">{{ fmtPct(row.success_rate) }}</strong>
+            </div>
+            <div>
+              <span>{{ t('dashboard.columns.token') }}</span>
+              <strong>{{ fmtCompact(row.total_tokens) }}</strong>
+            </div>
+            <div>
+              <span>{{ t('dashboard.columns.cost') }}</span>
+              <strong>{{ fmtMoney(row.cost) }}</strong>
+            </div>
+          </div>
+          <div v-if="row.account_snapshot || row.last_seen_ms" class="muted small-text dash-entity-sub">
+            <span v-if="row.account_snapshot">{{ row.account_snapshot }}</span>
+            <span v-if="row.account_snapshot && row.last_seen_ms"> · </span>
+            <span v-if="row.last_seen_ms">{{ formatDateTime(row.last_seen_ms, localeRef) }}</span>
+          </div>
+        </article>
+      </div>
+      <div v-else class="empty">{{ t('common.noData') }}</div>
     </div>
 
-    <!-- Credentials -->
-    <div v-if="analyticsTab === 'credentials'" class="usage-tab-content">
-      <DataCard>
-        <SimpleTable :rows="credentialRows" :columns="credentialColumns" selectable :selected-id="selectedCredentialId" @select="row => selectedCredentialId = row.id || row.auth_file || row.authFile" />
-      </DataCard>
-      <DataCard v-if="selectedCredentialTimelineRows.length" :title="t('dashboard.cards.credentialTrend')" :subtitle="selectedCredential?.auth_file || selectedCredential?.authFile || selectedCredential?.id || EMPTY_VALUE">
-        <div class="timeline-bars">
-          <div v-for="point in selectedCredentialTimelineRows" :key="point.bucket_ms" class="timeline-row">
-            <span class="timeline-label">{{ point.label }}</span>
-            <div class="timeline-track"><i :style="{width: credentialTrendBarWidth(point)}"></i></div>
-            <span class="timeline-value">{{ fmtCompact(point.calls) }}</span>
-            <span class="timeline-sub">{{ fmtCompact(point.total_tokens) }} tok · {{ fmtMoney(point.cost) }}</span>
+    <!-- ====== VIEW 4: API Keys Dimension (Card Grid + Trend) ====== -->
+    <div v-if="analyticsTab === 'apiKeys'" class="usage-tab-content dash-overview-stack">
+      <div v-if="selectedApiKey && selectedApiKeyTimeline.length" class="card dash-trend-card">
+        <div class="dash-card-head">
+          <div class="dash-card-head-title">
+            <h3>{{ t('dashboard.cards.apiKeyTrend') }}</h3>
+            <span class="muted small-text">{{ shortHash(selectedApiKey.api_key_hash || selectedApiKey.id) }}</span>
+          </div>
+          <button type="button" class="btn btn-xs" @click="openMonitoringForApiKey(selectedApiKey)">
+            {{ t('dashboard.actions.viewRequestDetail') }}
+          </button>
+        </div>
+        <div class="dash-vchart-wrap">
+          <div class="dash-vchart">
+            <div v-for="point in selectedApiKeyTimeline.slice().reverse()" :key="point.bucket_ms" class="dash-vbar-col">
+              <span class="dash-vbar-val">{{ formatTrendValue(point) }}</span>
+              <span class="dash-vbar-track">
+                <i class="dash-vbar-fill" :style="{ height: trendBarWidth(point) }"></i>
+              </span>
+              <span class="dash-vbar-label">{{ shortBucketLabel(point.label || formatTimelineLabel(point)) }}</span>
+            </div>
           </div>
         </div>
-      </DataCard>
-      <DataCard v-if="selectedCredential" :title="t('dashboard.cards.credentialDetail')" :subtitle="selectedCredential.auth_file || selectedCredential.authFile || selectedCredential.id || EMPTY_VALUE">
-        <div class="detail-card-head-action"><button class="btn" @click="openMonitoringForCredential(selectedCredential)">{{ t('dashboard.actions.viewRequestDetail') }}</button></div>
-        <DetailGrid :items="buildCredentialDetail(selectedCredential)" />
-      </DataCard>
+      </div>
+
+      <div v-if="apiKeyRows.length" class="dash-entity-grid">
+        <article
+          v-for="(row, idx) in apiKeyRows"
+          :key="row.api_key_hash || row.id || idx"
+          :class="['card', 'dash-entity-card', 'clickable', { 'selected-row': (row.api_key_hash || row.id) === (selectedApiKey?.api_key_hash || selectedApiKey?.id) }]"
+          @click="selectedApiKeyHash = row.api_key_hash || row.id; loadSelectedApiKeyTimeline()"
+        >
+          <div class="dash-entity-head">
+            <div class="dash-entity-title-wrap">
+              <strong class="dash-entity-title">{{ shortHash(row.api_key_hash || row.id) }}</strong>
+              <span v-if="row.provider" class="dash-kpi-chip">{{ row.provider }}</span>
+            </div>
+            <button type="button" class="btn btn-xs" @click.stop="openMonitoringForApiKey(row)">
+              {{ t('dashboard.actions.viewRequestDetail') }}
+            </button>
+          </div>
+          <div class="dash-entity-stats">
+            <div>
+              <span>{{ t('dashboard.columns.requests') }}</span>
+              <strong>{{ fmtInt(row.calls) }}</strong>
+            </div>
+            <div>
+              <span>{{ t('dashboard.columns.successRate') }}</span>
+              <strong :class="rateToneClass(row.success_rate)">{{ fmtPct(row.success_rate) }}</strong>
+            </div>
+            <div>
+              <span>{{ t('dashboard.columns.token') }}</span>
+              <strong>{{ fmtCompact(row.total_tokens) }}</strong>
+            </div>
+            <div>
+              <span>{{ t('dashboard.columns.cost') }}</span>
+              <strong>{{ fmtMoney(row.cost) }}</strong>
+            </div>
+          </div>
+          <div v-if="row.account_snapshot || row.last_seen_ms" class="muted small-text dash-entity-sub">
+            <span v-if="row.account_snapshot">{{ row.account_snapshot }}</span>
+            <span v-if="row.account_snapshot && row.last_seen_ms"> · </span>
+            <span v-if="row.last_seen_ms">{{ formatDateTime(row.last_seen_ms, localeRef) }}</span>
+          </div>
+        </article>
+      </div>
+      <div v-else class="empty">{{ t('common.noData') }}</div>
     </div>
 
-    <!-- Heatmap -->
+    <!-- ====== VIEW 5: 7x24 Heatmap ====== -->
     <div v-if="analyticsTab === 'heatmap'" class="usage-tab-content">
       <DataCard>
         <div class="heatmap-controls">
@@ -283,7 +659,7 @@
         </div>
         <div v-else class="empty">{{ t('dashboard.empty.heatmap') }}</div>
       </DataCard>
-      <DataCard v-if="selectedHeatmapCell && selectedHeatmapCell.cell" :title="t('dashboard.cards.heatmapDetail')" :subtitle="`${weekdayLabel(selectedHeatmapCell.weekday)} ${selectedHeatmapCell.hour}:00`">
+      <DataCard v-if="selectedHeatmapCell && selectedHeatmapCell.cell" :title="t('dashboard.cards.heatmapDetail')" :subtitle="weekdayLabel(selectedHeatmapCell.weekday) + ' ' + selectedHeatmapCell.hour + ':00'">
         <DetailGrid :items="buildHeatmapDetail(selectedHeatmapCell.cell)" />
         <div class="split" style="margin-top:12px">
           <DataCard v-if="selectedHeatmapCell.cell.model_contributors?.length" :title="t('dashboard.cards.modelContributors')" :subtitle="t('dashboard.cards.top')">
@@ -298,7 +674,6 @@
         </DataCard>
       </DataCard>
     </div>
-    </section>
   </section>
 </template>
 
@@ -306,7 +681,6 @@
 import { computed, defineComponent, h, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import DataCard from './DataCard.vue';
-import MetricGrid from './MetricGrid.vue';
 import { computeCacheHitRate, formatCacheHitRate } from '../utils/cacheHitRate.js';
 import { buildUsageIOC, cacheTokenCount } from '../utils/usageBreakdown.js';
 import { localeRef } from '../localeBridge.js';
@@ -342,25 +716,14 @@ const recentFailures = computed(() => dashData.value?.recent_failures || []);
 const channelHealth = computed(() => dashData.value?.channel_health || []);
 const tokenMix = computed(() => dashData.value?.token_mix || []);
 
-const dashboardKpi = computed(() => {
-  const s = dSummary.value;
-  const r = rolling.value;
-  return [
-    { label: t('dashboard.kpi.todayRequests'), value: fmtInt(s.total_calls), sub: t('dashboard.kpi.failuresSub', { count: fmtInt(s.failure_calls) }) },
-    { label: t('dashboard.kpi.rpm'), value: fmtCompact(r.rpm), sub: t('dashboard.kpi.callsSub', { count: fmtInt(r.total_calls) }) },
-    { label: t('dashboard.kpi.tpm'), value: fmtCompact(r.tpm), sub: t('dashboard.kpi.tokensSub', { value: fmtCompact(r.total_tokens) }) },
-    { label: t('dashboard.kpi.todaySpend'), value: fmtMoney(s.total_cost), sub: t('dashboard.kpi.tokensSub', { value: fmtCompact(s.total_tokens) }) },
-    { label: t('dashboard.kpi.successRate'), value: fmtPct(s.success_rate), sub: t('dashboard.kpi.successOfTotal', { success: fmtInt(s.success_calls), total: fmtInt(s.total_calls) }) },
-    { label: t('dashboard.kpi.avgLatency'), value: fmtDuration(s.average_latency_ms), sub: t('dashboard.kpi.zeroTokenSub', { count: fmtInt(s.zero_token_calls) }) },
-  ];
-});
-
 // ===== Analytics state =====
 const analyticsData = ref(null);
 const analyticsLoading = ref(false);
 let analyticsSequence = 0;
 const analyticsError = ref('');
 const analyticsTab = ref('overview');
+const overviewSourceMode = ref('credentials');
+const showAdvancedFilters = ref(false);
 const selectedBucketMs = ref(null);
 const selectedModelId = ref('');
 const selectedApiKeyHash = ref('');
@@ -374,12 +737,48 @@ const customStartInput = ref('');
 const customEndInput = ref('');
 const filters = ref(defaultFilters());
 
+const timeRangeOptions = computed(() => [
+  { value: 'today', label: t('dashboard.filters.today') },
+  { value: '24h', label: t('dashboard.filters.h24') },
+  { value: 'yesterday', label: t('dashboard.filters.yesterday') },
+  { value: '7d', label: t('dashboard.filters.d7') },
+  { value: '30d', label: t('dashboard.filters.d30') },
+  { value: 'custom', label: t('dashboard.filters.custom') },
+]);
+
+const activeFilterCount = computed(() => {
+  const f = filters.value;
+  let count = 0;
+  if (f.searchQuery) count += 1;
+  if (f.provider !== 'all') count += 1;
+  if (f.model !== 'all') count += 1;
+  if (f.authFile !== 'all') count += 1;
+  if (f.status !== 'all') count += 1;
+  if (f.minLatencyMs !== 'all') count += 1;
+  if (f.cacheStatus !== 'all') count += 1;
+  return count;
+});
+
+function setTimeRange(value) {
+  filters.value.timeRange = value;
+  if (value !== 'custom') refreshAnalytics(true);
+}
+
+function resetAnalyticsFilters() {
+  const currentRange = filters.value.timeRange;
+  filters.value = { ...defaultFilters(), timeRange: currentRange };
+  refreshAnalytics(true);
+}
+
+const modelRows = computed(() => analyticsData.value?.model_stats || analyticsData.value?.model_share || []);
+const apiKeyRows = computed(() => analyticsData.value?.api_key_stats || []);
+const credentialRows = computed(() => analyticsData.value?.credential_stats || []);
+
 const analyticsTabs = computed(() => [
   { key: 'overview', label: t('dashboard.tabs.overview') },
-  { key: 'trends', label: t('dashboard.tabs.trends') },
-  { key: 'models', label: t('dashboard.tabs.models') },
-  { key: 'apiKeys', label: t('dashboard.tabs.apiKeys') },
-  { key: 'credentials', label: t('dashboard.tabs.credentials') },
+  { key: 'models', label: t('dashboard.tabs.models'), count: modelRows.value.length || null },
+  { key: 'credentials', label: t('dashboard.tabs.credentials'), count: credentialRows.value.length || null },
+  { key: 'apiKeys', label: t('dashboard.tabs.apiKeys'), count: apiKeyRows.value.length || null },
   { key: 'heatmap', label: t('dashboard.tabs.heatmap') },
 ]);
 
@@ -389,16 +788,39 @@ const trendMetrics = computed(() => [
   { key: 'estimatedCost', label: t('dashboard.metrics.estimatedCost') },
 ]);
 
-const aSummary = computed(() => analyticsData.value?.summary || {});
+const aSummary = computed(() => analyticsData.value?.summary || dSummary.value || {});
+const summaryCacheTokens = computed(() => Number(aSummary.value.cache_tokens ?? cacheTokenCount(aSummary.value)));
+
+const unifiedTokenMix = computed(() => {
+  const s = aSummary.value;
+  const total = Math.max(Number(s.total_tokens || 0), 0);
+  if (!total) return [];
+  const input = Math.max(Number(s.input_tokens || 0), 0);
+  const output = Math.max(Number(s.output_tokens || 0), 0);
+  const cache = Math.max(summaryCacheTokens.value, 0);
+  const sumParts = Math.max(input + output + cache, 1);
+  return [
+    { key: 'in', label: t('dashboard.analyticsKpi.inputTokens'), tokens: input, share: input / sumParts, widthPct: Math.max(3, Math.round((input / sumParts) * 100)) + '%', color: '#2563eb', tooltip: t('dashboard.analyticsKpi.inputTokens') + ': ' + fmtCompact(input) },
+    { key: 'cache', label: t('dashboard.analyticsKpi.cacheTokens'), tokens: cache, share: cache / sumParts, widthPct: Math.max(3, Math.round((cache / sumParts) * 100)) + '%', color: '#0d9488', tooltip: t('dashboard.analyticsKpi.cacheTokens') + ': ' + fmtCompact(cache) },
+    { key: 'out', label: t('dashboard.analyticsKpi.outputTokens'), tokens: output, share: output / sumParts, widthPct: Math.max(3, Math.round((output / sumParts) * 100)) + '%', color: '#d97706', tooltip: t('dashboard.analyticsKpi.outputTokens') + ': ' + fmtCompact(output) },
+  ].filter(seg => seg.tokens > 0);
+});
+
 const timelineRows = computed(() => [...(analyticsData.value?.timeline || [])]
   .map((point) => ({
     ...point,
     label: point.label || (point.bucket_ms ? formatBucketDateTime(point.bucket_ms, localeRef.value) : EMPTY_VALUE),
   }))
   .sort((a, b) => Number(b.bucket_ms || 0) - Number(a.bucket_ms || 0)));
-const modelRows = computed(() => analyticsData.value?.model_stats || analyticsData.value?.model_share || []);
-const apiKeyRows = computed(() => analyticsData.value?.api_key_stats || []);
-const credentialRows = computed(() => analyticsData.value?.credential_stats || []);
+
+const chartTimelineRows = computed(() => {
+  const src = timelineRows.value.length ? timelineRows.value : trafficTimeline.value.map(p => ({
+    ...p,
+    label: formatTimelineLabel(p),
+  }));
+  return [...src].reverse().slice(-24);
+});
+
 const heatmapRaw = computed(() => analyticsData.value?.heatmap || []);
 const anomalyRows = computed(() => analyticsData.value?.anomaly_points || []);
 const filterOptions = computed(() => analyticsData.value?.filter_options || {});
@@ -430,8 +852,7 @@ const granularityLabel = computed(() => {
 
 const trendMetricLabel = computed(() => trendMetrics.value.find(m => m.key === trendMetric.value)?.label || '');
 const activeAnalyticsNote = computed(() => {
-  if (analyticsTab.value === 'overview') return granularityLabel.value;
-  if (analyticsTab.value === 'trends') return trendMetricLabel.value;
+  if (analyticsTab.value === 'overview' || analyticsTab.value === 'trends') return granularityLabel.value + ' · ' + trendMetricLabel.value;
   if (analyticsTab.value === 'models') return t('dashboard.cards.modelsSub');
   if (analyticsTab.value === 'apiKeys') return t('dashboard.cards.apiKeysSub');
   if (analyticsTab.value === 'credentials') return t('dashboard.cards.credentialsSub');
@@ -439,61 +860,40 @@ const activeAnalyticsNote = computed(() => {
   return '';
 });
 
-const analyticsKpi = computed(() => {
-  const s = aSummary.value;
-  const cacheTokens = Number(s.cache_tokens ?? cacheTokenCount(s));
-  const totalTokens = Math.max(Number(s.total_tokens ?? 0), 0);
-  const rangeLabel = filters.value.timeRange === 'today'
-    ? t('dashboard.range.today')
-    : filters.value.timeRange === '24h'
-      ? t('dashboard.range.h24')
-      : filters.value.timeRange;
-  return [
-    {
-      label: t('dashboard.analyticsKpi.requests'),
-      value: fmtCompact(s.total_calls),
-      sub: t('dashboard.analyticsKpi.successFailSub', {
-        range: rangeLabel,
-        success: fmtInt(s.success_calls),
-        failure: fmtInt(s.failure_calls),
-      }),
-    },
-    { label: t('dashboard.analyticsKpi.successRate'), value: fmtPct(s.success_rate), sub: fmtDuration(s.average_latency_ms) },
-    {
-      label: t('dashboard.analyticsKpi.failureAnomaly'),
-      value: fmtInt(s.failure_calls),
-      sub: t('dashboard.analyticsKpi.riskWindowsSub', { count: anomalyRows.value.length }),
-    },
-    { label: t('dashboard.analyticsKpi.spend'), value: fmtMoney(s.total_cost), sub: t('dashboard.analyticsKpi.avgCostSub', { value: fmtMoney(s.average_cost_per_call) }) },
-    { label: t('dashboard.analyticsKpi.totalTokens'), value: fmtCompact(s.total_tokens), sub: t('monitoring.kpi.reasoningSub', { value: fmtCompact(s.reasoning_tokens ?? 0) }) },
-    {
-      label: t('dashboard.analyticsKpi.inputTokens'),
-      value: fmtCompact(s.input_tokens),
-      sub: t('monitoring.kpi.shareSub', { value: fmtPct(totalTokens > 0 ? Number(s.input_tokens ?? 0) / totalTokens : 0) }),
-    },
-    {
-      label: t('dashboard.analyticsKpi.outputTokens'),
-      value: fmtCompact(s.output_tokens),
-      sub: t('monitoring.kpi.shareSub', { value: fmtPct(totalTokens > 0 ? Number(s.output_tokens ?? 0) / totalTokens : 0) }),
-    },
-    {
-      label: t('dashboard.analyticsKpi.cacheTokens'),
-      value: fmtCompact(cacheTokens),
-      sub: t('monitoring.kpi.hitRateSub', { value: fmtCacheHitRate(computeCacheHitRate(s)) }),
-    },
-  ];
+const topModels = computed(() => {
+  if (modelRows.value.length) {
+    return [...modelRows.value].sort((a, b) => Number(b.cost ?? b.calls ?? 0) - Number(a.cost ?? a.calls ?? 0)).slice(0, 8);
+  }
+  return modelCostRank.value.slice(0, 8);
 });
+const topCredentials = computed(() => [...credentialRows.value].sort((a, b) => Number(b.cost ?? b.calls ?? 0) - Number(a.cost ?? a.calls ?? 0)).slice(0, 8));
+const topApiKeys = computed(() => [...apiKeyRows.value].sort((a, b) => Number(b.cost ?? b.calls ?? 0) - Number(a.cost ?? a.calls ?? 0)).slice(0, 8));
 
-const topModels = computed(() => [...modelRows.value].sort((a, b) => Number(b.calls ?? 0) - Number(a.calls ?? 0)).slice(0, 8));
-const topApiKeys = computed(() => [...apiKeyRows.value].sort((a, b) => Number(b.calls ?? 0) - Number(a.calls ?? 0)).slice(0, 8));
+const maxModelCostOrCalls = computed(() => Math.max(1e-6, ...topModels.value.map(m => Number(m.cost || m.calls || 0))));
+const maxCredCostOrCalls = computed(() => Math.max(1e-6, ...topCredentials.value.map(c => Number(c.cost || c.calls || 0))));
+const maxApiKeyCostOrCalls = computed(() => Math.max(1e-6, ...topApiKeys.value.map(k => Number(k.cost || k.calls || 0))));
+
+function modelShareWidth(row) {
+  if (row?.cost_share != null) return Math.max(3, Math.round(Number(row.cost_share) * 100)) + '%';
+  const v = Number(row?.cost || row?.calls || 0);
+  return Math.max(3, Math.round((v / maxModelCostOrCalls.value) * 100)) + '%';
+}
+function credShareWidth(row) {
+  const v = Number(row?.cost || row?.calls || 0);
+  return Math.max(3, Math.round((v / maxCredCostOrCalls.value) * 100)) + '%';
+}
+function apiKeyShareWidth(row) {
+  const v = Number(row?.cost || row?.calls || 0);
+  return Math.max(3, Math.round((v / maxApiKeyCostOrCalls.value) * 100)) + '%';
+}
+
 const selectedModel = computed(() => modelRows.value.find(r => (r.id || r.model) === selectedModelId.value) || modelRows.value[0] || null);
 const selectedApiKey = computed(() => apiKeyRows.value.find(r => (r.api_key_hash || r.id) === selectedApiKeyHash.value) || apiKeyRows.value[0] || null);
 const selectedCredential = computed(() => credentialRows.value.find(r => (r.id || r.auth_file) === selectedCredentialId.value) || credentialRows.value[0] || null);
 
-const maxTimelineCalls = computed(() => Math.max(1, ...timelineRows.value.map(p => Number(p.calls || 0))));
 const maxTrendValue = computed(() => {
-  let max = 1;
-  for (const p of timelineRows.value) {
+  let max = 1e-6;
+  for (const p of chartTimelineRows.value) {
     const v = trendValue(p);
     if (v > max) max = v;
   }
@@ -510,66 +910,6 @@ const heatmapRows = computed(() => {
   return grid;
 });
 
-const rankColumns = computed(() => [
-  ['model', t('dashboard.columns.model')],
-  ['calls', t('dashboard.columns.requests'), 'int'],
-  ['success_rate', t('dashboard.columns.successRate'), 'pct'],
-  ['total_tokens', t('dashboard.columns.token'), 'int'],
-  ['cost', t('dashboard.columns.cost'), 'money'],
-]);
-const apiKeyRankColumns = computed(() => [
-  ['api_key_hash', t('dashboard.columns.apiKey'), 'hash'],
-  ['calls', t('dashboard.columns.requests'), 'int'],
-  ['success_rate', t('dashboard.columns.successRate'), 'pct'],
-  ['total_tokens', t('dashboard.columns.token'), 'int'],
-  ['cost', t('dashboard.columns.cost'), 'money'],
-]);
-const modelColumns = computed(() => [
-  ['model', t('dashboard.columns.model')],
-  ['provider', t('dashboard.columns.provider')],
-  ['calls', t('dashboard.columns.requests'), 'int'],
-  ['success_calls', t('dashboard.columns.success'), 'int'],
-  ['failure_calls', t('dashboard.columns.failure'), 'int'],
-  ['success_rate', t('dashboard.columns.successRate'), 'pct'],
-  ['total_tokens', t('dashboard.columns.token'), 'usage'],
-  ['cost', t('dashboard.columns.cost'), 'money'],
-]);
-const apiKeyColumns = computed(() => [
-  ['api_key_hash', t('dashboard.columns.apiKey'), 'hash'],
-  ['account_snapshot', t('dashboard.columns.account')],
-  ['provider', t('dashboard.columns.provider')],
-  ['calls', t('dashboard.columns.requests'), 'int'],
-  ['success_rate', t('dashboard.columns.successRate'), 'pct'],
-  ['total_tokens', t('dashboard.columns.token'), 'int'],
-  ['cost', t('dashboard.columns.cost'), 'money'],
-  ['last_seen_ms', t('dashboard.columns.last'), 'time'],
-]);
-const credentialColumns = computed(() => [
-  ['auth_file', t('dashboard.columns.authFile')],
-  ['provider', t('dashboard.columns.provider')],
-  ['calls', t('dashboard.columns.requests'), 'int'],
-  ['success_rate', t('dashboard.columns.successRate'), 'pct'],
-  ['total_tokens', t('dashboard.columns.token'), 'int'],
-  ['cost', t('dashboard.columns.cost'), 'money'],
-  ['last_seen_ms', t('dashboard.columns.last'), 'time'],
-]);
-const anomalyColumns = computed(() => [
-  ['label', t('dashboard.columns.time')],
-  ['severity', t('dashboard.columns.severity')],
-  ['calls', t('dashboard.columns.requests'), 'int'],
-  ['failure_rate', t('dashboard.columns.failureRate'), 'pct'],
-  ['cost', t('dashboard.columns.cost'), 'money'],
-  ['request_change', t('dashboard.columns.requestChange'), 'pct'],
-]);
-const drilldownColumns = computed(() => [
-  ['timestamp_ms', t('dashboard.columns.time'), 'time'],
-  ['model', t('dashboard.columns.model')],
-  ['api_key_hash', t('dashboard.columns.apiKey'), 'hash'],
-  ['provider', t('dashboard.columns.provider')],
-  ['total_tokens', t('dashboard.columns.token'), 'int'],
-  ['cost', t('dashboard.columns.cost'), 'money'],
-  ['failure_rate', t('dashboard.columns.failureRate'), 'pct'],
-]);
 const heatContributorColumns = computed(() => [
   ['label', t('dashboard.columns.label')],
   ['calls', t('dashboard.columns.requests'), 'int'],
@@ -621,7 +961,7 @@ async function refreshDashboard(force = false) {
     const snapshot = await props.proxyCall({
       method: 'GET',
       path: '/v0/management/dashboard/summary',
-      query: `today_start_ms=${d.getTime()}&now_ms=${now}&top_models=5&recent_failures=5`,
+      query: 'today_start_ms=' + d.getTime() + '&now_ms=' + now + '&top_models=5&recent_failures=5',
     });
     if (sequence === dashSequence) dashData.value = snapshot;
   } catch {
@@ -776,48 +1116,6 @@ async function loadSelectedApiKeyTimeline() {
   }
 }
 
-function buildModelDetail(row) {
-  if (!row) return [];
-  return [
-    { label: t('dashboard.labels.model'), value: row.model || EMPTY_VALUE },
-    { label: t('dashboard.labels.provider'), value: row.provider || EMPTY_VALUE },
-    { label: t('dashboard.labels.requests'), value: fmtInt(row.calls) },
-    { label: t('dashboard.labels.successRate'), value: fmtPct(row.success_rate) },
-    { label: t('dashboard.labels.failure'), value: fmtInt(row.failure_calls) },
-    { label: t('dashboard.labels.token'), value: fmtCompact(row.total_tokens) },
-    { label: t('dashboard.labels.cost'), value: fmtMoney(row.cost) },
-  ];
-}
-
-function buildApiKeyDetail(row) {
-  if (!row) return [];
-  return [
-    { label: t('dashboard.labels.apiKey'), value: shortHash(row.api_key_hash || row.id) },
-    { label: t('dashboard.labels.account'), value: row.account_snapshot || EMPTY_VALUE },
-    { label: t('dashboard.labels.provider'), value: row.provider || EMPTY_VALUE },
-    { label: t('dashboard.labels.requests'), value: fmtInt(row.calls) },
-    { label: t('dashboard.labels.successRate'), value: fmtPct(row.success_rate) },
-    { label: t('dashboard.labels.token'), value: fmtCompact(row.total_tokens) },
-    { label: t('dashboard.labels.cost'), value: fmtMoney(row.cost) },
-    { label: t('dashboard.labels.lastSeen'), value: row.last_seen_ms ? formatDateTime(row.last_seen_ms, localeRef.value) : EMPTY_VALUE },
-  ];
-}
-
-function buildCredentialDetail(row) {
-  if (!row) return [];
-  return [
-    { label: t('dashboard.labels.authFile'), value: row.auth_file || row.authFile || row.id || EMPTY_VALUE },
-    { label: t('dashboard.labels.provider'), value: row.provider || EMPTY_VALUE },
-    { label: t('dashboard.labels.account'), value: row.account_snapshot || row.account || EMPTY_VALUE },
-    { label: t('dashboard.labels.authIndex'), value: row.auth_index || row.authIndex || EMPTY_VALUE },
-    { label: t('dashboard.labels.projectId'), value: row.project_id || row.projectId || EMPTY_VALUE },
-    { label: t('dashboard.labels.requests'), value: fmtInt(row.calls) },
-    { label: t('dashboard.labels.successRate'), value: fmtPct(row.success_rate) },
-    { label: t('dashboard.labels.token'), value: fmtCompact(row.total_tokens) },
-    { label: t('dashboard.labels.cost'), value: fmtMoney(row.cost) },
-  ];
-}
-
 function buildHeatmapDetail(cell) {
   if (!cell) return [];
   return [
@@ -852,7 +1150,7 @@ function openMonitoringForCredential(row) {
 }
 
 function trendValue(point) {
-  if (trendMetric.value === 'requestCount') return Number(point.calls || 0);
+  if (trendMetric.value === 'requestCount') return Number(point.calls || point.requests || 0);
   if (trendMetric.value === 'totalTokens') return Number(point.tokens || point.total_tokens || 0);
   if (trendMetric.value === 'estimatedCost') return Number(point.cost || 0);
   return 0;
@@ -864,18 +1162,37 @@ function formatTrendValue(point) {
   return fmtCompact(v);
 }
 
+function formatPointTooltip(point) {
+  return [
+    point.label,
+    fmtInt(point.calls || point.requests || 0) + ' ' + t('dashboard.columns.requests'),
+    fmtCompact(point.tokens || point.total_tokens || 0) + ' tok',
+    fmtMoney(point.cost || 0),
+  ].join(' · ');
+}
+
 function trendBarWidth(point) {
-  return `${Math.max(2, Math.round((trendValue(point) / maxTrendValue.value) * 100))}%`;
+  return Math.max(4, Math.round((trendValue(point) / maxTrendValue.value) * 100)) + '%';
 }
 
 function credentialTrendBarWidth(point) {
   const rows = selectedCredentialTimelineRows.value;
   const max = Math.max(1, ...rows.map(p => Number(p.calls || 0)));
-  return `${Math.max(2, Math.round((Number(point.calls || 0) / max) * 100))}%`;
+  return Math.max(4, Math.round((Number(point.calls || 0) / max) * 100)) + '%';
 }
 
-function barWidth(value) {
-  return `${Math.max(2, Math.round((Number(value || 0) / maxTimelineCalls.value) * 100))}%`;
+function shortBucketLabel(label) {
+  const s = String(label || '');
+  const parts = s.trim().split(/\s+/);
+  return parts.length > 1 ? parts[parts.length - 1] : s;
+}
+
+function rateToneClass(rate) {
+  if (rate == null || Number.isNaN(Number(rate))) return '';
+  const n = Number(rate) <= 1 ? Number(rate) * 100 : Number(rate);
+  if (n >= 98) return 'good-text';
+  if (n < 92) return 'bad-text';
+  return 'warn-text';
 }
 
 function heatmapCellValue(cell) {
@@ -905,7 +1222,7 @@ function heatmapCellStyle(cell) {
   let ratio = v / max;
   if (heatmapScaleMode.value === 'byWeekday' || heatmapScaleMode.value === 'byHour') ratio = Math.min(ratio, 1);
   const mix = Math.round(14 + Math.max(0, Math.min(1, ratio)) * 72);
-  return { background: `color-mix(in srgb, var(--cpa-ink) ${mix}%, transparent)` };
+  return { background: 'color-mix(in srgb, var(--cpa-ink) ' + mix + '%, transparent)' };
 }
 
 function heatmapCellTitle(wi, hi, cell) {
@@ -962,13 +1279,7 @@ function decodeHtmlEntities(str) {
 function maskSummary(s) {
   if (!s) return EMPTY_VALUE;
   const d = decodeHtmlEntities(s);
-  return d.length > 80 ? `${d.slice(0, 80)}…` : d;
-}
-
-const maxTrafficCalls = computed(() => Math.max(1, ...trafficTimeline.value.map(p => Number(p.calls || p.requests || 0))));
-
-function trafficBarWidth(point) {
-  return `${Math.max(2, Math.round((Number(point.calls || point.requests || 0) / maxTrafficCalls.value) * 100))}%`;
+  return d.length > 80 ? d.slice(0, 80) + '…' : d;
 }
 
 function fmtInt(v) {
@@ -980,37 +1291,38 @@ function fmtInt(v) {
 function fmtPct(v) {
   if (v == null || Number.isNaN(Number(v))) return EMPTY_VALUE;
   const n = Number(v);
-  return `${(n <= 1 ? n * 100 : n).toFixed(1)}%`;
+  return (n <= 1 ? n * 100 : n).toFixed(1) + '%';
 }
 
 function fmtMoney(v) {
   if (v == null || Number.isNaN(Number(v))) return EMPTY_VALUE;
-  return `$${Number(v).toFixed(4)}`;
+  const n = Number(v);
+  return Math.abs(n) >= 10 ? '$' + n.toFixed(2) : '$' + n.toFixed(4);
 }
 
 function fmtDuration(v) {
   const n = Number(v);
   if (v == null || !Number.isFinite(n)) return EMPTY_VALUE;
-  if (n < 1000) return `${Math.round(n)} ms`;
+  if (n < 1000) return Math.round(n) + ' ms';
   const sec = n / 1000;
-  if (sec < 60) return `${sec.toFixed(sec < 10 ? 1 : 0)} s`;
+  if (sec < 60) return sec.toFixed(sec < 10 ? 1 : 0) + ' s';
   const min = Math.floor(sec / 60);
   const rem = Math.round(sec % 60);
-  return `${min}m ${rem}s`;
+  return min + 'm ' + rem + 's';
 }
 
 function fmtCompact(v) {
   const n = Number(v || 0);
   if (!Number.isFinite(n)) return EMPTY_VALUE;
-  if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  if (Math.abs(n) >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1) + 'K';
   return String(Math.round(n));
 }
 
 function shortHash(v) {
   const s = String(v || '').trim();
-  return s.length > 14 ? `${s.slice(0, 7)}…${s.slice(-5)}` : (s || EMPTY_VALUE);
+  return s.length > 14 ? s.slice(0, 7) + '…' + s.slice(-5) : (s || EMPTY_VALUE);
 }
 
 const SimpleTable = defineComponent({
