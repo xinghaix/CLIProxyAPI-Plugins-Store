@@ -81,9 +81,6 @@ func (k *Keeper) sleepFor(ctx context.Context) time.Duration {
 	if poll <= 0 {
 		poll = 20 * time.Second
 	}
-	if !settings.Enabled {
-		return poll
-	}
 	accounts, err := k.Store.ListAccounts(ctx)
 	if err != nil {
 		return poll
@@ -95,7 +92,7 @@ func (k *Keeper) sleepFor(ctx context.Context) time.Duration {
 			continue
 		}
 		override := decodeOverride(account.OverrideJSON)
-		if override.Enabled == "off" {
+		if !((settings.Enabled && override.Enabled != "off") || override.Enabled == "on") {
 			continue
 		}
 		if account.NotBefore.IsZero() {
@@ -119,8 +116,24 @@ func (k *Keeper) Process(ctx context.Context, now time.Time) error {
 	if !ok {
 		settings = DefaultSettings()
 	}
-	if !settings.Enabled || k.Catalog == nil {
+	if k.Catalog == nil {
 		return nil
+	}
+	accounts, err := k.Store.ListAccounts(ctx)
+	if err != nil {
+		return err
+	}
+	if !settings.Enabled {
+		hasForceOn := false
+		for _, acc := range accounts {
+			if decodeOverride(acc.OverrideJSON).Enabled == "on" {
+				hasForceOn = true
+				break
+			}
+		}
+		if !hasForceOn {
+			return nil
+		}
 	}
 	refs, err := k.Catalog.List(ctx)
 	if err != nil {
@@ -129,12 +142,12 @@ func (k *Keeper) Process(ctx context.Context, now time.Time) error {
 	for _, ref := range refs {
 		if err := k.Store.TouchAccount(ctx, Account{
 			AuthID: ref.AuthID, AuthIndex: ref.AuthIndex, AccountID: ref.AccountID,
-			Email: ref.Email, Name: ref.Name, Disabled: ref.Disabled, Unavailable: ref.Unavailable,
+			Email: ref.Email, Name: ref.Name, PlanType: ref.Plan, Disabled: ref.Disabled, Unavailable: ref.Unavailable,
 		}); err != nil {
 			return err
 		}
 	}
-	accounts, err := k.Store.ListAccounts(ctx)
+	accounts, err = k.Store.ListAccounts(ctx)
 	if err != nil {
 		return err
 	}
@@ -158,7 +171,7 @@ func (k *Keeper) Process(ctx context.Context, now time.Time) error {
 			continue
 		}
 		override := decodeOverride(account.OverrideJSON)
-		if override.Enabled == "off" {
+		if !((settings.Enabled && override.Enabled != "off") || override.Enabled == "on") {
 			_ = k.Store.SetNotBefore(ctx, ref.AuthID, now.Add(poll))
 			continue
 		}
@@ -218,9 +231,6 @@ func (k *Keeper) Activate(ctx context.Context, authID string) error {
 	if err != nil {
 		return err
 	}
-	if !settings.Enabled {
-		return errors.New("quota window keeper is disabled")
-	}
 	ref, err := k.ref(ctx, authID)
 	if err != nil {
 		return err
@@ -259,13 +269,10 @@ func (k *Keeper) Probe(ctx context.Context, authID string) error {
 
 func (k *Keeper) processOne(ctx context.Context, ref AccountRef, settings Settings, now time.Time, forceManual bool) error {
 	override := decodeOverride(loadOverride(ctx, k, ref.AuthID))
-	if !settings.Enabled || override.Enabled == "off" || ref.Disabled || ref.Unavailable || (!forceManual && ref.NextRetryAfter.After(now)) {
+	autoAllowed := (settings.Enabled && override.Enabled != "off") || override.Enabled == "on"
+	if (!forceManual && !autoAllowed) || ref.Disabled || ref.Unavailable || (!forceManual && ref.NextRetryAfter.After(now)) {
 		if forceManual {
 			switch {
-			case !settings.Enabled:
-				return errors.New("quota window keeper is disabled")
-			case override.Enabled == "off":
-				return errors.New("account override disables window keeper")
 			case ref.Disabled:
 				return errors.New("account is disabled")
 			case ref.Unavailable:

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"errors"
 	"time"
 
@@ -126,11 +127,13 @@ func (s *Store) SaveWindowKeeperSettings(ctx context.Context, settings windowkee
 
 func (s *Store) TouchWindowKeeperAccount(ctx context.Context, account windowkeeper.Account) error {
 	now := time.Now().UnixMilli()
-	_, err := s.db.ExecContext(ctx, `insert into window_keeper_accounts(auth_id, auth_index, chatgpt_account_id, email, display_name, disabled, unavailable, updated_at_ms)
-		values(?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := s.db.ExecContext(ctx, `insert into window_keeper_accounts(auth_id, auth_index, chatgpt_account_id, email, display_name, plan_type, disabled, unavailable, updated_at_ms)
+		values(?, ?, ?, ?, ?, ?, ?, ?, ?)
 		on conflict(auth_id) do update set auth_index = excluded.auth_index, chatgpt_account_id = excluded.chatgpt_account_id,
-			email = excluded.email, display_name = excluded.display_name, disabled = excluded.disabled, unavailable = excluded.unavailable, updated_at_ms = excluded.updated_at_ms`,
-		account.AuthID, account.AuthIndex, account.AccountID, account.Email, account.Name, boolToInt(account.Disabled), boolToInt(account.Unavailable), now)
+			email = excluded.email, display_name = excluded.display_name,
+			plan_type = case when excluded.plan_type <> '' then excluded.plan_type else window_keeper_accounts.plan_type end,
+			disabled = excluded.disabled, unavailable = excluded.unavailable, updated_at_ms = excluded.updated_at_ms`,
+		account.AuthID, account.AuthIndex, account.AccountID, account.Email, account.Name, strings.ToLower(strings.TrimSpace(account.PlanType)), boolToInt(account.Disabled), boolToInt(account.Unavailable), now)
 	return err
 }
 

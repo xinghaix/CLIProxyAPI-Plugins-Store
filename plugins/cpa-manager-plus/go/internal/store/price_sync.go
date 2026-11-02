@@ -89,3 +89,40 @@ func (s *Store) PriceSyncTargets(ctx context.Context) ([]string, error) {
 	sort.Strings(models)
 	return models, nil
 }
+
+type ModelUsageSummary struct {
+	Model       string `json:"model"`
+	Calls       int64  `json:"calls"`
+	TotalTokens int64  `json:"total_tokens"`
+	LastSeenMS  int64  `json:"last_seen_ms"`
+	Provider    string `json:"provider"`
+}
+
+func (s *Store) ModelUsageSummaries(ctx context.Context) ([]ModelUsageSummary, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			trim(model) AS m,
+			COUNT(*) AS calls,
+			COALESCE(SUM(total_tokens), 0) AS tokens,
+			COALESCE(MAX(timestamp_ms), 0) AS last_seen_ms,
+			COALESCE(MAX(NULLIF(trim(provider), '')), '') AS provider
+		FROM usage_events
+		WHERE trim(model) <> ''
+		GROUP BY trim(model)
+		ORDER BY calls DESC, m ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ModelUsageSummary{}
+	for rows.Next() {
+		var item ModelUsageSummary
+		if err := rows.Scan(&item.Model, &item.Calls, &item.TotalTokens, &item.LastSeenMS, &item.Provider); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+

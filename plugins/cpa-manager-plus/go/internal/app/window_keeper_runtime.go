@@ -86,6 +86,20 @@ func (r *Runtime) SaveWindowKeeperSettings(ctx context.Context, settings windowk
 }
 
 func (r *Runtime) WindowKeeperAccounts(ctx context.Context) ([]windowkeeper.Account, error) {
+	if refs, err := (runtimeCatalog{r: r}).List(ctx); err == nil {
+		for _, ref := range refs {
+			_ = r.store.TouchWindowKeeperAccount(ctx, windowkeeper.Account{
+				AuthID:      ref.AuthID,
+				AuthIndex:   ref.AuthIndex,
+				AccountID:   ref.AccountID,
+				Email:       ref.Email,
+				Name:        ref.Name,
+				PlanType:    ref.Plan,
+				Disabled:    ref.Disabled,
+				Unavailable: ref.Unavailable,
+			})
+		}
+	}
 	accounts, err := r.store.ListWindowKeeperAccounts(ctx)
 	if err != nil {
 		return nil, err

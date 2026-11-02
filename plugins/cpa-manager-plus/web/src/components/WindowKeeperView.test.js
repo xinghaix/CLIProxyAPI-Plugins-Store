@@ -150,4 +150,22 @@ describe('WindowKeeperView controller', () => {
     expect(proxyCallMock).toHaveBeenCalledWith(expect.objectContaining({ method: 'PUT', path: '/v0/management/window-keeper/settings', body: expect.objectContaining({ enabled: false }) }));
     expect(state.settings.enabled).toBe(false);
   });
+
+  it('saves per-account override and formats phase labels', async () => {
+    await nextTick();
+    await new Promise(r => setTimeout(r, 50));
+
+    state.overrideDraft.enabled = 'on';
+    state.overrideDraft.model = 'gpt-5.4-mini';
+    expect(state.overrideDirty).toBe(true);
+
+    await state.saveAccountOverride('ada-1');
+    expect(proxyCallMock).toHaveBeenCalledWith(expect.objectContaining({
+      method: 'PUT',
+      path: '/v0/management/window-keeper/accounts/override',
+      body: { auth_id: 'ada-1', enabled: 'on', model: 'gpt-5.4-mini' },
+    }));
+    expect(state.formatPhaseLabel('anchored')).toBe('已锚定滚动');
+    expect(state.formatPhaseLabel('blocked')).toBe('已满等重置');
+  });
 });

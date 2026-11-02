@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/app"
+	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/pricing"
 	"github.com/xinghaix/CLIProxyAPI-Plugins-Store/plugins/cpa-manager-plus/go/internal/store"
 )
 
@@ -111,7 +112,14 @@ func Handle(ctx context.Context, runtime *app.Runtime, raw []byte) Response {
 		if err != nil {
 			return errorResponse(err)
 		}
-		return jsonResponse(http.StatusOK, map[string]any{"models": models})
+		modelUsage, _ := runtime.Store().ModelUsageSummaries(ctx)
+		scheduleID, officialSchedules := pricing.ActiveSchedules()
+		return jsonResponse(http.StatusOK, map[string]any{
+			"models":               models,
+			"model_usage":          modelUsage,
+			"official_schedule_id": scheduleID,
+			"official_schedules":   officialSchedules,
+		})
 	case method == http.MethodGet && path == "/v0/management/model-prices/source-lookup":
 		query, err := url.ParseQuery(request.Query)
 		if err != nil {

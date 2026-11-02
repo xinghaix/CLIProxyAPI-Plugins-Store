@@ -1,7 +1,8 @@
 <template>
   <section class="monitoring-page model-prices-page">
-    <div class="card inspection-status-card model-prices-status-card">
-      <div class="inspection-status-bar">
+    <!-- ====== Unified Command Bar ====== -->
+    <div class="card dash-command-bar mp-command-bar">
+      <div class="dash-command-top">
         <div class="inspection-status-info">
           <span :class="['status-badge', syncing || status.running ? '' : lastStatusTone]">
             <i aria-hidden="true"></i>{{ syncStatusText }}
@@ -15,41 +16,31 @@
             <template v-if="lastResult?.trigger"> · {{ triggerLabel(lastResult.trigger) }}</template>
           </span>
         </div>
-        <div class="config-actions-bar" style="padding:0">
+
+        <div class="dash-command-right">
+          <button
+            type="button"
+            :class="['btn', 'dash-filter-toggle', { active: showSyncSettings }]"
+            @click="showSyncSettings = !showSyncSettings"
+          >
+            {{ t('modelPrices.settingsTitle') }}
+          </button>
+          <button class="btn" type="button" @click="addManualPrice" :disabled="!ready">
+            {{ t('modelPrices.addManual') }}
+          </button>
           <button class="btn" type="button" @click="refresh(true)" :disabled="loading || !ready">
             {{ loading ? t('common.loading') : t('common.refresh') }}
           </button>
-          <button class="btn" type="button" @click="addManualPrice" :disabled="!ready">{{ t('modelPrices.addManual') }}</button>
           <button class="btn primary" type="button" @click="runSync" :disabled="!ready || syncing || status.running">
             {{ syncing || status.running ? t('modelPrices.syncing') : t('modelPrices.syncNow') }}
           </button>
         </div>
       </div>
 
-      <details class="inspection-info-note">
-        <summary>{{ t('modelPrices.infoTitle') }}</summary>
-        <ul class="inspection-info-list">
-          <li><strong>{{ t('modelPrices.info.scope') }}</strong>: {{ t('modelPrices.info.scopeText') }}</li>
-          <li><strong>{{ t('modelPrices.info.dualSource') }}</strong>: {{ t('modelPrices.info.dualSourceText') }}</li>
-          <li><strong>{{ t('modelPrices.info.manualProtect') }}</strong>: {{ t('modelPrices.info.manualProtectText') }}</li>
-          <li><strong>{{ t('modelPrices.info.autoSync') }}</strong>: {{ t('modelPrices.info.autoSyncText') }}</li>
-        </ul>
-      </details>
-
-      <div class="model-prices-settings">
-        <div class="section-title">
-          <h2>{{ t('modelPrices.settingsTitle') }}</h2>
-          <button
-            type="button"
-            class="btn primary"
-            :disabled="!ready || settingsSaving || !settingsDirty"
-            @click="saveSettings"
-          >
-            {{ settingsSaving ? t('modelPrices.savingSettings') : t('modelPrices.saveSettings') }}
-          </button>
-        </div>
-        <div class="config-form-grid model-prices-settings-grid">
-          <label class="config-field config-field-toggle">
+      <!-- Collapsible Auto-Sync Settings & Source Health Drawer -->
+      <div v-if="showSyncSettings" class="mp-settings-drawer">
+        <div class="mp-settings-row">
+          <label class="mp-inline-field">
             <span class="config-field-label">{{ t('modelPrices.enableAutoSync') }}</span>
             <button
               type="button"
@@ -61,324 +52,467 @@
             </button>
             <small class="muted">{{ settingsDraft.enabled ? t('common.enabled') : t('modelPrices.defaultOff') }}</small>
           </label>
-          <label class="config-field">
+
+          <label class="mp-inline-field">
             <span class="config-field-label">{{ t('modelPrices.intervalHours') }}</span>
             <input
               v-model.number="settingsDraft.intervalHours"
               type="number"
-              min="6"
-              max="168"
+              :min="MIN_INTERVAL_HOURS"
+              :max="MAX_INTERVAL_HOURS"
               step="1"
-              class="control"
+              class="control compact"
+              style="width: 96px"
               :disabled="!ready || settingsSaving || !syncApiAvailable.settings"
             />
             <small class="muted">{{ t('modelPrices.intervalHint', { min: MIN_INTERVAL_HOURS, max: MAX_INTERVAL_HOURS, default: DEFAULT_SYNC_SETTINGS.intervalHours }) }}</small>
           </label>
-          <label class="config-field config-field-toggle">
-            <span class="config-field-label">{{ t('modelPrices.protectManual') }}</span>
-            <button
-              type="button"
-              :class="['toggle-switch', { on: true }]"
-              disabled
-              :title="t('modelPrices.protectManualTitle')"
-            >
-              <span class="toggle-knob"></span>
-            </button>
+
+          <div class="mp-inline-field">
+            <span class="dash-kpi-chip">{{ t('modelPrices.protectManual') }}: {{ t('common.enabled') }}</span>
             <small class="muted">{{ t('modelPrices.protectManualHint') }}</small>
-          </label>
-        </div>
-        <p v-if="!syncApiAvailable.settings" class="muted small-text">
-          {{ t('modelPrices.settingsApiUnavailable') }}
-        </p>
-        <p v-if="settingsMessage" class="notice config-save-ok" style="margin-top:8px">{{ settingsMessage }}</p>
-      </div>
+          </div>
 
-      <div class="inspection-summary-shell">
-        <MetricGrid class="inspection-summary-grid" :cards="summaryCards" />
-      </div>
-
-      <div v-if="sourceResults.length" class="model-prices-source-results">
-        <div
-          v-for="src in sourceResults"
-          :key="src.source"
-          :class="['model-prices-source-pill', src.ok ? 'ok' : 'err']"
-          :title="src.error || undefined"
-        >
-          <strong>{{ formatSourceLabel(src.source) }}</strong>
-          <span v-if="src.ok">
-            {{ t('modelPrices.sourceOk', { models: src.modelCount, matched: src.matched, applied: src.applied }) }}
-            <template v-if="src.priority"> · {{ t('modelPrices.sourcePriority', { priority: src.priority }) }}</template>
-            <template v-if="src.skipped"> · {{ t('modelPrices.sourceSkipped', { count: src.skipped }) }}</template>
-            <template v-if="src.durationMs"> · {{ formatDurationMs(src.durationMs) }}</template>
-          </span>
-          <span v-else>{{ src.error ? t('modelPrices.sourceFailedWithError', { error: src.error }) : t('modelPrices.sourceFailed') }}</span>
+          <button
+            type="button"
+            class="btn primary"
+            :disabled="!ready || settingsSaving || !settingsDirty"
+            @click="saveSettings"
+          >
+            {{ settingsSaving ? t('modelPrices.savingSettings') : t('modelPrices.saveSettings') }}
+          </button>
         </div>
+
+        <div v-if="sourceResults.length" class="model-prices-sources">
+          <div v-for="src in sourceResults" :key="src.source" class="source-pill">
+            <span :class="['status-badge', src.ok ? 'good' : 'bad']">
+              <i aria-hidden="true"></i>{{ formatSourceLabel(src.source) }}
+            </span>
+            <span v-if="src.ok" class="muted small-text">
+              {{ t('modelPrices.sourceOk', { models: src.models || 0, matched: src.matched || 0, applied: src.applied || 0 }) }}
+            </span>
+            <span v-else class="bad-text small-text">
+              {{ src.error ? t('modelPrices.sourceFailedWithError', { error: src.error }) : t('modelPrices.sourceFailed') }}
+            </span>
+          </div>
+        </div>
+
+        <details class="inspection-info-note">
+          <summary>{{ t('modelPrices.infoTitle') }}</summary>
+          <ul class="inspection-info-list">
+            <li><strong>{{ t('modelPrices.info.scope') }}</strong>: {{ t('modelPrices.info.scopeText') }}</li>
+            <li><strong>{{ t('modelPrices.info.dualSource') }}</strong>: {{ t('modelPrices.info.dualSourceText') }}</li>
+            <li><strong>{{ t('modelPrices.info.manualProtect') }}</strong>: {{ t('modelPrices.info.manualProtectText') }}</li>
+            <li><strong>{{ t('modelPrices.info.autoSync') }}</strong>: {{ t('modelPrices.info.autoSyncText') }}</li>
+          </ul>
+        </details>
       </div>
-      <p v-if="status.lastError || lastResult?.error" class="notice error" style="margin-top:10px">
-        {{ status.lastError || lastResult.error }}
-      </p>
     </div>
 
-    <section v-if="error" class="notice error">{{ error }}</section>
-    <section v-if="!ready" class="notice">{{ t('modelPrices.missingKey') }}</section>
-    <section v-if="syncNotice" class="notice">{{ syncNotice }}</section>
+    <div v-if="!ready" class="notice warn">{{ t('modelPrices.missingKey') }}</div>
+    <div v-if="error" class="notice error">{{ error }}</div>
+    <div v-if="syncNotice" class="notice">{{ syncNotice }}</div>
 
+    <!-- ====== 4-Card High-Density KPI Strip ====== -->
+    <section class="dash-kpi-strip">
+      <article class="dash-kpi-card clickable" @click="rowFilter = 'all'">
+        <div class="dash-kpi-head">
+          <span class="dash-kpi-label">{{ t('modelPrices.summary.syncTargets') }}</span>
+          <span class="dash-kpi-chip">{{ t('modelPrices.filters.saved') }} {{ savedRowCount }}</span>
+        </div>
+        <div class="dash-kpi-value">{{ allRows.length }}</div>
+        <div class="dash-kpi-foot">
+          <span>{{ t('windowKeeper.ext.officialTier') }} <b>{{ officialTieredRowCount }}</b></span>
+          <span class="dash-kpi-sep">·</span>
+          <span>{{ t('prices.source.manual') }} <b>{{ manualRowCount }}</b></span>
+        </div>
+      </article>
+
+      <article class="dash-kpi-card clickable" @click="rowFilter = missingRowCount > 0 ? 'missing' : 'all'">
+        <div class="dash-kpi-head">
+          <span class="dash-kpi-label">{{ t('modelPrices.filters.missing') }}</span>
+          <span class="dash-kpi-chip">{{ t('modelPrices.summary.unmatched') }} {{ summary.unmatched }}</span>
+        </div>
+        <div :class="['dash-kpi-value', missingRowCount > 0 ? 'warn-text' : 'good-text']">
+          {{ missingRowCount }}
+        </div>
+        <div class="dash-kpi-foot">
+          <span>{{ t('windowKeeper.ext.unpricedSub') }}</span>
+        </div>
+      </article>
+
+      <article class="dash-kpi-card clickable" @click="rowFilter = pendingCandidates.length > 0 ? 'candidates' : 'all'">
+        <div class="dash-kpi-head">
+          <span class="dash-kpi-label">{{ t('modelPrices.summary.pendingCandidates') }}</span>
+          <span class="dash-kpi-chip">{{ t('windowKeeper.ext.modelsUnit', { count: groupedCandidates.length }) }}</span>
+        </div>
+        <div :class="['dash-kpi-value', pendingCandidates.length > 0 ? 'warn-text' : '']">
+          {{ pendingCandidates.length }}
+        </div>
+        <div class="dash-kpi-foot">
+          <span>{{ t('modelPrices.summary.pendingCandidatesSub') }}</span>
+        </div>
+      </article>
+
+      <article class="dash-kpi-card clickable" @click="rowFilter = 'saved'">
+        <div class="dash-kpi-head">
+          <span class="dash-kpi-label">{{ t('modelPrices.summary.autoUpdated') }}</span>
+          <span class="dash-kpi-chip">{{ t('modelPrices.summary.protectedSkipped') }} {{ summary.protectedSkipped }}</span>
+        </div>
+        <div class="dash-kpi-value">{{ autoSyncedRowCount }}</div>
+        <div class="dash-kpi-foot">
+          <span>Models.dev / LiteLLM / OpenRouter</span>
+        </div>
+      </article>
+    </section>
+
+    <!-- ====== Grouped Pending Candidates Section ====== -->
     <DataCard
-      v-if="pendingCandidates.length"
+      v-if="groupedCandidates.length"
       :title="t('modelPrices.candidatesTitle')"
       :subtitle="t('modelPrices.candidatesSubtitle', { count: pendingCandidates.length })"
     >
-      <div class="table-wrap monitor-table">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:36px">
+      <div class="mp-candidate-groups">
+        <article v-for="group in groupedCandidates" :key="group.localModel" class="mp-candidate-card">
+          <div class="mp-candidate-head">
+            <div class="mp-candidate-title">
+              <strong>{{ group.localModel }}</strong>
+              <span v-if="group.usage?.calls" class="dash-kpi-chip">
+                {{ fmtCompact(group.usage.calls) }} 请求 · {{ fmtCompact(group.usage.total_tokens) }} tok
+              </span>
+            </div>
+            <button
+              class="btn btn-xs"
+              type="button"
+              :disabled="confirmingCandidate || dismissingCandidates"
+              @click="dismissSingleModelCandidate(group.localModel)"
+            >
+              {{ t('windowKeeper.ext.dismissModel') }}
+            </button>
+          </div>
+
+          <div class="mp-candidate-options">
+            <div v-for="item in group.items" :key="item.key" class="mp-candidate-option">
+              <label class="mp-candidate-check">
                 <input
                   type="checkbox"
-                  :checked="allCandidatesSelected"
-                  @change="toggleSelectAllCandidates"
+                  :checked="selectedCandidateKeys.has(item.key)"
+                  @change="toggleCandidateKey(item.key, $event.target.checked)"
                 />
-              </th>
-              <th>{{ t('modelPrices.columns.localModel') }}</th>
-              <th>{{ t('modelPrices.columns.source') }}</th>
-              <th>{{ t('modelPrices.columns.sourceModel') }}</th>
-              <th>{{ t('modelPrices.columns.prompt') }}</th>
-              <th>{{ t('modelPrices.columns.completion') }}</th>
-              <th>{{ t('modelPrices.columns.reason') }}</th>
-              <th>{{ t('modelPrices.columns.actions') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(c, idx) in pendingCandidates" :key="candidateKey(c, idx)">
-              <td>
-                <input
-                  type="checkbox"
-                  :checked="selectedCandidateKeys.has(candidateKey(c, idx))"
-                  @change="toggleCandidate(c, idx)"
-                />
-              </td>
-              <td><strong>{{ c.localModel }}</strong></td>
-              <td>
-                <span :class="['source-badge', sourceBadgeClass(c.source)]">{{ formatSourceLabel(c.source) }}</span>
-              </td>
-              <td class="small-text">{{ c.sourceModelId || EMPTY_VALUE }}</td>
-              <td>{{ formatMoneyPer1M(c.prompt) }}</td>
-              <td>{{ formatMoneyPer1M(c.completion) }}</td>
-              <td class="small-text">
-                {{ c.reason || 'fuzzy' }}
-                <template v-if="c.score"> · {{ Math.round(c.score * 100) }}%</template>
-              </td>
-              <td>
-                <button class="btn primary" type="button" :disabled="confirming" @click="confirmOne(c)">
+                <span class="source-tag">{{ formatSourceLabel(item.cand.source) }}</span>
+                <strong class="mono-cell">{{ item.cand.sourceModelId }}</strong>
+              </label>
+
+              <div class="mp-candidate-rates mono-cell">
+                <span>入 <b>{{ fmtPrice(item.cand.prompt ?? item.cand.price?.prompt) }}</b></span>
+                <span>·</span>
+                <span>出 <b>{{ fmtPrice(item.cand.completion ?? item.cand.price?.completion) }}</b></span>
+                <template v-if="Number(item.cand.cacheRead ?? item.cand.cache ?? item.cand.price?.cacheRead ?? item.cand.price?.cache ?? 0) > 0">
+                  <span>·</span>
+                  <span>缓 <b>{{ fmtPrice(item.cand.cacheRead ?? item.cand.cache ?? item.cand.price?.cacheRead ?? item.cand.price?.cache) }}</b></span>
+                </template>
+              </div>
+
+              <div class="mp-candidate-actions">
+                <span class="muted small-text">{{ item.cand.reason || '模糊匹配' }}</span>
+                <button
+                  class="btn btn-xs primary"
+                  type="button"
+                  :disabled="confirmingCandidate"
+                  @click="confirmSingleCandidate(item.cand)"
+                >
                   {{ t('modelPrices.confirm') }}
                 </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                <button
+                  class="btn btn-xs"
+                  type="button"
+                  @click="editFromCandidate(item.cand)"
+                >
+                  {{ t('modelPrices.edit') }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </article>
       </div>
-      <div class="config-actions-bar" style="padding-top:10px">
-        <button class="btn primary" type="button" :disabled="!selectedCandidateList.length || confirming" @click="confirmSelected">
-          {{ confirming ? t('modelPrices.confirming') : t('modelPrices.confirmSelected', { count: selectedCandidateList.length }) }}
+
+      <div class="config-actions-bar">
+        <button
+          class="btn primary"
+          type="button"
+          :disabled="!selectedCandidateList.length || confirmingCandidate"
+          @click="confirmSelectedCandidates"
+        >
+          {{ confirmingCandidate ? t('modelPrices.confirming') : t('modelPrices.confirmSelected', { count: selectedCandidateList.length }) }}
         </button>
-        <button class="btn" type="button" :disabled="!pendingCandidates.length" @click="dismissCandidates">
+        <button
+          class="btn"
+          type="button"
+          :disabled="confirmingCandidate || dismissingCandidates"
+          @click="dismissAllCandidates"
+        >
           {{ t('modelPrices.dismissCandidates') }}
         </button>
       </div>
     </DataCard>
 
-    <DataCard :title="t('modelPrices.tableTitle')" :subtitle="tableSubtitle">
-      <div class="model-prices-toolbar">
-        <div class="segmented-control model-prices-filters">
+    <!-- ====== Filter & Sort Toolbar + Responsive Price Card Grid ====== -->
+    <div class="card mp-Catalog-shell">
+      <div class="mp-toolbar">
+        <div class="segmented-control mp-filter-pills" role="tablist">
           <button
-            v-for="f in filters"
+            v-for="f in ['all', 'saved', 'official', 'missing', 'candidates']"
             :key="f"
             type="button"
-            :class="['segment-btn', { active: filter === f }]"
-            @click="filter = f"
+            :class="['segment-btn', { active: rowFilter === f }]"
+            @click="rowFilter = f"
           >
             {{ filterLabel(f) }}
-            <span class="segment-count">{{ filterCounts[f] }}</span>
+            <span class="segment-count">{{ filterCount(f) }}</span>
           </button>
         </div>
-        <input
-          v-model.trim="search"
-          class="control wide"
-          :placeholder="t('modelPrices.searchPlaceholder')"
-        />
+
+        <div class="mp-toolbar-right">
+          <input
+            v-model.trim="searchQuery"
+            class="control compact mp-search-input"
+            :placeholder="t('modelPrices.searchPlaceholder')"
+          />
+          <select v-model="sortMode" class="control compact">
+            <option value="usage">{{ t('windowKeeper.ext.sortUsage') }}</option>
+            <option value="missingFirst">{{ t('windowKeeper.ext.sortMissingFirst') }}</option>
+            <option value="name">{{ t('windowKeeper.ext.sortName') }}</option>
+            <option value="updated">{{ t('windowKeeper.ext.sortUpdated') }}</option>
+          </select>
+        </div>
       </div>
 
-      <div v-if="!visibleRows.length" class="empty">
-        {{ emptyTableText }}
+      <div v-if="visibleRows.length" class="mp-card-grid">
+        <article
+          v-for="row in visibleRows"
+          :key="row.model"
+          :class="['mp-model-card', { 'is-missing': row.missing, 'is-official': !!row.officialSchedule }]"
+        >
+          <div class="mp-card-top">
+            <div class="mp-card-title-wrap">
+              <strong class="mp-model-name" :title="row.model">{{ row.model }}</strong>
+              <span v-if="row.usage?.provider" class="dash-kpi-chip">{{ row.usage.provider }}</span>
+            </div>
+            <div class="mp-card-badges">
+              <span v-if="row.officialSchedule" class="source-tag source-official">
+                {{ t('windowKeeper.ext.officialTier') }}
+              </span>
+              <span v-if="row.source" :class="['source-tag', row.source === 'manual' ? 'source-manual' : '']">
+                {{ formatSourceLabel(row.source) }}
+              </span>
+              <span v-else-if="!row.officialSchedule && row.hasCandidate" class="warn-text small-text">
+                {{ t('modelPrices.needsConfirm') }}
+              </span>
+              <span v-else-if="row.missing" class="bad-text small-text">
+                {{ t('modelPrices.notSet') }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Official Multi-Tier Schedule Display (Standard / Fast · Short / Long Context) -->
+          <div v-if="row.officialSchedule" class="mp-official-bands">
+            <div class="mp-band-row">
+              <span class="mp-band-tag">Standard ≤{{ fmtThreshold(row.officialSchedule) }}</span>
+              <span>入 <b>{{ fmtRate(row.officialSchedule.standard?.Short?.Input) }}</b></span>
+              <span>缓 <b>{{ fmtRate(row.officialSchedule.standard?.Short?.CachedInput) }}</b></span>
+              <span>出 <b>{{ fmtRate(row.officialSchedule.standard?.Short?.Output) }}</b></span>
+            </div>
+            <div v-if="row.officialSchedule.standard?.Long" class="mp-band-row muted">
+              <span class="mp-band-tag">Standard &gt;{{ fmtThreshold(row.officialSchedule) }}</span>
+              <span>入 <b>{{ fmtRate(row.officialSchedule.standard.Long.Input) }}</b></span>
+              <span>缓 <b>{{ fmtRate(row.officialSchedule.standard.Long.CachedInput) }}</b></span>
+              <span>出 <b>{{ fmtRate(row.officialSchedule.standard.Long.Output) }}</b></span>
+            </div>
+            <div v-if="row.officialSchedule.fast?.Short" class="mp-band-row mp-band-fast">
+              <span class="mp-band-tag">Fast (Priority)</span>
+              <span>入 <b>{{ fmtRate(row.officialSchedule.fast.Short.Input) }}</b></span>
+              <span>缓 <b>{{ fmtRate(row.officialSchedule.fast.Short.CachedInput) }}</b></span>
+              <span>出 <b>{{ fmtRate(row.officialSchedule.fast.Short.Output) }}</b></span>
+            </div>
+          </div>
+
+          <!-- Flat Rates Grid (Input / Output / Cache Read / Cache Write) -->
+          <div v-if="!row.officialSchedule || row.hasSavedFlat" class="mp-rates-grid">
+            <div>
+              <span>{{ t('modelPrices.columns.promptPer1M') }}</span>
+              <strong>{{ row.hasSavedFlat ? fmtPrice(row.prompt) : EMPTY_VALUE }}</strong>
+            </div>
+            <div>
+              <span>{{ t('modelPrices.columns.completionPer1M') }}</span>
+              <strong>{{ row.hasSavedFlat ? fmtPrice(row.completion) : EMPTY_VALUE }}</strong>
+            </div>
+            <div>
+              <span>{{ t('modelPrices.columns.cacheRead') }}</span>
+              <strong>{{ row.hasSavedFlat ? fmtPrice(effectiveCacheRead(row)) : EMPTY_VALUE }}</strong>
+            </div>
+            <div>
+              <span>{{ t('modelPrices.columns.cacheCreation') }}</span>
+              <strong>{{ row.hasSavedFlat && Number(row.cacheCreation || 0) > 0 ? fmtPrice(row.cacheCreation) : EMPTY_VALUE }}</strong>
+            </div>
+          </div>
+
+          <div class="mp-card-foot">
+            <div class="mp-card-meta muted small-text">
+              <span v-if="row.usage?.calls">
+                {{ t('windowKeeper.ext.callsLabel') }} <b>{{ fmtCompact(row.usage.calls) }}</b> · {{ fmtCompact(row.usage.total_tokens) }} tok
+              </span>
+              <span v-else>{{ t('windowKeeper.ext.noLocalCalls') }}</span>
+              <template v-if="row.sourceModelId">
+                <span>·</span>
+                <span class="mono-cell" :title="row.sourceModelId">{{ row.sourceModelId }}</span>
+              </template>
+              <template v-else-if="row.updatedAtMs || row.syncedAtMs">
+                <span>·</span>
+                <span>{{ formatTimestamp(row.updatedAtMs || row.syncedAtMs, localeRef) }}</span>
+              </template>
+            </div>
+
+            <div class="mp-card-actions">
+              <button class="btn btn-xs" type="button" @click="startEdit(row)">
+                {{ row.hasSavedFlat ? t('modelPrices.edit') : t('modelPrices.add') }}
+              </button>
+              <button
+                v-if="row.hasSavedFlat"
+                class="btn btn-xs danger"
+                type="button"
+                :disabled="deleting"
+                @click="confirmDeletePrice(row.model)"
+              >
+                {{ t('common.delete') }}
+              </button>
+            </div>
+          </div>
+        </article>
       </div>
-      <div v-else class="table-wrap monitor-table">
-        <table>
-          <thead>
-            <tr>
-              <th>{{ t('modelPrices.columns.model') }}</th>
-              <th>{{ t('modelPrices.columns.promptPer1M') }}</th>
-              <th>{{ t('modelPrices.columns.completionPer1M') }}</th>
-              <th>{{ t('modelPrices.columns.cachePer1M') }}</th>
-              <th>{{ t('modelPrices.columns.cacheRead') }}</th>
-              <th>{{ t('modelPrices.columns.cacheCreation') }}</th>
-              <th>{{ t('modelPrices.columns.source') }}</th>
-              <th>{{ t('modelPrices.columns.sourceModel') }}</th>
-              <th>{{ t('modelPrices.columns.updatedAt') }}</th>
-              <th>{{ t('modelPrices.columns.actions') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in visibleRows"
-              :key="row.model"
-              class="clickable"
-              @click="openEdit(row)"
-            >
-              <td>
-                <div><strong>{{ row.model }}</strong></div>
-                <div v-if="!row.hasPrice && row.candidateCount" class="muted small-text">{{ t('modelPrices.needsConfirm') }}</div>
-                <div v-else-if="!row.hasPrice" class="muted small-text">{{ t('modelPrices.notSet') }}</div>
-              </td>
-              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.prompt) : EMPTY_VALUE }}</td>
-              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.completion) : EMPTY_VALUE }}</td>
-              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.cache) : EMPTY_VALUE }}</td>
-              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.cacheRead) : EMPTY_VALUE }}</td>
-              <td>{{ row.hasPrice ? formatMoneyPer1M(row.price.cacheCreation) : EMPTY_VALUE }}</td>
-              <td @click.stop>
-                <span v-if="row.hasPrice" :class="['source-badge', sourceBadgeClass(row.price.source)]">
-                  {{ formatSourceLabel(row.price.source) }}
-                </span>
-                <span v-else class="muted">{{ EMPTY_VALUE }}</span>
-              </td>
-              <td class="small-text">{{ row.price?.sourceModelId || EMPTY_VALUE }}</td>
-              <td class="small-text">{{ formatTimestamp(row.price?.updatedAtMs, localeRef) }}</td>
-              <td @click.stop>
-                <button class="btn" type="button" :disabled="deleting" @click="openEdit(row)">
-                  {{ row.hasPrice ? t('modelPrices.edit') : t('modelPrices.add') }}
+      <div v-else class="empty">{{ emptyTableText }}</div>
+    </div>
+
+    <!-- ====== Edit / Add Price Drawer ====== -->
+    <div v-if="editingModel" class="drawer-backdrop" @click.self="closeEditDrawer">
+      <aside class="drawer">
+        <div class="drawer-header">
+          <div>
+            <h3>{{ editingModel.isNew ? t('modelPrices.drawerNew') : t('modelPrices.drawerEdit') }}</h3>
+            <p class="muted small-text">{{ t('modelPrices.drawerSub', { model: editingModel.model || t('modelPrices.newModel') }) }}</p>
+          </div>
+          <button class="btn" type="button" @click="closeEditDrawer">{{ t('common.close') }}</button>
+        </div>
+
+        <div class="form-grid">
+          <label class="field-span-2">
+            <span>{{ t('modelPrices.fields.modelName') }}</span>
+            <input
+              v-model.trim="editingModel.model"
+              class="control"
+              :disabled="!editingModel.isNew"
+              @input="onEditingModelInput"
+            />
+          </label>
+
+          <section class="field-span-2 price-source-picker">
+            <div class="price-source-picker-head">
+              <div>
+                <strong>{{ t('modelPrices.sourcePicker.title') }}</strong>
+                <p class="muted small-text">{{ t('modelPrices.sourcePicker.subtitle') }}</p>
+              </div>
+              <div class="price-source-picker-actions">
+                <button
+                  class="btn"
+                  type="button"
+                  :disabled="!ready || sourceLookupLoading || !String(editingModel.model || '').trim()"
+                  @click="lookupModelPriceSources(editingModel.model)"
+                >
+                  {{ sourceLookupLoading ? t('modelPrices.sourcePicker.loading') : t('modelPrices.sourcePicker.fetch') }}
                 </button>
                 <button
-                  v-if="row.hasPrice"
-                  class="btn danger"
+                  v-if="sourceLookupOptions.length"
+                  class="btn primary"
                   type="button"
-                  :disabled="saving || deleting"
-                  @click="confirmDeletePrice(row.model)"
-                >{{ t('common.delete') }}</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </DataCard>
+                  :disabled="!selectedSourceOption"
+                  @click="applySelectedSourceToDraft"
+                >
+                  {{ t('modelPrices.sourcePicker.apply') }}
+                </button>
+              </div>
+            </div>
 
-    <div v-if="editingModel" class="drawer-backdrop" @click.self="editingModel = null">
-      <div class="modal-dialog card drawer">
-        <div class="drawer-head">
-          <div>
-            <h2>{{ editingModel.isNew ? t('modelPrices.drawerNew') : t('modelPrices.drawerEdit') }}</h2>
-            <p class="muted">{{ t('modelPrices.drawerSub', { model: editingModel.model || t('modelPrices.newModel') }) }}</p>
-          </div>
-          <button class="btn" type="button" @click="editingModel = null">{{ t('common.close') }}</button>
-        </div>
-        <div class="config-form-grid">
-          <label class="config-field">
-            <span class="config-field-label">{{ t('modelPrices.fields.modelName') }}</span>
-            <input v-model.trim="editingModel.model" class="control" :disabled="!editingModel.isNew" />
-          </label>
-          <label class="config-field">
-            <span class="config-field-label">{{ t('modelPrices.fields.prompt') }}</span>
+            <div v-if="sourceLookupError" class="small-text bad-text">{{ sourceLookupError }}</div>
+            <div v-else-if="sourceLookupLoaded && !sourceLookupOptions.length" class="small-text muted">
+              {{ t('modelPrices.sourcePicker.empty') }}
+            </div>
+
+            <div v-if="sourceLookupOptions.length" class="price-source-option-list">
+              <label
+                v-for="opt in sourceLookupOptions"
+                :key="opt.key"
+                :class="['price-source-option', { selected: selectedSourceKey === opt.key }]"
+              >
+                <input
+                  v-model="selectedSourceKey"
+                  type="radio"
+                  name="model-price-source"
+                  :value="opt.key"
+                />
+                <span class="source-tag">{{ formatSourceLabel(opt.source) }}</span>
+                <span class="mono-cell">{{ opt.sourceModelId }}</span>
+                <span class="muted small-text">{{ formatSourcePriceSummary(opt) }}</span>
+              </label>
+            </div>
+          </section>
+
+          <label>
+            <span>{{ t('modelPrices.fields.prompt') }}</span>
             <input v-model.number="editingModel.prompt" type="number" step="0.0001" min="0" class="control" />
           </label>
-          <label class="config-field">
-            <span class="config-field-label">{{ t('modelPrices.fields.completion') }}</span>
+          <label>
+            <span>{{ t('modelPrices.fields.completion') }}</span>
             <input v-model.number="editingModel.completion" type="number" step="0.0001" min="0" class="control" />
           </label>
-          <label class="config-field">
-            <span class="config-field-label">{{ t('modelPrices.fields.cache') }}</span>
+          <label>
+            <span>{{ t('modelPrices.fields.cache') }}</span>
             <input v-model.number="editingModel.cache" type="number" step="0.0001" min="0" class="control" />
           </label>
-          <label class="config-field">
-            <span class="config-field-label">{{ t('modelPrices.fields.cacheRead') }}</span>
+          <label>
+            <span>{{ t('modelPrices.fields.cacheRead') }}</span>
             <input v-model.number="editingModel.cacheRead" type="number" step="0.0001" min="0" class="control" />
           </label>
-          <label class="config-field">
-            <span class="config-field-label">{{ t('modelPrices.fields.cacheCreation') }}</span>
+          <label>
+            <span>{{ t('modelPrices.fields.cacheCreation') }}</span>
             <input v-model.number="editingModel.cacheCreation" type="number" step="0.0001" min="0" class="control" />
           </label>
         </div>
-        <div class="price-source-picker">
-          <div class="section-title">
-            <div>
-              <h3>{{ t('modelPrices.sourcePicker.title') }}</h3>
-              <p class="muted small-text">{{ t('modelPrices.sourcePicker.subtitle') }}</p>
-            </div>
-            <button
-              class="btn"
-              type="button"
-              :disabled="sourceLookupLoading || saving || deleting || !editingModel.model.trim()"
-              @click="lookupEditingPriceSources"
-            >
-              {{ sourceLookupLoading ? t('modelPrices.sourcePicker.loading') : t('modelPrices.sourcePicker.fetch') }}
-            </button>
-          </div>
-          <p v-if="sourceLookupError" class="notice error">{{ sourceLookupError }}</p>
-          <p v-else-if="sourceLookupLoaded && !sourceLookupSources.length" class="muted small-text">
-            {{ t('modelPrices.sourcePicker.empty') }}
-          </p>
-          <div v-else-if="sourceLookupSources.length" class="price-source-options">
-            <label
-              v-for="source in sourceLookupSources"
-              :key="`${source.source}:${source.sourceModelId}`"
-              class="price-source-option"
-              :class="{ selected: selectedSourceKey === priceSourceKey(source) }"
-            >
-              <input
-                v-model="selectedSourceKey"
-                type="radio"
-                name="model-price-source"
-                :value="priceSourceKey(source)"
-                :disabled="saving || deleting"
-              />
-              <span class="price-source-option-main">
-                <strong>{{ formatSourceLabel(source.source) }}</strong>
-                <span class="muted small-text">{{ source.sourceModelId }}</span>
-              </span>
-              <span class="price-source-option-values">
-                {{ formatMoneyPer1M(source.prompt) }} / {{ formatMoneyPer1M(source.completion) }}
-              </span>
-            </label>
-            <button
-              class="btn"
-              type="button"
-              :disabled="!selectedSource || saving || deleting"
-              @click="applySelectedSource"
-            >
-              {{ t('modelPrices.sourcePicker.apply') }}
-            </button>
-          </div>
-        </div>
+
         <p class="muted small-text">{{ t('modelPrices.manualNote') }}</p>
+
         <div class="config-actions-bar">
-          <button class="btn primary" type="button" @click="savePrice" :disabled="saving || deleting">
-            {{ saving ? t('modelPrices.saving') : t('common.save') }}
-          </button>
           <button
             v-if="!editingModel.isNew"
             class="btn danger"
             type="button"
             :disabled="saving || deleting"
             @click="confirmDeletePrice(editingModel.model)"
-          >{{ deleting ? t('modelPrices.deleting') : t('modelPrices.deletePrice') }}</button>
-          <button class="btn" type="button" :disabled="saving || deleting" @click="editingModel = null">{{ t('common.cancel') }}</button>
+          >
+            {{ deleting ? t('modelPrices.deleting') : t('modelPrices.deletePrice') }}
+          </button>
+          <button class="btn primary" type="button" @click="savePrice" :disabled="saving || deleting">
+            {{ saving ? t('modelPrices.saving') : t('common.save') }}
+          </button>
+          <button class="btn" type="button" @click="closeEditDrawer">{{ t('common.cancel') }}</button>
         </div>
-      </div>
+      </aside>
     </div>
 
     <ConfirmModal
       :open="confirmOpen"
       :title="confirmTitle"
       :message="confirmMessage"
-      :confirm-label="confirmOkLabel"
-      :cancel-label="confirmCancelLabel"
+      :confirmLabel="confirmOkLabel"
+      :cancelLabel="confirmCancelLabel"
       :variant="confirmVariant"
       @confirm="finishConfirm(true)"
       @cancel="finishConfirm(false)"
@@ -391,38 +525,34 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n';
 import ConfirmModal from './ConfirmModal.vue';
 import DataCard from './DataCard.vue';
-import MetricGrid from './MetricGrid.vue';
 import { localeRef } from '../localeBridge.js';
 import { EMPTY_VALUE } from '../utils/localeFormat.js';
-import { buildPriceSourceLookupRequest, buildSourcePriceEntry, normalizePriceSourceLookup } from '../utils/priceSourceLookup.js';
 import {
   DEFAULT_SYNC_SETTINGS,
   MAX_INTERVAL_HOURS,
   MIN_INTERVAL_HOURS,
-  PRICE_FILTERS,
   buildConfirmBody,
   buildDeletePriceRequest,
-  buildFilterCounts,
   buildManualPriceEntry,
   buildManualPutBody,
-  buildModelPriceRows,
   buildSyncModels,
   extractPricesMap,
   extractUsageModels,
-  filterModelPriceRows,
-  formatDurationMs,
+  filterCandidatesWithExistingPrices,
   formatMoneyPer1M,
   formatSourceLabel,
   formatTimestamp,
-  normalizeSyncResult,
   normalizeSyncSettings,
   normalizeSyncStatus,
   softProxyCall,
-  sourceBadgeClass,
-  filterCandidatesWithExistingPrices,
   summarizeLastResult,
   validateIntervalHours,
 } from '../utils/priceSync.js';
+import {
+  buildPriceSourceLookupRequest,
+  buildSourcePriceEntry,
+  normalizePriceSourceLookup,
+} from '../utils/priceSourceLookup.js';
 
 const props = defineProps({
   ready: { type: Boolean, default: false },
@@ -431,26 +561,35 @@ const props = defineProps({
 
 const { t } = useI18n();
 
-const prices = ref({});
-const usageModels = ref([]);
 const loading = ref(false);
 const saving = ref(false);
 const deleting = ref(false);
 const syncing = ref(false);
-const confirming = ref(false);
 const settingsSaving = ref(false);
+const confirmingCandidate = ref(false);
+const dismissingCandidates = ref(false);
+const showSyncSettings = ref(false);
 const error = ref('');
 const syncNotice = ref('');
-const settingsMessage = ref('');
+const prices = ref({});
+const usageModels = ref([]);
+const modelUsageMap = ref({});
+const officialSchedulesMap = ref({});
+const status = ref(normalizeSyncStatus({}));
+const settings = ref(normalizeSyncSettings(DEFAULT_SYNC_SETTINGS));
+const settingsDraft = reactive({ ...DEFAULT_SYNC_SETTINGS });
+const pendingCandidates = ref([]);
+const selectedCandidateKeys = ref(new Set());
 const editingModel = ref(null);
 const sourceLookupLoading = ref(false);
 const sourceLookupLoaded = ref(false);
 const sourceLookupError = ref('');
-const sourceLookupSources = ref([]);
+const sourceLookupOptions = ref([]);
 const selectedSourceKey = ref('');
-const filter = ref('all');
-const search = ref('');
-const filters = PRICE_FILTERS;
+const rowFilter = ref('all');
+const searchQuery = ref('');
+const sortMode = ref('usage');
+
 const confirmOpen = ref(false);
 const confirmTitle = ref('');
 const confirmMessage = ref('');
@@ -459,58 +598,153 @@ const confirmCancelLabel = ref('');
 const confirmVariant = ref('primary');
 let confirmResolve = null;
 
-const settings = ref({ ...DEFAULT_SYNC_SETTINGS });
-const settingsDraft = reactive({ ...DEFAULT_SYNC_SETTINGS });
-const status = ref(normalizeSyncStatus(null));
-const lastResult = ref(null);
-const pendingCandidates = ref([]);
-const selectedCandidateKeys = ref(new Set());
 const syncApiAvailable = reactive({
-  usageSummary: true,
-  sync: true,
-  settings: true,
   status: true,
-  confirm: true,
+  settings: true,
+  sync: true,
 });
 
 let pollTimer = null;
 
-const syncModelCount = computed(() => buildSyncModels(prices.value, usageModels.value).length);
+const lastResult = computed(() => status.value?.lastResult || null);
 
-const allRows = computed(() =>
-  buildModelPriceRows(prices.value, usageModels.value, pendingCandidates.value),
+const catalogModels = computed(() =>
+  buildSyncModels(prices.value, usageModels.value),
 );
 
-const filterCounts = computed(() => buildFilterCounts(allRows.value));
+const syncModelCount = computed(() => {
+  const fromStatus = Number(status.value?.targetModelCount || 0);
+  return Math.max(fromStatus, catalogModels.value.length);
+});
 
-const visibleRows = computed(() =>
-  filterModelPriceRows(allRows.value, filter.value, search.value).slice(0, 500),
-);
+const candidateModelSet = computed(() => {
+  const set = new Set();
+  for (const c of pendingCandidates.value) {
+    const m = String(c.localModel || c.model || '').trim();
+    if (m) set.add(m);
+  }
+  return set;
+});
 
-const tableSubtitle = computed(() => {
-  const total = allRows.value.length;
-  const shown = visibleRows.value.length;
-  if (shown === total) return t('modelPrices.tableSubtitleAll', { count: total });
-  return t('modelPrices.tableSubtitlePartial', { shown, total });
+function resolveOfficialSchedule(model) {
+  const raw = String(model || '').trim().toLowerCase();
+  if (!raw) return null;
+  const map = officialSchedulesMap.value || {};
+  if (map[raw]) return map[raw];
+  // Match date-pinned suffix like gpt-5.4-2026-03-01
+  const base = raw.replace(/-\d{4}-\d{2}-\d{2}$/, '');
+  if (base !== raw && map[base]) return map[base];
+  return null;
+}
+
+const allRows = computed(() => {
+  const map = prices.value || {};
+  const names = new Set([
+    ...Object.keys(map),
+    ...catalogModels.value,
+    ...Object.keys(modelUsageMap.value || {}),
+  ]);
+  return Array.from(names)
+    .map((m) => String(m || '').trim())
+    .filter(Boolean)
+    .map((model) => {
+      const p = map[model];
+      const hasSavedFlat = Boolean(p);
+      const officialSchedule = resolveOfficialSchedule(model);
+      const missing = !hasSavedFlat && !officialSchedule;
+      const usage = modelUsageMap.value[model] || null;
+      return {
+        model,
+        prompt: p?.prompt ?? 0,
+        completion: p?.completion ?? 0,
+        cache: p?.cache ?? 0,
+        cacheRead: p?.cacheRead ?? p?.cache_read ?? 0,
+        cacheCreation: p?.cacheCreation ?? p?.cache_creation ?? 0,
+        source: p?.source || '',
+        sourceModelId: p?.sourceModelId || p?.source_model_id || '',
+        syncedAtMs: Number(p?.syncedAtMs || p?.synced_at_ms || 0),
+        updatedAtMs: Number(p?.updatedAtMs || p?.updated_at_ms || 0),
+        hasSavedFlat,
+        officialSchedule,
+        missing,
+        hasCandidate: candidateModelSet.value.has(model),
+        usage,
+      };
+    });
+});
+
+const missingRowCount = computed(() => allRows.value.filter((r) => r.missing).length);
+const savedRowCount = computed(() => allRows.value.filter((r) => r.hasSavedFlat).length);
+const officialTieredRowCount = computed(() => allRows.value.filter((r) => Boolean(r.officialSchedule)).length);
+const manualRowCount = computed(() => allRows.value.filter((r) => r.source === 'manual').length);
+const autoSyncedRowCount = computed(() => allRows.value.filter((r) => r.hasSavedFlat && r.source && r.source !== 'manual').length);
+
+const groupedCandidates = computed(() => {
+  const groups = new Map();
+  pendingCandidates.value.forEach((cand, idx) => {
+    const localModel = String(cand.localModel || cand.model || '').trim() || 'unknown';
+    if (!groups.has(localModel)) {
+      groups.set(localModel, {
+        localModel,
+        usage: modelUsageMap.value[localModel] || null,
+        items: [],
+      });
+    }
+    groups.get(localModel).items.push({
+      key: candidateKey(cand, idx),
+      cand,
+      idx,
+    });
+  });
+  return Array.from(groups.values()).sort((a, b) => Number(b.usage?.calls || 0) - Number(a.usage?.calls || 0));
+});
+
+const visibleRows = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  const filtered = allRows.value.filter((row) => {
+    if (rowFilter.value === 'missing' && !row.missing) return false;
+    if (rowFilter.value === 'saved' && !row.hasSavedFlat) return false;
+    if (rowFilter.value === 'official' && !row.officialSchedule) return false;
+    if (rowFilter.value === 'candidates' && !row.hasCandidate) return false;
+    if (!q) return true;
+    return (
+      row.model.toLowerCase().includes(q)
+      || String(row.source || '').toLowerCase().includes(q)
+      || String(row.sourceModelId || '').toLowerCase().includes(q)
+      || String(row.usage?.provider || '').toLowerCase().includes(q)
+    );
+  });
+
+  return filtered.sort((a, b) => {
+    if (sortMode.value === 'usage') {
+      const ca = Number(a.usage?.calls || 0);
+      const cb = Number(b.usage?.calls || 0);
+      if (cb !== ca) return cb - ca;
+      return a.model.localeCompare(b.model);
+    }
+    if (sortMode.value === 'missingFirst') {
+      if (a.missing !== b.missing) return a.missing ? -1 : 1;
+      const ca = Number(a.usage?.calls || 0);
+      const cb = Number(b.usage?.calls || 0);
+      if (cb !== ca) return cb - ca;
+      return a.model.localeCompare(b.model);
+    }
+    if (sortMode.value === 'updated') {
+      const ta = Math.max(a.updatedAtMs || 0, a.syncedAtMs || 0);
+      const tb = Math.max(b.updatedAtMs || 0, b.syncedAtMs || 0);
+      if (tb !== ta) return tb - ta;
+      return a.model.localeCompare(b.model);
+    }
+    return a.model.localeCompare(b.model);
+  });
 });
 
 const emptyTableText = computed(() => {
-  if (!allRows.value.length) {
-    return t('modelPrices.emptyNone');
-  }
+  if (!allRows.value.length) return t('modelPrices.emptyNone');
   return t('modelPrices.emptyFilter');
 });
 
 const summary = computed(() => summarizeLastResult(lastResult.value, syncModelCount.value));
-
-const summaryCards = computed(() => [
-  { label: t('modelPrices.summary.syncTargets'), value: summary.value.targetCount, sub: t('modelPrices.summary.syncTargetsSub') },
-  { label: t('modelPrices.summary.autoUpdated'), value: summary.value.applied, sub: t('modelPrices.summary.autoUpdatedSub') },
-  { label: t('modelPrices.summary.protectedSkipped'), value: summary.value.protectedSkipped, sub: t('modelPrices.summary.protectedSkippedSub') },
-  { label: t('modelPrices.summary.pendingCandidates'), value: pendingCandidates.value.length || summary.value.candidateCount, sub: t('modelPrices.summary.pendingCandidatesSub') },
-  { label: t('modelPrices.summary.unmatched'), value: summary.value.unmatched, sub: t('modelPrices.summary.unmatchedSub') },
-]);
-
 const sourceResults = computed(() => lastResult.value?.sources || []);
 
 const syncStatusText = computed(() => {
@@ -535,13 +769,6 @@ const settingsDirty = computed(() => {
 
 const selectedCandidateList = computed(() => {
   return pendingCandidates.value.filter((c, idx) =>
-    selectedCandidateKeys.value.has(candidateKey(c, idx)),
-  );
-});
-
-const allCandidatesSelected = computed(() => {
-  if (!pendingCandidates.value.length) return false;
-  return pendingCandidates.value.every((c, idx) =>
     selectedCandidateKeys.value.has(candidateKey(c, idx)),
   );
 });
@@ -592,74 +819,57 @@ function candidateKey(c, idx) {
 
 function filterLabel(f) {
   switch (f) {
-    case 'missing':
-      return t('modelPrices.filters.missing');
-    case 'saved':
-      return t('modelPrices.filters.saved');
-    case 'candidates':
-      return t('modelPrices.filters.candidates');
-    default:
-      return t('modelPrices.filters.all');
+    case 'missing': return t('modelPrices.filters.missing');
+    case 'saved': return t('modelPrices.filters.saved');
+    case 'official': return t('windowKeeper.ext.officialTier');
+    case 'candidates': return t('modelPrices.filters.candidates');
+    default: return t('modelPrices.filters.all');
   }
+}
+
+function filterCount(f) {
+  if (f === 'missing') return missingRowCount.value;
+  if (f === 'saved') return savedRowCount.value;
+  if (f === 'official') return officialTieredRowCount.value;
+  if (f === 'candidates') return allRows.value.filter((r) => r.hasCandidate).length;
+  return allRows.value.length;
 }
 
 function triggerLabel(trigger) {
-  if (trigger === 'auto') return t('modelPrices.trigger.auto');
+  if (trigger === 'auto' || trigger === 'scheduled') return t('modelPrices.trigger.auto');
   if (trigger === 'manual') return t('modelPrices.trigger.manual');
-  return trigger || '';
+  return trigger;
 }
 
-function applySettings(next) {
-  const normalized = normalizeSyncSettings(next);
-  settings.value = normalized;
-  settingsDraft.enabled = normalized.enabled;
-  settingsDraft.intervalHours = normalized.intervalHours;
-  settingsDraft.protectManual = normalized.protectManual;
+function fmtPrice(v) {
+  return formatMoneyPer1M(v);
 }
 
-function applyStatus(body, pricesMap = prices.value) {
-  const normalized = normalizeSyncStatus(body);
-  status.value = normalized;
-  if (normalized.settings && (body?.settings || body?.Settings)) {
-    applySettings(normalized.settings);
-  }
-  if (normalized.lastResult) {
-    const filtered = filterCandidatesWithExistingPrices(
-      normalized.lastResult.candidates || [],
-      pricesMap,
-    );
-    lastResult.value = {
-      ...normalized.lastResult,
-      candidates: filtered,
-      candidateCount: filtered.length,
-    };
-    pendingCandidates.value = filtered;
-    selectedCandidateKeys.value = new Set();
-  }
-  if (normalized.running) startPolling();
-  else stopPolling();
+function fmtRate(v) {
+  const n = Number(v);
+  if (v == null || !Number.isFinite(n)) return EMPTY_VALUE;
+  const trimmed = parseFloat(n.toFixed(4));
+  return `$${trimmed}`;
 }
 
-function applySyncResult(body, pricesMap = prices.value) {
-  const result = normalizeSyncResult(body);
-  if (!result) return;
-  const filtered = filterCandidatesWithExistingPrices(result.candidates || [], pricesMap);
-  const next = {
-    ...result,
-    candidates: filtered,
-    candidateCount: filtered.length,
-  };
-  lastResult.value = next;
-  pendingCandidates.value = filtered;
-  selectedCandidateKeys.value = new Set();
-  status.value = {
-    ...status.value,
-    running: false,
-    lastSyncAtMs: result.finishedAtMs || result.startedAtMs || Date.now(),
-    lastSuccessAtMs: result.error ? status.value.lastSuccessAtMs : (result.finishedAtMs || Date.now()),
-    lastError: result.error || '',
-    lastResult: next,
-  };
+function fmtThreshold(schedule) {
+  const n = Number(schedule?.context_threshold_tokens || 272000);
+  return Math.round(n / 1000) + 'K';
+}
+
+function fmtCompact(v) {
+  const n = Number(v || 0);
+  if (!Number.isFinite(n)) return '0';
+  if (Math.abs(n) >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return String(Math.round(n));
+}
+
+function effectiveCacheRead(row) {
+  const cr = Number(row?.cacheRead || 0);
+  if (cr > 0) return cr;
+  return Number(row?.cache || 0);
 }
 
 async function refresh(force = false) {
@@ -667,7 +877,6 @@ async function refresh(force = false) {
   if (loading.value && !force) return;
   loading.value = true;
   error.value = '';
-  syncNotice.value = '';
   try {
     const [pricesRes, usageRes, statusRes, settingsRes] = await Promise.all([
       softProxyCall(props.proxyCall, { method: 'GET', path: '/v0/management/model-prices' }),
@@ -676,128 +885,100 @@ async function refresh(force = false) {
       softProxyCall(props.proxyCall, { method: 'GET', path: '/v0/management/model-prices/sync-settings' }),
     ]);
 
-    // Apply prices first so status candidate filtering sees current map.
-    let pricesMap = prices.value;
-    if (!pricesRes.ok) {
-      error.value = pricesRes.error || t('modelPrices.loadFailed');
+    if (pricesRes.ok) {
+      prices.value = extractPricesMap(pricesRes.data);
     } else {
-      pricesMap = extractPricesMap(pricesRes.data);
-      prices.value = pricesMap;
+      error.value = pricesRes.error || t('modelPrices.loadFailed');
     }
 
     if (usageRes.ok) {
-      syncApiAvailable.usageSummary = true;
       usageModels.value = extractUsageModels(usageRes.data);
-    } else {
-      syncApiAvailable.usageSummary = !usageRes.missing ? true : false;
-      usageModels.value = [];
-      if (!usageRes.missing) {
-        // non-404 failure: soft notice only
-        syncNotice.value = t('modelPrices.usageUnavailable', { error: usageRes.error });
+      const uMap = {};
+      if (Array.isArray(usageRes.data?.model_usage)) {
+        for (const item of usageRes.data.model_usage) {
+          if (item?.model) uMap[item.model] = item;
+        }
+      }
+      modelUsageMap.value = uMap;
+      if (usageRes.data?.official_schedules && typeof usageRes.data.official_schedules === 'object') {
+        officialSchedulesMap.value = usageRes.data.official_schedules;
       }
     }
 
     if (statusRes.ok) {
       syncApiAvailable.status = true;
-      applyStatus(statusRes.data, pricesMap);
-    } else {
-      syncApiAvailable.status = !statusRes.missing;
-      if (!statusRes.missing) {
-        syncNotice.value = syncNotice.value || t('modelPrices.statusUnavailable', { error: statusRes.error });
-      }
+      applyStatus(statusRes.data);
+    } else if (statusRes.missing) {
+      syncApiAvailable.status = false;
     }
 
     if (settingsRes.ok) {
       syncApiAvailable.settings = true;
-      applySettings(settingsRes.data);
-    } else if (statusRes.ok && (statusRes.data?.settings || statusRes.data?.Settings)) {
-      syncApiAvailable.settings = true;
-      // already applied via status
-    } else {
-      syncApiAvailable.settings = !settingsRes.missing;
+      applySettings(settingsRes.data?.settings || settingsRes.data);
+    } else if (settingsRes.missing) {
+      syncApiAvailable.settings = false;
     }
   } finally {
     loading.value = false;
   }
 }
 
-async function runSync() {
-  if (!props.ready || syncing.value || status.value.running) return;
-  error.value = '';
-  syncNotice.value = '';
-  const models = buildSyncModels(prices.value, usageModels.value);
-  if (!models.length) {
-    syncNotice.value = t('modelPrices.noModelsToSync');
-    return;
-  }
-  syncing.value = true;
-  try {
-    const res = await softProxyCall(props.proxyCall, {
-      method: 'POST',
-      path: '/v0/management/model-prices/sync',
-      body: { models },
-    });
-    if (!res.ok) {
-      syncApiAvailable.sync = !res.missing;
-      if (/409|already running|进行中/i.test(res.error || '')) {
-        syncNotice.value = t('modelPrices.syncInProgress');
-        status.value = { ...status.value, running: true };
-        startPolling();
-        return;
-      }
-      if (res.missing) {
-        error.value = t('modelPrices.syncApiMissing');
-      } else {
-        error.value = res.error || t('modelPrices.syncFailed');
-      }
-      return;
-    }
-    syncApiAvailable.sync = true;
-    // Refresh prices first so candidate filter sees exact matches just written.
-    const pricesRes = await softProxyCall(props.proxyCall, {
-      method: 'GET',
-      path: '/v0/management/model-prices',
-    });
-    let pricesMap = prices.value;
-    if (pricesRes.ok) {
-      pricesMap = extractPricesMap(pricesRes.data);
-      prices.value = pricesMap;
-    }
-    applySyncResult(res.data, pricesMap);
+defineExpose({ refresh });
 
-    const applied = lastResult.value?.applied || 0;
-    const cand = pendingCandidates.value.length;
-    const unmatched = lastResult.value?.unmatched || 0;
-    if (lastResult.value?.error && applied === 0) {
-      error.value = lastResult.value.error;
-    } else {
-      syncNotice.value = t('modelPrices.syncDone', { applied, candidates: cand, unmatched });
-    }
-  } finally {
-    syncing.value = false;
+function applyStatus(raw, pricesOverride = prices.value) {
+  const normalized = normalizeSyncStatus(raw);
+  const filteredCandidates = filterCandidatesWithExistingPrices(
+    normalized.lastResult?.candidates || [],
+    pricesOverride,
+  );
+  if (normalized.lastResult) {
+    normalized.lastResult.candidates = filteredCandidates;
+  }
+  status.value = normalized;
+  pendingCandidates.value = filteredCandidates;
+  selectedCandidateKeys.value = new Set();
+  if (normalized.settings) {
+    applySettings(normalized.settings);
+  }
+  if (normalized.running) {
+    startPolling();
+  } else {
+    stopPolling();
   }
 }
 
+function applySettings(raw) {
+  const normalized = normalizeSyncSettings(raw);
+  settings.value = normalized;
+  settingsDraft.enabled = normalized.enabled;
+  settingsDraft.intervalHours = normalized.intervalHours;
+  settingsDraft.protectManual = true;
+}
+
 function startPolling() {
-  stopPolling();
+  if (pollTimer) return;
   pollTimer = setInterval(async () => {
-    if (!props.ready) return;
     const res = await softProxyCall(props.proxyCall, {
       method: 'GET',
       path: '/v0/management/model-prices/sync-status',
     });
-    if (!res.ok) return;
-    const prevRunning = status.value.running;
+    if (!res.ok) {
+      stopPolling();
+      return;
+    }
     applyStatus(res.data);
-    if (prevRunning && !status.value.running) {
+    if (!status.value.running) {
+      stopPolling();
       const pricesRes = await softProxyCall(props.proxyCall, {
         method: 'GET',
         path: '/v0/management/model-prices',
       });
-      if (pricesRes.ok) prices.value = extractPricesMap(pricesRes.data);
-      stopPolling();
+      if (pricesRes.ok) {
+        prices.value = extractPricesMap(pricesRes.data);
+        applyStatus(res.data, prices.value);
+      }
     }
-  }, 2500);
+  }, 2000);
 }
 
 function stopPolling() {
@@ -807,51 +988,97 @@ function stopPolling() {
   }
 }
 
-async function saveSettings() {
-  if (!props.ready || settingsSaving.value) return;
-  settingsMessage.value = '';
+async function runSync() {
+  if (!props.ready || syncing.value || status.value.running) return;
+  syncing.value = true;
   error.value = '';
+  syncNotice.value = '';
+  try {
+    const models = catalogModels.value;
+    if (!models.length) {
+      syncNotice.value = t('modelPrices.noModelsToSync');
+      return;
+    }
+
+    const res = await softProxyCall(props.proxyCall, {
+      method: 'POST',
+      path: '/v0/management/model-prices/sync',
+      body: { trigger: 'manual', models },
+    });
+
+    if (!res.ok) {
+      if (res.missing) {
+        syncApiAvailable.sync = false;
+        error.value = t('modelPrices.syncApiMissing');
+      } else {
+        error.value = res.error || t('modelPrices.syncFailed');
+      }
+      return;
+    }
+
+    const data = res.data || {};
+    if (data.prices) {
+      prices.value = extractPricesMap(data);
+    } else {
+      const pricesRes = await softProxyCall(props.proxyCall, {
+        method: 'GET',
+        path: '/v0/management/model-prices',
+      });
+      if (pricesRes.ok) prices.value = extractPricesMap(pricesRes.data);
+    }
+
+    if (data.status || data.lastResult || data.result || data.sources || data.candidates) {
+      applyStatus(data.status || { lastResult: data.lastResult || data.result || data, running: Boolean(data.running) });
+    } else {
+      const statusRes = await softProxyCall(props.proxyCall, {
+        method: 'GET',
+        path: '/v0/management/model-prices/sync-status',
+      });
+      if (statusRes.ok) applyStatus(statusRes.data);
+    }
+
+    const s = summary.value;
+    syncNotice.value = t('modelPrices.syncDone', { applied: s.applied, candidates: pendingCandidates.value.length, unmatched: s.unmatched });
+  } finally {
+    syncing.value = false;
+  }
+}
+
+async function saveSettings() {
+  error.value = '';
+  syncNotice.value = '';
   const check = validateIntervalHours(settingsDraft.intervalHours);
-  if (!check.ok) {
-    error.value = check.error;
+  if (!check.valid) {
+    error.value = t('modelPrices.intervalInvalid', { min: MIN_INTERVAL_HOURS, max: MAX_INTERVAL_HOURS });
     return;
   }
-  settingsDraft.intervalHours = check.value;
   settingsSaving.value = true;
   try {
-    const body = {
-      enabled: Boolean(settingsDraft.enabled),
-      intervalHours: check.value,
-      // Backend always forces protectManual=true.
-      protectManual: true,
-    };
     const res = await softProxyCall(props.proxyCall, {
       method: 'PUT',
       path: '/v0/management/model-prices/sync-settings',
-      body,
+      body: {
+        enabled: Boolean(settingsDraft.enabled),
+        intervalHours: check.hours,
+        interval_hours: check.hours,
+        protectManual: true,
+        protect_manual: true,
+      },
     });
     if (!res.ok) {
       if (res.missing) {
-        error.value = t('modelPrices.settingsApiMissing');
         syncApiAvailable.settings = false;
+        error.value = t('modelPrices.settingsApiMissing');
       } else {
         error.value = res.error || t('modelPrices.settingsSaveFailed');
       }
       return;
     }
-    applySettings(res.data || body);
-    settingsMessage.value = t('modelPrices.settingsSaved');
+    applySettings(res.data?.settings || res.data || { enabled: Boolean(settingsDraft.enabled), intervalHours: check.hours });
+    syncNotice.value = t('modelPrices.settingsSaved');
   } finally {
     settingsSaving.value = false;
   }
-}
-
-function resetSourceLookup() {
-  sourceLookupLoading.value = false;
-  sourceLookupLoaded.value = false;
-  sourceLookupError.value = '';
-  sourceLookupSources.value = [];
-  selectedSourceKey.value = '';
 }
 
 function addManualPrice() {
@@ -867,78 +1094,96 @@ function addManualPrice() {
   };
 }
 
-function openEdit(row) {
+function startEdit(row) {
   resetSourceLookup();
-  if (!row) return;
-  if (row.hasPrice && row.price) {
-    editingModel.value = {
-      isNew: false,
-      model: row.model,
-      prompt: row.price.prompt,
-      completion: row.price.completion,
-      cache: row.price.cache,
-      cacheRead: row.price.cacheRead,
-      cacheCreation: row.price.cacheCreation,
-    };
-    return;
-  }
   editingModel.value = {
-    isNew: true,
-    model: row.model || '',
-    prompt: 0,
-    completion: 0,
-    cache: 0,
-    cacheRead: 0,
-    cacheCreation: 0,
+    isNew: false,
+    model: row.model,
+    prompt: row.prompt ?? 0,
+    completion: row.completion ?? 0,
+    cache: row.cache ?? 0,
+    cacheRead: row.cacheRead ?? 0,
+    cacheCreation: row.cacheCreation ?? 0,
   };
+  lookupModelPriceSources(row.model);
 }
 
-function priceSourceKey(source) {
-  return `${source?.source || ''}:${source?.sourceModelId || ''}`;
+function editFromCandidate(c) {
+  resetSourceLookup();
+  editingModel.value = {
+    isNew: false,
+    model: c.localModel,
+    prompt: c.prompt ?? c.price?.prompt ?? 0,
+    completion: c.completion ?? c.price?.completion ?? 0,
+    cache: c.cache ?? c.price?.cache ?? 0,
+    cacheRead: c.cacheRead ?? c.price?.cacheRead ?? 0,
+    cacheCreation: c.cacheCreation ?? c.price?.cacheCreation ?? 0,
+  };
+  lookupModelPriceSources(c.localModel);
 }
 
-const selectedSource = computed(() => sourceLookupSources.value.find(
-  (source) => priceSourceKey(source) === selectedSourceKey.value,
-) || null);
+function closeEditDrawer() {
+  resetSourceLookup();
+  editingModel.value = null;
+}
 
-async function lookupEditingPriceSources() {
-  const request = buildPriceSourceLookupRequest(editingModel.value?.model);
-  if (!request || sourceLookupLoading.value) return;
+function resetSourceLookup() {
+  sourceLookupLoading.value = false;
+  sourceLookupLoaded.value = false;
+  sourceLookupError.value = '';
+  sourceLookupOptions.value = [];
+  selectedSourceKey.value = '';
+}
+
+function onEditingModelInput() {
+  sourceLookupLoaded.value = false;
+  sourceLookupError.value = '';
+  sourceLookupOptions.value = [];
+  selectedSourceKey.value = '';
+}
+
+const selectedSourceOption = computed(() =>
+  sourceLookupOptions.value.find((opt) => opt.key === selectedSourceKey.value) || null,
+);
+
+function formatSourcePriceSummary(opt) {
+  if (!opt) return '';
+  return `in ${fmtPrice(opt.prompt)} · out ${fmtPrice(opt.completion)}`;
+}
+
+async function lookupModelPriceSources(model) {
+  const req = buildPriceSourceLookupRequest(model);
+  if (!props.ready || !req) return;
   sourceLookupLoading.value = true;
   sourceLookupLoaded.value = false;
   sourceLookupError.value = '';
-  sourceLookupSources.value = [];
+  sourceLookupOptions.value = [];
   selectedSourceKey.value = '';
   try {
-    const res = await softProxyCall(props.proxyCall, request);
+    const res = await softProxyCall(props.proxyCall, req);
     if (!res.ok) {
       sourceLookupError.value = res.missing
         ? t('modelPrices.sourcePicker.apiMissing')
         : res.error || t('modelPrices.sourcePicker.failed');
       return;
     }
-    const lookup = normalizePriceSourceLookup(res.data);
-    sourceLookupSources.value = lookup.sources;
+    const parsed = normalizePriceSourceLookup(res.data);
+    const options = parsed.sources.map((s, idx) => ({
+      ...s,
+      key: `${s.source}::${s.sourceModelId}::${idx}`,
+    }));
+    sourceLookupOptions.value = options;
+    selectedSourceKey.value = options[0]?.key || '';
     sourceLookupLoaded.value = true;
-    if (lookup.sources.length) {
-      selectedSourceKey.value = priceSourceKey(lookup.sources[0]);
-    }
   } finally {
     sourceLookupLoading.value = false;
   }
 }
 
-function applySelectedSource() {
-  const entry = buildSourcePriceEntry(editingModel.value?.model, selectedSource.value);
-  if (!entry || !editingModel.value) return;
-  if (selectedSource.value?.available?.length) {
-    const fields = new Set(selectedSource.value.available);
-    if (!fields.has('prompt')) entry.price.prompt = editingModel.value.prompt;
-    if (!fields.has('completion')) entry.price.completion = editingModel.value.completion;
-    if (!fields.has('cache')) entry.price.cache = editingModel.value.cache;
-    if (!fields.has('cacheRead')) entry.price.cacheRead = editingModel.value.cacheRead;
-    if (!fields.has('cacheCreation')) entry.price.cacheCreation = editingModel.value.cacheCreation;
-  }
+function applySelectedSourceToDraft() {
+  if (!editingModel.value || !selectedSourceOption.value) return;
+  const entry = buildSourcePriceEntry(editingModel.value.model, selectedSourceOption.value);
+  if (!entry) return;
   editingModel.value.prompt = entry.price.prompt;
   editingModel.value.completion = entry.price.completion;
   editingModel.value.cache = entry.price.cache;
@@ -959,7 +1204,6 @@ async function savePrice() {
   saving.value = true;
   error.value = '';
   try {
-    // Single-model upsert only — backend merges and preserves other models.
     await props.proxyCall({
       method: 'PUT',
       path: '/v0/management/model-prices',
@@ -973,7 +1217,6 @@ async function savePrice() {
     });
     if (pricesRes.ok) {
       prices.value = extractPricesMap(pricesRes.data);
-      // If backend dropped source, still show manual locally for the edited model.
       if (prices.value[entry.model] && !prices.value[entry.model].source) {
         prices.value[entry.model] = {
           ...prices.value[entry.model],
@@ -1045,15 +1288,13 @@ async function deletePrice(model) {
     if (statusRes.ok) {
       applyStatus(statusRes.data, pricesMap);
     } else {
-      pendingCandidates.value = filterCandidatesWithExistingPrices(pendingCandidates.value, pricesMap);
-      if (lastResult.value) {
-        lastResult.value = {
-          ...lastResult.value,
-          candidates: pendingCandidates.value,
-          candidateCount: pendingCandidates.value.length,
-        };
-      }
+      pendingCandidates.value = filterCandidatesWithExistingPrices(
+        pendingCandidates.value,
+        pricesMap,
+      );
+      selectedCandidateKeys.value = new Set();
     }
+
     syncNotice.value = result.data?.deleted === false
       ? t('modelPrices.deleteAlreadyGone', { model })
       : t('modelPrices.deleteSuccess', { model });
@@ -1062,310 +1303,120 @@ async function deletePrice(model) {
   }
 }
 
-function toggleCandidate(c, idx) {
-  const key = candidateKey(c, idx);
+function toggleCandidateKey(key, checked) {
   const next = new Set(selectedCandidateKeys.value);
-  if (next.has(key)) next.delete(key);
-  else next.add(key);
+  if (checked) next.add(key);
+  else next.delete(key);
   selectedCandidateKeys.value = next;
 }
 
-function toggleSelectAllCandidates(ev) {
-  if (ev?.target?.checked) {
-    selectedCandidateKeys.value = new Set(
-      pendingCandidates.value.map((c, idx) => candidateKey(c, idx)),
-    );
-  } else {
-    selectedCandidateKeys.value = new Set();
-  }
+async function confirmSingleCandidate(candidate) {
+  await applyCandidates([candidate]);
 }
 
-async function dismissCandidates() {
-  const models = pendingCandidates.value.map((c) => c.localModel).filter(Boolean);
-  pendingCandidates.value = [];
-  selectedCandidateKeys.value = new Set();
-  if (lastResult.value) {
-    lastResult.value = {
-      ...lastResult.value,
-      candidates: [],
-      candidateCount: 0,
-    };
-  }
-  const res = await softProxyCall(props.proxyCall, {
-    method: 'POST',
-    path: '/v0/management/model-prices/sync-dismiss',
-    body: { models },
-  });
-  if (res.ok && res.data?.status) {
-    applyStatus(res.data.status, prices.value);
-  } else if (!res.ok && !res.missing) {
-    // Soft failure: local clear already applied; notice only.
-    syncNotice.value = syncNotice.value || t('modelPrices.dismissNotPersisted', { error: res.error });
-  }
+async function confirmSelectedCandidates() {
+  if (!selectedCandidateList.value.length) return;
+  await applyCandidates(selectedCandidateList.value);
 }
 
-async function confirmOne(candidate) {
-  await confirmCandidates([candidate]);
-}
-
-async function confirmSelected() {
-  await confirmCandidates(selectedCandidateList.value);
-}
-
-async function confirmCandidates(list) {
-  if (!list.length || confirming.value) return;
-  confirming.value = true;
+async function applyCandidates(candidates) {
+  confirmingCandidate.value = true;
   error.value = '';
   try {
-    let applied = 0;
-    for (const candidate of list) {
-      const body = buildConfirmBody(candidate);
-      if (!body) {
+    let appliedCount = 0;
+    const confirmedModels = new Set();
+
+    for (const c of candidates) {
+      const confirmBody = buildConfirmBody(c);
+      if (!confirmBody) {
         error.value = t('modelPrices.candidateMissing');
-        continue;
+        return;
       }
-      const res = await softProxyCall(props.proxyCall, {
+      const confirmRes = await softProxyCall(props.proxyCall, {
         method: 'POST',
         path: '/v0/management/model-prices/sync-confirm',
-        body,
+        body: confirmBody,
       });
-      if (!res.ok) {
-        if (res.missing) syncApiAvailable.confirm = false;
-        error.value = res.error || t('modelPrices.confirmFailed');
-        continue;
-      }
-      applied += 1;
-      // optimistic local update
-      prices.value = {
-        ...prices.value,
-        [body.model]: {
-          prompt: body.price.prompt,
-          completion: body.price.completion,
-          cache: body.price.cache,
-          cacheRead: body.price.cacheRead,
-          cacheCreation: body.price.cacheCreation,
-          source: body.price.source || 'sync',
-          sourceModelId: body.price.sourceModelId || '',
-          updatedAtMs: Date.now(),
-          syncedAtMs: Date.now(),
-        },
-      };
-      if (res.data?.status) {
-        applyStatus(res.data.status, prices.value);
-      }
-    }
 
-    const confirmedModels = new Set(list.map((c) => c.localModel));
-    pendingCandidates.value = filterCandidatesWithExistingPrices(
-      pendingCandidates.value.filter((c) => !confirmedModels.has(c.localModel)),
-      prices.value,
-    );
-    selectedCandidateKeys.value = new Set();
-    if (lastResult.value) {
-      lastResult.value = {
-        ...lastResult.value,
-        candidates: pendingCandidates.value,
-        candidateCount: pendingCandidates.value.length,
-      };
+      if (!confirmRes.ok) {
+        error.value = confirmRes.error || t('modelPrices.confirmFailed');
+        return;
+      }
+
+      appliedCount += 1;
+      confirmedModels.add(confirmBody.model);
+      if (confirmRes.data?.status) {
+        applyStatus(confirmRes.data.status);
+      }
     }
-    syncNotice.value = applied ? t('modelPrices.confirmed', { count: applied }) : syncNotice.value;
 
     const pricesRes = await softProxyCall(props.proxyCall, {
       method: 'GET',
       path: '/v0/management/model-prices',
     });
-    let pricesMap = prices.value;
-    if (pricesRes.ok) {
-      pricesMap = extractPricesMap(pricesRes.data);
-      prices.value = pricesMap;
-    }
+    if (pricesRes.ok) prices.value = extractPricesMap(pricesRes.data);
 
-    const statusRes = await softProxyCall(props.proxyCall, {
-      method: 'GET',
-      path: '/v0/management/model-prices/sync-status',
+    pendingCandidates.value = pendingCandidates.value.filter(
+      (c) => !confirmedModels.has(c.localModel),
+    );
+    selectedCandidateKeys.value = new Set();
+    syncNotice.value = t('modelPrices.confirmed', { count: appliedCount });
+  } catch (e) {
+    error.value = e.message || String(e);
+  } finally {
+    confirmingCandidate.value = false;
+  }
+}
+
+async function dismissSingleModelCandidate(localModel) {
+  const target = String(localModel || '').trim();
+  if (!target) return;
+  dismissingCandidates.value = true;
+  error.value = '';
+  try {
+    const res = await softProxyCall(props.proxyCall, {
+      method: 'POST',
+      path: '/v0/management/model-prices/sync-dismiss',
+      body: { models: [target] },
     });
-    if (statusRes.ok) {
-      applyStatus(statusRes.data, pricesMap);
+    if (res.ok && res.data?.status) {
+      applyStatus(res.data.status);
     } else {
-      pendingCandidates.value = filterCandidatesWithExistingPrices(pendingCandidates.value, pricesMap);
-      if (lastResult.value) {
-        lastResult.value = {
-          ...lastResult.value,
-          candidates: pendingCandidates.value,
-          candidateCount: pendingCandidates.value.length,
-        };
-      }
+      pendingCandidates.value = pendingCandidates.value.filter(c => c.localModel !== target);
     }
   } finally {
-    confirming.value = false;
+    dismissingCandidates.value = false;
   }
 }
 
-defineExpose({ refresh });
+async function dismissAllCandidates() {
+  const models = Array.from(
+    new Set(
+      pendingCandidates.value
+        .map((c) => String(c.localModel || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  dismissingCandidates.value = true;
+  error.value = '';
+  try {
+    if (models.length) {
+      const res = await softProxyCall(props.proxyCall, {
+        method: 'POST',
+        path: '/v0/management/model-prices/sync-dismiss',
+        body: { models },
+      });
+      if (res.ok && res.data?.status) {
+        applyStatus(res.data.status);
+      } else if (!res.ok && !res.missing) {
+        error.value = t('modelPrices.dismissNotPersisted', { error: res.error });
+        return;
+      }
+    }
+    pendingCandidates.value = [];
+    selectedCandidateKeys.value = new Set();
+  } finally {
+    dismissingCandidates.value = false;
+  }
+}
 </script>
-
-<style scoped>
-.model-prices-status-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.model-prices-settings {
-  border-top: 1px solid var(--cpa-border);
-  padding-top: 12px;
-}
-.model-prices-settings .section-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-.model-prices-settings .section-title h2 {
-  margin: 0;
-  font-size: 15px;
-}
-.model-prices-settings-grid {
-  margin-top: 0;
-}
-.price-source-picker {
-  margin-top: 14px;
-  padding: 12px 0;
-  border: 0;
-  border-top: 1px solid var(--cpa-border);
-  border-radius: 0;
-  background: transparent;
-}
-.price-source-picker .section-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-.price-source-picker h3 {
-  margin: 0;
-  font-size: 14px;
-}
-.price-source-picker p {
-  margin: 4px 0 0;
-}
-.price-source-options {
-  display: grid;
-  gap: 8px;
-}
-.price-source-option {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 0;
-  border: 0;
-  border-bottom: 1px solid var(--cpa-border);
-  border-radius: 0;
-  background: transparent;
-  cursor: pointer;
-}
-.price-source-option.selected {
-  border-color: var(--cpa-primary);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cpa-primary) 30%, transparent);
-}
-.price-source-option-main {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-.price-source-option-main .small-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.price-source-option-values {
-  color: var(--cpa-text-secondary);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.model-prices-source-results {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.model-prices-source-pill {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: baseline;
-  border-radius: 0;
-  padding: 0;
-  font-size: 12px;
-  border: 0;
-  background: transparent;
-  color: var(--cpa-text-secondary);
-}
-.model-prices-source-pill.ok {
-  border-color: color-mix(in srgb, var(--cpa-success) 35%, var(--cpa-border));
-  background: var(--cpa-success-soft);
-  color: var(--cpa-success);
-}
-.model-prices-source-pill.err {
-  border-color: color-mix(in srgb, var(--cpa-error) 35%, var(--cpa-border));
-  background: var(--cpa-error-soft);
-  color: var(--cpa-error);
-}
-.model-prices-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 12px;
-}
-.model-prices-filters {
-  flex: 1 1 auto;
-}
-.source-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 0;
-  padding: 0;
-  font-size: 11px;
-  font-weight: 500;
-  border: 0;
-  background: transparent;
-  color: var(--cpa-text-secondary);
-  white-space: nowrap;
-}
-.source-badge.source-manual {
-  color: var(--cpa-warning);
-  background: var(--cpa-warning-soft);
-  border-color: color-mix(in srgb, var(--cpa-warning) 30%, var(--cpa-border));
-}
-.source-badge.source-litellm {
-  color: var(--cpa-primary);
-  background: color-mix(in srgb, var(--cpa-primary) 12%, var(--cpa-surface));
-  border-color: color-mix(in srgb, var(--cpa-primary) 30%, var(--cpa-border));
-}
-.source-badge.source-openrouter {
-  color: var(--cpa-success);
-  background: var(--cpa-success-soft);
-  border-color: color-mix(in srgb, var(--cpa-success) 30%, var(--cpa-border));
-}
-.source-badge.source-models-dev {
-  color: var(--cpa-primary);
-  background: color-mix(in srgb, var(--cpa-primary) 16%, var(--cpa-surface));
-  border-color: color-mix(in srgb, var(--cpa-primary) 38%, var(--cpa-border));
-}
-.clickable {
-  cursor: pointer;
-}
-@media (hover: hover) and (pointer: fine) {
-  .clickable:hover {
-    background: color-mix(in srgb, var(--cpa-text-primary) 4%, transparent);
-  }
-}
-@media (max-width: 720px) {
-  .model-prices-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-}
-</style>

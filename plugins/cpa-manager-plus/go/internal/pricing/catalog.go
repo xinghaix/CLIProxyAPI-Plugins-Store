@@ -25,6 +25,15 @@ func activeCatalog() *officialCatalog {
 	return currentCatalog.Load()
 }
 
+// ActiveSchedules returns the active official schedule ID and a defensive copy of its model rates.
+func ActiveSchedules() (string, map[string]ModelSchedule) {
+	cat := activeCatalog()
+	if cat == nil {
+		return "", map[string]ModelSchedule{}
+	}
+	return cat.id, cloneRates(cat.rates)
+}
+
 // UseOfficialCatalog replaces the in-memory schedule used for estimates.
 // An empty catalog is rejected so a bad sync cannot wipe the last good table.
 func UseOfficialCatalog(id string, rates map[string]ModelSchedule) error {
