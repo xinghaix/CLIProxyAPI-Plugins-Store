@@ -185,4 +185,37 @@ describe('credential async ownership', () => {
     await state.refreshSelectedQuota();
     expect(state.usageByRequestKey.size).toBe(0); expect(state.selectedWindowCards[0].current).toBeNull();
   });
+
+  it('supports card-level quota refresh, batch probing, sorting, and diagnostics tab mapping', async () => {
+    const items = [
+      { ...credential, rowKey: 'a', authIndex: 'idx-a', fileName: 'a.json', history: { requests: 10, cost: 5, lastSeenMs: now - 5000 }, quotaWindows: [{ ...window, remainingPercent: 60 }] },
+      { ...credential, rowKey: 'b', authIndex: 'idx-b', fileName: 'b.json', history: { requests: 50, cost: 20, lastSeenMs: now - 1000 }, quotaWindows: [{ ...window, remainingPercent: 15 }] },
+    ];
+    const proxyCall = vi.fn(p => {
+      if (p.method === 'GET') return Promise.resolve({ items });
+      if (p.path.endsWith('/account-quota-probe')) return Promise.resolve(probe);
+      if (p.path.endsWith('/account-window-usage')) return Promise.resolve(usageResponse(p.body.windows));
+      throw new Error('unexpected path');
+    });
+    const state = mount(CredentialsTab, proxyCall, true); await flush();
+
+    state.sortBy = 'quota_asc';
+    expect(state.filteredRows.map(r => r.rowKey)).toEqual(['b', 'a']);
+    state.sortBy = 'cost_desc';
+    expect(state.filteredRows.map(r => r.rowKey)).toEqual(['b', 'a']);
+    state.sortBy = 'requests_desc';
+    expect(state.filteredRows.map(r => r.rowKey)).toEqual(['b', 'a']);
+    state.sortBy = 'recent_desc';
+    expect(state.filteredRows.map(r => r.rowKey)).toEqual(['b', 'a']);
+
+    await state.refreshRowQuota(state.rows[0], { force: true });
+    expect(state.rows[0].quotaDisplays[0].usageLine).toContain('1.0K');
+
+    await state.probeAllVisible();
+    expect(state.batchProbing).toBe(false);
+    expect(state.rows[1].quotaDisplays[0].usageLine).toContain('1.0K');
+
+    state.openDrawer(state.rows[0], null, 'diagnostics');
+    expect(state.drawerInitialTab).toBe('overview');
+  });
 });

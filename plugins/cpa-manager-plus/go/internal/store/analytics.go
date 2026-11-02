@@ -251,6 +251,46 @@ func (s *Store) enrichedEvents(ctx context.Context, where string, args ...any) (
 	return candidates, nil
 }
 
+// enrichedPricingEvents loads only the columns required for provider resolution,
+// identity matching, token aggregation, and cost estimation, avoiding large text
+// blobs like response_headers_json and fail_summary on aggregate paths.
+func (s *Store) enrichedPricingEvents(ctx context.Context, where string, args ...any) ([]eventRow, error) {
+	query := `select response_correlation_key,id,timestamp_ms,coalesce(provider,''),coalesce(executor_type,''),model,coalesce(api_key_hash,''),coalesce(auth_id,''),coalesce(auth_index,''),coalesce(auth_type,''),coalesce(source,''),coalesce(service_tier,''),input_tokens,output_tokens,reasoning_tokens,cached_tokens,cache_read_tokens,cache_creation_tokens,total_tokens,failed from usage_events where ` + where
+	query = `with selected as (` + query + `), usage_matches as (
+	 select response_correlation_key, count(*) as usage_count from usage_events
+	 where response_correlation_key is not null and response_correlation_key <> '' and response_correlation_key in (select response_correlation_key from selected where response_correlation_key is not null and response_correlation_key <> '')
+	 group by response_correlation_key
+	) select selected.*, coalesce(o.model,''), o.correlation_key is not null,
+	 coalesce(o.ambiguous,0), coalesce(o.service_tier,''), coalesce(o.service_tier_ambiguous,0), coalesce(m.usage_count,0)
+	 from selected left join response_observations o on o.correlation_key=selected.response_correlation_key
+	 left join usage_matches m on m.response_correlation_key=selected.response_correlation_key
+	 order by selected.timestamp_ms desc, selected.id desc`
+	dbRows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer dbRows.Close()
+	var candidates []eventRow
+	for dbRows.Next() {
+		var row eventRow
+		var correlationKey sql.NullString
+		if err := dbRows.Scan(&correlationKey, &row.ID, &row.TimestampMS, &row.Provider, &row.ExecutorType, &row.Model, &row.APIKeyHash, &row.AuthID, &row.AuthIndex, &row.AuthType, &row.Source, &row.ServiceTier, &row.InputTokens, &row.OutputTokens, &row.ReasoningTokens, &row.CachedTokens, &row.CacheReadTokens, &row.CacheCreationTokens, &row.TotalTokens, &row.Failed, &row.ObservedResponseModel, &row.ResponseObservationPresent, &row.ResponseObservationAmbiguous, &row.ObservedServiceTier, &row.ResponseTierAmbiguous, &row.ResponseUsageCount); err != nil {
+			return nil, err
+		}
+		row.ResponseCorrelationKey = correlationKey.String
+		candidates = append(candidates, row)
+	}
+	if err := dbRows.Err(); err != nil {
+		return nil, err
+	}
+	if s.responseObservationsSuppressed.Load() {
+		for i := range candidates {
+			candidates[i].ResponseObservationAmbiguous = true
+		}
+	}
+	return candidates, nil
+}
+
 func matches(row eventRow, request AnalyticsRequest) bool {
 	if !matchesAuthFile(request.AuthFiles, row) {
 		return false

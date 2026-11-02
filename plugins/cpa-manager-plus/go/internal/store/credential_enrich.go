@@ -45,6 +45,9 @@ type CredentialEnrichment struct {
 // EnrichCredentials computes real historical usage and recent status slots for
 // the given list of credentials in a single pass over SQLite usage_events.
 func (s *Store) EnrichCredentials(ctx context.Context, creds []CredentialIdentity, lookbackMS int64) (map[string]*CredentialEnrichment, error) {
+	if len(creds) == 0 {
+		return map[string]*CredentialEnrichment{}, nil
+	}
 	if lookbackMS <= 0 {
 		lookbackMS = 90 * 24 * 3600 * 1000
 	}
@@ -137,9 +140,15 @@ func (s *Store) EnrichCredentials(ctx context.Context, creds []CredentialIdentit
 	}
 
 	// 1. Optional: populate latest inspection cache if table exists.
+	// Pre-deduplicate by identity tuple in SQL so uninspected credentials do not
+	// force a full table scan over all historical inspection runs.
 	inspRows, err := s.db.QueryContext(ctx, `
 		select coalesce(auth_index,''), coalesce(auth_id,''), coalesce(file_name,''), coalesce(provider,''), coalesce(auth_type,''), coalesce(plan_type,''), coalesce(quota_windows_json,'')
 		from codex_inspection_results
+		where id in (
+			select max(id) from codex_inspection_results
+			group by account_key, coalesce(auth_index,''), coalesce(auth_id,''), coalesce(file_name,''), coalesce(provider,''), coalesce(auth_type,'')
+		)
 		order by id desc
 	`)
 	if err == nil {
@@ -175,7 +184,7 @@ func (s *Store) EnrichCredentials(ctx context.Context, creds []CredentialIdentit
 	}
 
 	// 2. Share complete pricing context with analytics and account windows.
-	rows, err := s.enrichedEvents(ctx, `timestamp_ms >= ?`, fromMS)
+	rows, err := s.enrichedPricingEvents(ctx, `timestamp_ms >= ?`, fromMS)
 	if err != nil {
 		return nil, err
 	}

@@ -1,235 +1,182 @@
 <template>
   <div class="cred-list">
-    <div class="cred-filters">
-      <div class="cred-provider-chips segmented-control" role="group" :aria-label="t('monitoring.credentials.columns.credential')">
-        <button
-          type="button"
-          :class="['segment-btn', { active: providerFilter === 'all' }]"
-          @click="$emit('update:providerFilter', 'all')"
-        >
-          {{ t('monitoring.credentials.filters.all') }}
-          <span class="segment-count">{{ totalCount }}</span>
-        </button>
-        <button
-          v-for="chip in providerChips"
-          :key="chip.key"
-          type="button"
-          :class="['segment-btn', { active: providerFilter === chip.key }]"
-          @click="$emit('update:providerFilter', chip.key)"
-        >
-          {{ chip.label }}
-          <span class="segment-count">{{ chip.count }}</span>
-        </button>
+    <div class="cred-toolbar">
+      <div class="cred-toolbar-top">
+        <div class="cred-provider-chips segmented-control" role="group" :aria-label="t('monitoring.credentials.columns.credential')">
+          <button
+            type="button"
+            :class="['segment-btn', { active: providerFilter === 'all' }]"
+            @click="$emit('update:providerFilter', 'all')"
+          >
+            {{ t('monitoring.credentials.filters.all') }}
+            <span class="segment-count">{{ totalCount }}</span>
+          </button>
+          <button
+            v-for="chip in providerChips"
+            :key="chip.key"
+            type="button"
+            :class="['segment-btn', { active: providerFilter === chip.key }]"
+            @click="$emit('update:providerFilter', chip.key)"
+          >
+            {{ chip.label }}
+            <span class="segment-count">{{ chip.count }}</span>
+          </button>
+        </div>
+
+        <div class="cred-toolbar-actions">
+          <button
+            class="btn cred-probe-all-btn"
+            type="button"
+            :disabled="loading || batchProbing || !ready || !rows.length"
+            @click="$emit('probe-all')"
+          >
+            <span v-if="batchProbing" class="cred-enriching-spinner" aria-hidden="true"></span>
+            {{ batchProbing
+              ? t('monitoring.credentials.probingProgress', { done: batchProgress?.done || 0, total: batchProgress?.total || rows.length })
+              : t('monitoring.credentials.probeAll') }}
+          </button>
+          <button
+            class="btn primary cred-filters-refresh"
+            type="button"
+            :disabled="loading || !ready"
+            @click="$emit('refresh')"
+          >{{ loading ? t('common.loading') : t('common.refresh') }}</button>
+        </div>
       </div>
-      <input
-        class="control wide"
-        :value="search"
-        :placeholder="t('monitoring.credentials.searchPlaceholder')"
-        @input="$emit('update:search', $event.target.value)"
-      />
-      <select class="control compact" :value="statusFilter" @change="$emit('update:statusFilter', $event.target.value)">
-        <option value="all">{{ t('monitoring.credentials.filters.allStatuses') }}</option>
-        <option value="available">{{ t('monitoring.credentials.filters.available') }}</option>
-        <option value="attention">{{ t('monitoring.credentials.filters.attention') }}</option>
-        <option value="quota_risk">{{ t('monitoring.credentials.filters.quotaRisk') }}</option>
-        <option value="disabled">{{ t('monitoring.credentials.filters.disabled') }}</option>
-      </select>
-      <button
-        class="btn primary cred-filters-refresh"
-        type="button"
-        :disabled="loading || !ready"
-        @click="$emit('refresh')"
-      >{{ loading ? t('common.loading') : t('common.refresh') }}</button>
+
+      <div class="cred-filters">
+        <input
+          class="control wide"
+          :value="search"
+          :placeholder="t('monitoring.credentials.searchPlaceholder')"
+          @input="$emit('update:search', $event.target.value)"
+        />
+        <select class="control compact" :value="statusFilter" @change="$emit('update:statusFilter', $event.target.value)">
+          <option value="all">{{ t('monitoring.credentials.filters.allStatuses') }}</option>
+          <option value="available">{{ t('monitoring.credentials.filters.available') }}</option>
+          <option value="attention">{{ t('monitoring.credentials.filters.attention') }}</option>
+          <option value="quota_risk">{{ t('monitoring.credentials.filters.quotaRisk') }}</option>
+          <option value="disabled">{{ t('monitoring.credentials.filters.disabled') }}</option>
+        </select>
+        <select class="control compact" :value="sortBy" @change="$emit('update:sortBy', $event.target.value)">
+          <option value="default">{{ t('monitoring.credentials.sort.default') }}</option>
+          <option value="quota_asc">{{ t('monitoring.credentials.sort.quotaAsc') }}</option>
+          <option value="cost_desc">{{ t('monitoring.credentials.sort.costDesc') }}</option>
+          <option value="requests_desc">{{ t('monitoring.credentials.sort.requestsDesc') }}</option>
+          <option value="recent_desc">{{ t('monitoring.credentials.sort.recentDesc') }}</option>
+        </select>
+      </div>
     </div>
 
-    <MetricGrid class="cred-kpi-grid" :cards="kpiCards" />
+    <section class="metric-grid cred-kpi-grid" role="group" :aria-label="t('monitoring.credentials.kpi.total')">
+      <button
+        v-for="card in kpiCards"
+        :key="card.key"
+        type="button"
+        class="metric cred-kpi-btn"
+        :class="[
+          card.accent ? `metric-accent-${card.accent}` : '',
+          { active: statusFilter === card.filterValue && card.filterValue !== 'all' },
+        ]"
+        :aria-pressed="statusFilter === card.filterValue"
+        @click="toggleKpiFilter(card.filterValue)"
+      >
+        <div class="metric-label">{{ card.label }}</div>
+        <div class="metric-value">{{ card.value }}</div>
+        <div v-if="card.sub" class="metric-sub">{{ card.sub }}</div>
+      </button>
+    </section>
 
     <div v-if="loading && !rows.length" class="cred-state cred-state-loading" role="status">
-      <div class="cred-skeleton-stack" aria-hidden="true">
-        <div v-for="n in 3" :key="n" class="cred-skeleton-row"></div>
+      <div class="cred-card-grid" aria-hidden="true">
+        <div v-for="n in 6" :key="n" class="cred-skeleton-card"></div>
       </div>
       <span class="muted">{{ t('common.loading') }}</span>
     </div>
 
-    <template v-else-if="rows.length">
-      <!-- Desktop table -->
-      <div class="table-wrap monitor-table cred-table cred-table-desktop">
-        <table>
-          <thead>
-            <tr>
-              <th>{{ t('monitoring.credentials.columns.credential') }}</th>
-              <th>{{ t('monitoring.credentials.columns.plan') }}</th>
-              <th>{{ t('monitoring.credentials.columns.availability') }}</th>
-              <th>{{ t('monitoring.credentials.columns.recent') }}</th>
-              <th>{{ t('monitoring.credentials.columns.historical') }}</th>
-              <th>{{ t('monitoring.credentials.columns.quota') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in rows"
-              :key="row.rowKey"
-              class="clickable"
-              :class="{ 'selected-row': row.rowKey === selectedRowKey, 'cred-row-enriching': row.rowKey === enrichingRowKey }"
-              tabindex="0"
-              role="button"
-              :data-cred-row-key="row.rowKey"
-              :aria-pressed="row.rowKey === selectedRowKey"
-              :aria-busy="row.rowKey === enrichingRowKey ? 'true' : undefined"
-              @click="$emit('select', row, $event)"
-              @keydown="onRowKeydown($event, row)"
-            >
-              <td class="cred-identity-cell">
-                <strong class="cred-identity-title">{{ row.maskedEmail || row.displayName || EMPTY_VALUE }}</strong>
-                <div class="muted small-text cred-identity-file" :title="row.path || row.fileName">{{ row.fileName || EMPTY_VALUE }}</div>
-                <div v-if="row.providerChip?.tag" class="provider-cell">
-                  <span :class="['provider-chip', row.providerChip.chip]">{{ row.providerChip.tag }}</span>
-                </div>
-                <div v-if="row.rowKey === enrichingRowKey" class="cred-enriching" role="status">
-                  <span class="cred-enriching-spinner" aria-hidden="true"></span>
-                  {{ t('monitoring.credentials.enriching') }}
-                </div>
-              </td>
-              <td>
-                <span v-if="row.planLabel" class="cred-plan-badge">{{ row.planLabel }}</span>
-                <span v-else class="muted">{{ EMPTY_VALUE }}</span>
-              </td>
-              <td>
-                <span :class="['status-chip', 'cred-avail', row.availabilityTone]">
-                  <i aria-hidden="true"></i>{{ row.availabilityLabel }}
-                </span>
-                <div v-if="row.probeFailureSummary" class="muted small-text cred-probe-fail-summary" :title="row.probeFailureSummary">{{ row.probeFailureSummary }}</div>
-                <div v-if="row.priority != null" class="muted small-text">{{ t('monitoring.credentials.priority', { value: row.priority }) }}</div>
-              </td>
-              <td class="cred-recent-cell">
-                <div class="cred-recent-time muted small-text">{{ row.lastRequestLabel }}</div>
-                <SparklineBars
-                  :statuses="row.recentStatuses"
-                  :title="t('monitoring.credentials.columns.recent')"
-                />
-              </td>
-              <td>
-                <button
-                  v-if="row.probeFailed"
-                  type="button"
-                  class="cred-probe-cta muted small-text"
-                  @click.stop="onProbeFailCta($event, row)"
-                >{{ t('monitoring.credentials.histProbeFailed') }}</button>
-                <div v-else-if="!hasHistoryUsage(row)" class="cred-hist-empty muted small-text">{{ t('monitoring.credentials.noUsage') }}</div>
-                <div v-else class="cred-hist">
-                  <span class="cred-hist-metric cred-hist-req" :title="t('monitoring.credentials.drawer.requests')">
-                    <i class="cred-hist-icon" aria-hidden="true"></i>
-                    <span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.requests') }}</span>
-                    <strong>{{ fmtCompact(row.history?.requests) }}</strong>
-                  </span>
-                  <span class="cred-hist-metric cred-hist-tok" :title="t('monitoring.credentials.drawer.tokens')">
-                    <i class="cred-hist-icon" aria-hidden="true"></i>
-                    <span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.tokens') }}</span>
-                    <strong>{{ fmtCompact(row.history?.tokens) }}</strong>
-                  </span>
-                  <span class="cred-hist-metric cred-hist-cost" :title="t('monitoring.credentials.drawer.estCost')">
-                    <i class="cred-hist-icon" aria-hidden="true"></i>
-                    <span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.cost') }}</span>
-                    <strong>{{ formatCost(row.history) }}</strong>
-                  </span>
-                  <span
-                    class="cred-hist-metric cred-hist-ok"
-                    :class="successClass(row.history?.successRate)"
-                    :title="t('monitoring.credentials.drawer.successRate')"
-                  >
-                    <i class="cred-hist-icon" aria-hidden="true"></i>
-                    <span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.success') }}</span>
-                    <strong>{{ fmtPct(row.history?.successRate) }}</strong>
-                  </span>
-                </div>
-              </td>
-              <td>
-                <div v-if="row.quotaDisplays?.length" class="cred-quota-stack">
-                  <div
-                    v-for="qw in row.quotaDisplays"
-                    :key="qw.key"
-                    class="quota-row"
-                    :title="qw.title"
-                  >
-                    <div class="quota-row-header">
-                      <span class="quota-row-label">{{ qw.shortLabel }}</span>
-                      <b :class="{ 'cred-rem-depleted': isDepleted(qw.remainingPercent) }">{{ remainingText(qw.remainingPercent) }}</b>
-                    </div>
-                    <div class="quota-bar" :class="[quotaTone(qw.remainingPercent), { depleted: isDepleted(qw.remainingPercent) }]">
-                      <span :style="{ width: `${clamp(qw.remainingPercent)}%` }"></span>
-                    </div>
-                    <div v-if="qw.usageLine" class="quota-usage-line muted small-text">{{ qw.usageLine }}</div>
-                  </div>
-                </div>
-                <button
-                  v-else-if="row.probeFailed"
-                  type="button"
-                  class="cred-probe-cta cred-quota-empty"
-                  @click.stop="onProbeFailCta($event, row)"
-                >{{ t('monitoring.credentials.probeFailQuota') }}</button>
-                <div v-else class="muted">{{ EMPTY_VALUE }}</div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Mobile card stack (≤768 via CSS) -->
-      <div class="cred-card-list" role="list">
-        <article
-          v-for="row in rows"
-          :key="`card-${row.rowKey}`"
-          class="cred-card clickable"
-          :class="{ 'selected-row': row.rowKey === selectedRowKey, 'cred-row-enriching': row.rowKey === enrichingRowKey }"
-          role="button"
-          tabindex="0"
-          :data-cred-row-key="row.rowKey"
-          :aria-pressed="row.rowKey === selectedRowKey"
-          :aria-busy="row.rowKey === enrichingRowKey ? 'true' : undefined"
-          @click="$emit('select', row, $event)"
-          @keydown="onRowKeydown($event, row)"
-        >
-          <div class="cred-card-top">
-            <div class="cred-card-identity">
-              <strong class="cred-identity-title">{{ row.maskedEmail || row.displayName || EMPTY_VALUE }}</strong>
-              <div class="muted small-text cred-identity-file" :title="row.path || row.fileName">{{ row.fileName || EMPTY_VALUE }}</div>
-              <div class="cred-card-meta">
-                <span v-if="row.providerChip?.tag" :class="['provider-chip', row.providerChip.chip]">{{ row.providerChip.tag }}</span>
-                <span v-if="row.planLabel" class="cred-plan-badge">{{ row.planLabel }}</span>
-              </div>
-              <div v-if="row.rowKey === enrichingRowKey" class="cred-enriching" role="status">
-                <span class="cred-enriching-spinner" aria-hidden="true"></span>
-                {{ t('monitoring.credentials.enriching') }}
-              </div>
+    <div v-else-if="rows.length" class="cred-card-grid" role="list">
+      <article
+        v-for="row in rows"
+        :key="row.rowKey"
+        class="cred-card clickable"
+        :class="{
+          'selected-row': row.rowKey === selectedRowKey,
+          'cred-row-enriching': row.rowKey === enrichingRowKey,
+          'cred-card-disabled': row.disabled,
+        }"
+        :data-tone="row.availabilityTone || 'ok'"
+        :data-cred-row-key="row.rowKey"
+        role="button"
+        tabindex="0"
+        :aria-pressed="row.rowKey === selectedRowKey"
+        :aria-busy="row.rowKey === enrichingRowKey ? 'true' : undefined"
+        @click="$emit('select', row, $event)"
+        @keydown="onRowKeydown($event, row)"
+      >
+        <!-- Header: Badges + Status + Quick Refresh, then Identity + Recent Sparkline -->
+        <header class="cred-card-header">
+          <div class="cred-card-badges">
+            <div class="cred-card-badges-left">
+              <span v-if="row.providerChip?.tag" :class="['provider-chip', row.providerChip.chip]">{{ row.providerChip.tag }}</span>
+              <span v-if="row.planLabel" class="cred-plan-badge">{{ row.planLabel }}</span>
+              <span v-if="row.priority != null" class="cred-priority-badge" :title="t('monitoring.credentials.priority', { value: row.priority })">
+                P{{ row.priority }}
+              </span>
             </div>
-            <div class="cred-card-status">
+            <div class="cred-card-badges-right">
               <span :class="['status-chip', 'cred-avail', row.availabilityTone]">
                 <i aria-hidden="true"></i>{{ row.availabilityLabel }}
               </span>
-              <div v-if="row.probeFailureSummary" class="muted small-text cred-probe-fail-summary" :title="row.probeFailureSummary">{{ row.probeFailureSummary }}</div>
+              <button
+                type="button"
+                class="cred-card-refresh-btn"
+                :class="{ spinning: row.rowKey === enrichingRowKey }"
+                :disabled="row.rowKey === enrichingRowKey"
+                :title="t('monitoring.credentials.drawer.refreshQuota')"
+                :aria-label="t('monitoring.credentials.drawer.refreshQuota')"
+                @click.stop="$emit('refresh-row', row)"
+              >
+                <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                  <path d="M13.5 8a5.5 5.5 0 1 1-1.35-3.6M13.5 2.5v2.4h-2.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
             </div>
           </div>
-          <div class="cred-card-recent">
-            <span class="muted small-text">{{ row.lastRequestLabel }}</span>
-            <SparklineBars
-              :statuses="row.recentStatuses"
-              :title="t('monitoring.credentials.columns.recent')"
-            />
+
+          <div class="cred-card-main">
+            <div class="cred-card-identity">
+              <strong class="cred-identity-title" :title="row.email || row.displayName || row.fileName">
+                {{ row.maskedEmail || row.displayName || EMPTY_VALUE }}
+              </strong>
+              <div class="muted small-text cred-identity-file" :title="row.path || row.fileName">
+                <span>{{ row.fileName || EMPTY_VALUE }}</span>
+                <template v-if="row.note"> · <span>{{ row.note }}</span></template>
+              </div>
+            </div>
+            <div class="cred-card-recent" :title="t('monitoring.credentials.columns.recent')">
+              <span class="cred-recent-time muted">{{ row.lastRequestLabel }}</span>
+              <SparklineBars
+                :statuses="row.recentStatuses"
+                :title="t('monitoring.credentials.columns.recent')"
+              />
+            </div>
           </div>
+
           <button
-            v-if="row.probeFailed"
+            v-if="row.probeFailureSummary"
             type="button"
-            class="cred-probe-cta muted small-text"
+            class="cred-card-alert"
+            :title="row.probeFailureSummary"
             @click.stop="onProbeFailCta($event, row)"
-          >{{ t('monitoring.credentials.histProbeFailed') }}</button>
-          <div v-else-if="!hasHistoryUsage(row)" class="cred-hist-empty muted small-text">{{ t('monitoring.credentials.noUsage') }}</div>
-          <div v-else class="cred-hist cred-card-hist">
-            <span class="cred-hist-metric cred-hist-req"><i class="cred-hist-icon" aria-hidden="true"></i><span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.requests') }}</span><strong>{{ fmtCompact(row.history?.requests) }}</strong></span>
-            <span class="cred-hist-metric cred-hist-tok"><i class="cred-hist-icon" aria-hidden="true"></i><span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.tokens') }}</span><strong>{{ fmtCompact(row.history?.tokens) }}</strong></span>
-            <span class="cred-hist-metric cred-hist-cost"><i class="cred-hist-icon" aria-hidden="true"></i><span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.cost') }}</span><strong>{{ formatCost(row.history) }}</strong></span>
-            <span class="cred-hist-metric cred-hist-ok" :class="successClass(row.history?.successRate)"><i class="cred-hist-icon" aria-hidden="true"></i><span class="cred-hist-label">{{ t('monitoring.credentials.histLabels.success') }}</span><strong>{{ fmtPct(row.history?.successRate) }}</strong></span>
-          </div>
-          <div v-if="row.quotaDisplays?.length" class="cred-quota-stack cred-card-quota">
+          >
+            <span class="cred-card-alert-dot" aria-hidden="true"></span>
+            <span class="cred-card-alert-text">{{ row.probeFailureSummary }}</span>
+          </button>
+        </header>
+
+        <!-- Body: Aggregated Quota Windows -->
+        <section class="cred-card-quota-section">
+          <div v-if="row.quotaDisplays?.length" class="cred-quota-stack">
             <div
               v-for="qw in row.quotaDisplays"
               :key="qw.key"
@@ -237,25 +184,67 @@
               :title="qw.title"
             >
               <div class="quota-row-header">
-                <span class="quota-row-label">{{ qw.shortLabel }}</span>
-                <b :class="{ 'cred-rem-depleted': isDepleted(qw.remainingPercent) }">{{ remainingText(qw.remainingPercent) }}</b>
+                <div class="quota-row-left">
+                  <span class="quota-row-label">{{ qw.shortLabel }}</span>
+                  <span v-if="qw.usageLine" class="quota-usage-line muted">{{ qw.usageLine }}</span>
+                </div>
+                <b class="quota-row-pct" :class="{ 'cred-rem-depleted': isDepleted(qw.remainingPercent) }">
+                  {{ remainingText(qw.remainingPercent) }}
+                </b>
               </div>
               <div class="quota-bar" :class="[quotaTone(qw.remainingPercent), { depleted: isDepleted(qw.remainingPercent) }]">
                 <span :style="{ width: `${clamp(qw.remainingPercent)}%` }"></span>
               </div>
-              <div v-if="qw.usageLine" class="quota-usage-line muted small-text">{{ qw.usageLine }}</div>
+            </div>
+            <div v-if="row.extraQuotaCount > 0" class="cred-extra-windows muted small-text">
+              {{ t('monitoring.credentials.moreWindows', { count: row.extraQuotaCount }) }}
             </div>
           </div>
-          <button
-            v-else-if="row.probeFailed"
-            type="button"
-            class="cred-probe-cta cred-quota-empty"
-            @click.stop="onProbeFailCta($event, row)"
-          >{{ t('monitoring.credentials.probeFailQuota') }}</button>
-          <div v-else class="muted small-text">{{ EMPTY_VALUE }}</div>
-        </article>
-      </div>
-    </template>
+
+          <div v-else-if="row.probeFailed" class="cred-quota-placeholder warn">
+            <button
+              type="button"
+              class="cred-probe-cta"
+              @click.stop="onProbeFailCta($event, row)"
+            >{{ t('monitoring.credentials.probeFailQuota') }}</button>
+          </div>
+
+          <div v-else class="cred-quota-placeholder">
+            <span class="muted small-text">{{ t('monitoring.credentials.noQuotaYet') }}</span>
+            <button
+              type="button"
+              class="cred-probe-inline-btn"
+              :disabled="row.rowKey === enrichingRowKey"
+              @click.stop="$emit('refresh-row', row)"
+            >
+              {{ row.rowKey === enrichingRowKey ? t('monitoring.credentials.enriching') : t('monitoring.credentials.probeQuota') }}
+            </button>
+          </div>
+        </section>
+
+        <!-- Footer: 4-Column Historical Usage Strip -->
+        <footer class="cred-card-footer">
+          <div class="cred-stat-cell" :title="t('monitoring.credentials.drawer.requests')">
+            <span class="cred-stat-label">{{ t('monitoring.credentials.histLabels.requests') }}</span>
+            <strong class="cred-stat-value">{{ hasHistoryUsage(row) ? fmtCompact(row.history?.requests) : EMPTY_VALUE }}</strong>
+          </div>
+          <div class="cred-stat-cell" :title="t('monitoring.credentials.drawer.tokens')">
+            <span class="cred-stat-label">{{ t('monitoring.credentials.histLabels.tokens') }}</span>
+            <strong class="cred-stat-value">{{ hasHistoryUsage(row) ? fmtCompact(row.history?.tokens) : EMPTY_VALUE }}</strong>
+          </div>
+          <div class="cred-stat-cell" :title="t('monitoring.credentials.drawer.estCost')">
+            <span class="cred-stat-label">{{ t('monitoring.credentials.histLabels.cost') }}</span>
+            <strong class="cred-stat-value">{{ hasHistoryUsage(row) ? formatCost(row.history) : EMPTY_VALUE }}</strong>
+          </div>
+          <div class="cred-stat-cell" :title="t('monitoring.credentials.drawer.successRate')">
+            <span class="cred-stat-label">{{ t('monitoring.credentials.histLabels.success') }}</span>
+            <strong class="cred-stat-value" :class="hasHistoryUsage(row) ? successClass(row.history?.successRate) : ''">
+              {{ hasHistoryUsage(row) ? fmtPct(row.history?.successRate) : EMPTY_VALUE }}
+            </strong>
+          </div>
+        </footer>
+      </article>
+    </div>
 
     <div v-else class="cred-state empty" role="status">
       {{ hasActiveFilters ? t('monitoring.credentials.emptyFiltered') : t('monitoring.credentials.empty') }}
@@ -266,7 +255,6 @@
 <script setup>
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import MetricGrid from '../MetricGrid.vue';
 import SparklineBars from './SparklineBars.vue';
 import { EMPTY_VALUE, formatInt } from '../../utils/localeFormat.js';
 import { clampPercent, formatRemainingPercent, quotaBarTone } from '../../utils/credentialPresentation.js';
@@ -277,9 +265,12 @@ const props = defineProps({
   providerChips: { type: Array, default: () => [] },
   providerFilter: { type: String, default: 'all' },
   statusFilter: { type: String, default: 'all' },
+  sortBy: { type: String, default: 'default' },
   search: { type: String, default: '' },
   selectedRowKey: { type: String, default: '' },
   enrichingRowKey: { type: String, default: '' },
+  batchProbing: { type: Boolean, default: false },
+  batchProgress: { type: Object, default: () => ({ done: 0, total: 0 }) },
   loading: { type: Boolean, default: false },
   ready: { type: Boolean, default: false },
   totalCount: { type: Number, default: 0 },
@@ -289,7 +280,16 @@ const props = defineProps({
   formatCostText: { type: Function, required: true },
 });
 
-const emit = defineEmits(['select', 'refresh', 'update:providerFilter', 'update:statusFilter', 'update:search']);
+const emit = defineEmits([
+  'select',
+  'refresh',
+  'refresh-row',
+  'probe-all',
+  'update:providerFilter',
+  'update:statusFilter',
+  'update:sortBy',
+  'update:search',
+]);
 
 const { t } = useI18n();
 
@@ -299,6 +299,7 @@ const kpiCards = computed(() => {
   return [
     {
       key: 'total',
+      filterValue: 'all',
       label: t('monitoring.credentials.kpi.total'),
       value: formatInt(props.kpi.total || 0),
       sub: t('monitoring.credentials.kpi.totalSub'),
@@ -306,6 +307,7 @@ const kpiCards = computed(() => {
     },
     {
       key: 'available',
+      filterValue: 'available',
       label: t('monitoring.credentials.kpi.available'),
       value: formatInt(props.kpi.available || 0),
       sub: filtered ? filterSub : t('monitoring.credentials.kpi.availableSub'),
@@ -313,6 +315,7 @@ const kpiCards = computed(() => {
     },
     {
       key: 'attention',
+      filterValue: 'attention',
       label: t('monitoring.credentials.kpi.attention'),
       value: formatInt(props.kpi.attention || 0),
       sub: filtered ? filterSub : t('monitoring.credentials.kpi.attentionSub'),
@@ -320,6 +323,7 @@ const kpiCards = computed(() => {
     },
     {
       key: 'quotaRisk',
+      filterValue: 'quota_risk',
       label: t('monitoring.credentials.kpi.quotaRisk'),
       value: formatInt(props.kpi.quotaRisk || 0),
       sub: filtered ? filterSub : t('monitoring.credentials.kpi.quotaRiskSub'),
@@ -327,6 +331,14 @@ const kpiCards = computed(() => {
     },
   ];
 });
+
+function toggleKpiFilter(filterValue) {
+  if (filterValue === 'all' || props.statusFilter === filterValue) {
+    emit('update:statusFilter', 'all');
+  } else {
+    emit('update:statusFilter', filterValue);
+  }
+}
 
 function fmtCompact(value) {
   return props.formatCompact(value);
@@ -370,7 +382,7 @@ function hasHistoryUsage(row) {
   return false;
 }
 function onProbeFailCta(event, row) {
-  emit('select', row, event, 'diagnostics');
+  emit('select', row, event, 'overview');
 }
 function onRowKeydown(event, row) {
   if (event.key === 'Enter' || event.key === ' ') {

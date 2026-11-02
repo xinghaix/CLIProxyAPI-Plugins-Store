@@ -472,6 +472,18 @@ export default {
       usageFailed: '窗口用量查询失败：{error}',
       recentFailed: '近期请求记录不可用：{error}',
       priority: '优先级 {value}',
+      probeAll: '批量探测配额',
+      probingProgress: '探测中 {done}/{total}',
+      probeQuota: '探测配额',
+      noQuotaYet: '尚未探测实时配额',
+      moreWindows: '+{count} 个窗口',
+      sort: {
+        default: '排序：默认状态',
+        quotaAsc: '排序：配额剩余最低',
+        costDesc: '排序：预估费用最高',
+        requestsDesc: '排序：请求次数最多',
+        recentDesc: '排序：最近活跃优先',
+      },
       filters: {
         all: '全部',
         allStatuses: '全部状态',

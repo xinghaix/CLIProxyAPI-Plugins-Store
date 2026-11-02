@@ -472,6 +472,18 @@ export default {
       usageFailed: 'Не удалось получить использование окна: {error}',
       recentFailed: 'Недавняя история запросов недоступна: {error}',
       priority: 'Приоритет {value}',
+      probeAll: 'Проверить квоты',
+      probingProgress: 'Проверка {done}/{total}',
+      probeQuota: 'Проверить квоту',
+      noQuotaYet: 'Квота ещё не проверена',
+      moreWindows: 'ещё +{count}',
+      sort: {
+        default: 'Сортировка: по умолчанию',
+        quotaAsc: 'Сортировка: меньше квоты',
+        costDesc: 'Сортировка: больше расходов',
+        requestsDesc: 'Сортировка: больше запросов',
+        recentDesc: 'Сортировка: недавняя активность',
+      },
       filters: {
         all: 'Все',
         allStatuses: 'Все статусы',

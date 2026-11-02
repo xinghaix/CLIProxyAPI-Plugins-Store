@@ -26,7 +26,11 @@
         <div class="cred-drawer-head-main">
           <h2 class="cred-drawer-title">{{ title }}</h2>
           <p class="muted small-text cred-drawer-sub">
+            <span v-if="credential.providerChip?.tag" :class="['provider-chip', credential.providerChip.chip]">{{ credential.providerChip.tag }}</span>
             <span v-if="credential.planLabel" class="cred-plan-badge">{{ credential.planLabel }}</span>
+            <span v-if="credential.availabilityLabel" :class="['status-chip', 'cred-avail', credential.availabilityTone]">
+              <i aria-hidden="true"></i>{{ credential.availabilityLabel }}
+            </span>
             <span class="cred-drawer-path-text" :title="credential.path || credential.fileName || ''">{{ credential.path || credential.fileName || EMPTY_VALUE }}</span>
             <button
               v-if="credential.path || credential.fileName"
@@ -221,7 +225,8 @@ watch(() => props.credential?.rowKey, () => {
 });
 
 function applyInitialTab() {
-  const tab = props.initialTab || 'quota';
+  const raw = props.initialTab || 'quota';
+  const tab = raw === 'diagnostics' ? 'overview' : raw;
   if (['overview', 'quota'].includes(tab)) {
     activeTab.value = tab;
     return;
@@ -272,6 +277,8 @@ const title = computed(() => props.credential?.maskedEmail || props.credential?.
 const statusLabel = computed(() => {
   const cred = props.credential;
   if (!cred) return EMPTY_VALUE;
+  if (cred.disabled) return t('monitoring.authCard.disabled');
+  if (cred.probeFailed && cred.availabilityLabel) return cred.availabilityLabel;
   if (cred.status) return localizeAuthStatus(cred.status, t);
   return cred.availabilityLabel || EMPTY_VALUE;
 });

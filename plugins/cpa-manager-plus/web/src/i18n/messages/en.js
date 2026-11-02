@@ -597,6 +597,18 @@ export default {
       usageFailed: 'Window usage lookup failed: {error}',
       recentFailed: 'Recent request history unavailable: {error}',
       priority: 'Priority {value}',
+      probeAll: 'Probe quotas',
+      probingProgress: 'Probing {done}/{total}',
+      probeQuota: 'Probe quota',
+      noQuotaYet: 'Live quota not probed yet',
+      moreWindows: '+{count} more',
+      sort: {
+        default: 'Sort: Default',
+        quotaAsc: 'Sort: Lowest quota',
+        costDesc: 'Sort: Highest cost',
+        requestsDesc: 'Sort: Most requests',
+        recentDesc: 'Sort: Recently active',
+      },
       filters: {
         all: 'All',
         allStatuses: 'All statuses',

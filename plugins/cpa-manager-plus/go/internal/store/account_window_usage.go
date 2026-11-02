@@ -73,7 +73,7 @@ func (s *Store) AccountWindowUsage(ctx context.Context, windows []AccountWindowU
 		to = max64(to, window.ToMS)
 	}
 	// Load pricing context once for the batch, never run full Analytics per window.
-	rows, err := s.enrichedEvents(ctx, `timestamp_ms >= ? and timestamp_ms < ?`, from, to)
+	rows, err := s.enrichedPricingEvents(ctx, `timestamp_ms >= ? and timestamp_ms < ?`, from, to)
 	if err != nil {
 		return nil, err
 	}

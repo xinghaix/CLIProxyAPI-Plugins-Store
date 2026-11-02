@@ -472,6 +472,18 @@ export default {
       usageFailed: '視窗用量查詢失敗：{error}',
       recentFailed: '近期請求紀錄不可用：{error}',
       priority: '優先順序 {value}',
+      probeAll: '批次探測配額',
+      probingProgress: '探測中 {done}/{total}',
+      probeQuota: '探測配額',
+      noQuotaYet: '尚未探測即時配額',
+      moreWindows: '+{count} 個視窗',
+      sort: {
+        default: '排序：預設狀態',
+        quotaAsc: '排序：配額剩餘最低',
+        costDesc: '排序：預估花費最高',
+        requestsDesc: '排序：請求次數最多',
+        recentDesc: '排序：最近活躍優先',
+      },
       filters: {
         all: '全部',
         allStatuses: '全部狀態',

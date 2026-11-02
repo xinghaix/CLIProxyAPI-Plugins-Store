@@ -119,6 +119,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			created_at_ms integer not null
 		)`,
 		`create index if not exists idx_usage_events_timestamp on usage_events(timestamp_ms)`,
+		`create index if not exists idx_usage_events_timestamp_id on usage_events(timestamp_ms desc, id desc)`,
 		`create index if not exists idx_usage_events_model on usage_events(model)`,
 		`create index if not exists idx_usage_events_provider on usage_events(provider)`,
 		`create index if not exists idx_usage_events_auth on usage_events(auth_index)`,
@@ -192,6 +193,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			created_at_ms integer not null,
 			unique(run_id, account_key)
 		)`,
+		`create index if not exists idx_inspection_results_account_id on codex_inspection_results(account_key, id desc)`,
 		`create table if not exists codex_inspection_logs (
 			id integer primary key autoincrement,
 			run_id integer not null references codex_inspection_runs(id) on delete cascade,
