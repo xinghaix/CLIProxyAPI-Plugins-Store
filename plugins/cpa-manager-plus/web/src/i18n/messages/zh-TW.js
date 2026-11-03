@@ -487,11 +487,13 @@ export default {
       filters: {
         all: '全部',
         allStatuses: '全部狀態',
+        enabledOnly: '僅啟用',
         available: '可用',
         attention: '需關注',
         quotaRisk: '配額風險',
         disabled: '已停用',
       },
+      bucketModels: '此分組包含：{models}',
       kpi: {
         total: '憑證總數',
         totalSub: '此處管理的 OAuth 憑證',

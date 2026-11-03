@@ -213,6 +213,50 @@ func normalizeWindowScopeSlug(raw string) string {
 	return strings.Trim(b.String(), "-")
 }
 
+// LocalizeAntigravityGroupLabel 将 Antigravity 分组名转换为对齐官方 CPA 的中文桶名。
+func LocalizeAntigravityGroupLabel(raw string) string {
+	slug := normalizeWindowScopeSlug(raw)
+	switch slug {
+	case "gemini-models", "group-gemini-models":
+		return "Gemini 模型"
+	case "claude-and-gpt-models", "claude-gpt-models", "group-claude-gpt-models":
+		return "Claude 和 GPT 模型"
+	default:
+		return strings.TrimSpace(raw)
+	}
+}
+
+// LocalizeAntigravityBucketLabel 将 Antigravity 限额窗口标签转换为中文名称。
+func LocalizeAntigravityBucketLabel(label, window string) string {
+	for _, raw := range []string{label, window} {
+		slug := normalizeWindowScopeSlug(raw)
+		slug = strings.TrimSuffix(slug, "-remaining")
+		switch {
+		case slug == "5h" || strings.Contains(slug, "five-hour") || strings.Contains(slug, "5-hour"):
+			return "5 小时限额"
+		case slug == "weekly" || slug == "week" || strings.Contains(slug, "weekly"):
+			return "周限额"
+		case slug == "daily" || slug == "day" || strings.Contains(slug, "daily"):
+			return "日限额"
+		case slug == "monthly" || slug == "month" || strings.Contains(slug, "monthly"):
+			return "月限额"
+		}
+	}
+	return strings.TrimSpace(label)
+}
+
+func inferAntigravityGroupFromID(id string) (groupID, groupLabel string) {
+	slug := normalizeWindowScopeSlug(id)
+	switch {
+	case strings.HasPrefix(slug, "gemini-models"):
+		return "gemini-models", "Gemini 模型"
+	case strings.HasPrefix(slug, "claude-and-gpt-models"), strings.HasPrefix(slug, "claude-gpt-models"):
+		return "claude-and-gpt-models", "Claude 和 GPT 模型"
+	default:
+		return "", ""
+	}
+}
+
 // InferStandardWindowPeriodHours infers standard periodHours (5 / 24 / 168 / 720)
 // from window metadata when upstream responses or cached snapshots omit it.
 func InferStandardWindowPeriodHours(values ...string) (float64, bool) {
@@ -297,6 +341,43 @@ func normalizeOneQuotaWindowMap(provider string, window map[string]any) map[stri
 			if hours, ok := InferStandardWindowPeriodHours(winText, id, label, kind); ok {
 				cloned["periodHours"] = hours
 			}
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(provider), "antigravity") || kind == "antigravity_bucket" {
+		groupID := strings.TrimSpace(fmt.Sprint(cloned["groupId"]))
+		if groupID == "<nil>" {
+			groupID = ""
+		}
+		groupLabel := strings.TrimSpace(fmt.Sprint(cloned["groupLabel"]))
+		if groupLabel == "<nil>" {
+			groupLabel = ""
+		}
+		if groupID == "" || groupLabel == "" {
+			inferredID, inferredLabel := inferAntigravityGroupFromID(id)
+			if groupID == "" {
+				groupID = inferredID
+			}
+			if groupLabel == "" {
+				groupLabel = inferredLabel
+			}
+		}
+		if groupLabel != "" {
+			groupLabel = LocalizeAntigravityGroupLabel(groupLabel)
+			cloned["groupLabel"] = groupLabel
+		}
+		if groupID != "" {
+			cloned["groupId"] = groupID
+		}
+		rawBucketLabel := strings.TrimSpace(fmt.Sprint(cloned["bucketLabel"]))
+		if rawBucketLabel == "<nil>" || rawBucketLabel == "" {
+			rawBucketLabel = label
+		}
+		bucketLabel := LocalizeAntigravityBucketLabel(rawBucketLabel, winText)
+		if bucketLabel != "" {
+			cloned["bucketLabel"] = bucketLabel
+		}
+		if groupLabel != "" && bucketLabel != "" && !strings.Contains(label, groupLabel) {
+			cloned["label"] = groupLabel + " · " + bucketLabel
 		}
 	}
 	return cloned

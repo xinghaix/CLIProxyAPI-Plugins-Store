@@ -24,16 +24,53 @@ function clampPercent(value) {
 }
 
 function inferKind(window) {
-  const haystack = [window?.kind, window?.id, window?.label, window?.window]
+  const haystack = [window?.kind, window?.id, window?.bucketLabel, window?.label, window?.window]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
-  if (haystack.includes('five') || haystack.includes('5h') || haystack.includes('5-hour') || haystack.includes('5 hour')) return 'five_hour';
-  if (haystack.includes('week') || haystack.includes('seven_day') || haystack.includes('seven-day') || haystack.includes('7-day')) return 'weekly';
-  if (haystack.includes('month')) return 'monthly';
-  if (haystack.includes('day') || haystack.includes('daily')) return 'daily';
+  if (haystack.includes('five') || haystack.includes('5h') || haystack.includes('5-hour') || haystack.includes('5 hour') || haystack.includes('5 小时')) return 'five_hour';
+  if (haystack.includes('week') || haystack.includes('seven_day') || haystack.includes('seven-day') || haystack.includes('7-day') || haystack.includes('周限额')) return 'weekly';
+  if (haystack.includes('month') || haystack.includes('月限额')) return 'monthly';
+  if (haystack.includes('day') || haystack.includes('daily') || haystack.includes('日限额')) return 'daily';
   const raw = String(window?.kind || window?.id || window?.label || '').toLowerCase();
   return raw || 'unknown';
+}
+
+function resolveAntigravityBucketMeta(window, provider = '') {
+  const isAg = String(provider || '').toLowerCase() === 'antigravity' || window?.kind === 'antigravity_bucket' || Boolean(window?.groupId || window?.groupLabel);
+  if (!isAg) {
+    return {
+      groupId: window?.groupId ? String(window.groupId) : '',
+      groupLabel: window?.groupLabel ? String(window.groupLabel) : '',
+      bucketLabel: window?.bucketLabel ? String(window.bucketLabel) : '',
+    };
+  }
+  const rawId = String(window?.id || window?.key || '').toLowerCase();
+  let groupId = String(window?.groupId || '').trim();
+  let groupLabel = String(window?.groupLabel || '').trim();
+  if (!groupId) {
+    if (rawId.startsWith('gemini-models')) groupId = 'gemini-models';
+    else if (rawId.startsWith('claude-and-gpt-models') || rawId.startsWith('claude-gpt-models')) groupId = 'claude-and-gpt-models';
+  }
+  const normGroup = (groupLabel || groupId).toLowerCase().replace(/[\s_]+/g, '-');
+  if (normGroup === 'gemini-models' || normGroup === 'group-gemini-models') {
+    groupLabel = 'Gemini 模型';
+  } else if (normGroup === 'claude-and-gpt-models' || normGroup === 'claude-gpt-models' || normGroup === 'group-claude-gpt-models') {
+    groupLabel = 'Claude 和 GPT 模型';
+  }
+  const rawBucket = String(window?.bucketLabel || window?.label || window?.window || '').trim();
+  const lowerBucket = rawBucket.toLowerCase();
+  let bucketLabel = rawBucket;
+  if (lowerBucket.includes('five') || lowerBucket.includes('5h') || lowerBucket.includes('5-hour') || lowerBucket.includes('5 hour') || lowerBucket.includes('5 小时')) {
+    bucketLabel = '5 小时限额';
+  } else if (lowerBucket.includes('week') || lowerBucket.includes('周限额')) {
+    bucketLabel = '周限额';
+  } else if (lowerBucket.includes('day') || lowerBucket.includes('daily') || lowerBucket.includes('日限额')) {
+    bucketLabel = '日限额';
+  } else if (lowerBucket.includes('month') || lowerBucket.includes('月限额')) {
+    bucketLabel = '月限额';
+  }
+  return { groupId, groupLabel, bucketLabel };
 }
 
 function durationSecondsFor(window) {
@@ -72,10 +109,23 @@ export function normalizeCredentialQuotaWindow(window, index = 0, nowMs = Date.n
   const stale = windowMode === 'fixed' && cycleEndMs != null && cycleEndMs <= nowMs;
   const rawScope = typeof window?.modelScope === 'string' ? window.modelScope.trim() : '';
   const resolvedScope = rawScope === 'model' ? 'model' : 'account';
+  const { groupId, groupLabel, bucketLabel } = resolveAntigravityBucketMeta(window, provider);
+  let baseKey = String(window?.id || window?.key || `${kind}-${index}`);
+  if (groupId && !baseKey.toLowerCase().startsWith(`${groupId.toLowerCase()}-`)) {
+    baseKey = `${groupId}-${baseKey}`;
+  }
+  let resolvedLabel = window?.label || bucketLabel || window?.id || kind;
+  if (groupLabel && bucketLabel && !String(resolvedLabel).includes(groupLabel)) {
+    resolvedLabel = `${groupLabel} · ${bucketLabel}`;
+  }
   return {
-    key: String(window?.id || window?.key || `${kind}-${index}`),
-    providerWindowId: String(window?.id || window?.key || `${kind}-${index}`),
-    label: window?.label || window?.id || kind,
+    key: baseKey,
+    providerWindowId: String(window?.id || window?.key || baseKey),
+    label: resolvedLabel,
+    groupId,
+    groupLabel,
+    bucketLabel: bucketLabel || resolvedLabel,
+    models: Array.isArray(window?.models) ? window.models : [],
     kind,
     windowMode,
     usedPercent,
@@ -103,26 +153,27 @@ export function buildQuotaUsageRanges(definition, nowMs = Date.now()) {
 
   if (definition.windowMode === 'rolling') {
     return [
-      { period: 'current', fromMs: nowMs - durationMs, toMs: nowMs },
-      { period: 'previous_equal_range', fromMs: nowMs - 2 * durationMs, toMs: nowMs - durationMs },
+      { period: 'current', fromMs: Math.round(nowMs - durationMs), toMs: Math.round(nowMs) },
+      { period: 'previous_equal_range', fromMs: Math.round(nowMs - 2 * durationMs), toMs: Math.round(nowMs - durationMs) },
     ].filter((r) => r.fromMs > 0 && r.fromMs < r.toMs);
   }
 
   if (definition.windowMode !== 'fixed' && definition.windowMode !== 'calendar') return [];
   if (definition.stale || definition.cycleStartMs == null || definition.cycleEndMs == null || definition.cycleEndMs <= nowMs) return [];
 
-  const currentEnd = Math.min(nowMs, definition.cycleEndMs);
+  const currentEnd = Math.round(Math.min(nowMs, definition.cycleEndMs));
+  const cycleStart = Math.round(definition.cycleStartMs);
   const ranges = [];
-  const currentFrom = definition.cycleStartMs < currentEnd
-    ? definition.cycleStartMs
+  const currentFrom = cycleStart < currentEnd
+    ? cycleStart
     : Math.max(1, currentEnd - 1);
   if (currentFrom < currentEnd) {
     ranges.push({ period: 'current', fromMs: currentFrom, toMs: currentEnd });
   }
   ranges.push({
     period: 'previous',
-    fromMs: definition.cycleStartMs - durationMs,
-    toMs: definition.cycleStartMs,
+    fromMs: Math.round(cycleStart - durationMs),
+    toMs: cycleStart,
   });
   return ranges.filter((r) => Number.isFinite(r.fromMs) && Number.isFinite(r.toMs) && r.fromMs > 0 && r.fromMs < r.toMs);
 }
@@ -193,9 +244,40 @@ function hasKnownModelScope(definition) {
   return definition.modelScope === 'account';
 }
 
+function encodeKeyPart(value) {
+  return encodeURIComponent(String(value ?? '')).replace(/'/g, '%27');
+}
+
+export function normalizeUsageRequestKey(rawKey) {
+  if (typeof rawKey !== 'string') return '';
+  return rawKey
+    .replace(/&#34;|&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
 function quotaUsageRequestKey(rowKey, definition, range) {
-  return [rowKey, definition.providerWindowId, range.period, range.fromMs, range.toMs,
-    JSON.stringify([definition.modelScope, definition.modelScopeModels, definition.usedPercent, definition.sampledAtMs])].join('\0');
+  // CPA 宿主对 schema_version < 6 的插件管理响应执行 html.EscapeString，会将双引号转义为 &#34;。
+  // 因此 request_key 禁止包含 " ' < > & 等会被 HTML 转义的字符，确保前后端原样匹配。
+  const models = Array.isArray(definition.modelScopeModels)
+    ? definition.modelScopeModels.map(encodeKeyPart).join(',')
+    : '';
+  const scopeSig = [
+    encodeKeyPart(definition.modelScope || ''),
+    models,
+    encodeKeyPart(definition.usedPercent ?? ''),
+    encodeKeyPart(definition.sampledAtMs ?? ''),
+  ].join(':');
+  return [
+    rowKey,
+    encodeKeyPart(definition.key || definition.providerWindowId),
+    encodeKeyPart(range.period),
+    range.fromMs,
+    range.toMs,
+    scopeSig,
+  ].join('\0');
 }
 
 export function resolveWindowUsagePresentation(definition, usageByRequestKey, credentialRowKey, nowMs = Date.now()) {
@@ -207,8 +289,9 @@ export function resolveWindowUsagePresentation(definition, usageByRequestKey, cr
     const range = ranges.find(range => range.period === period);
     if (!range) return null;
     const key = quotaUsageRequestKey(credentialRowKey, definition, range);
-    const item = usageByRequestKey.get(key);
-    return item?.request_key === key && item?.from_ms === range.fromMs && item?.to_ms === range.toMs ? item : null;
+    const item = usageByRequestKey.get(key) || usageByRequestKey.get(normalizeUsageRequestKey(key));
+    const itemKey = normalizeUsageRequestKey(item?.request_key);
+    return (item?.request_key === key || itemKey === normalizeUsageRequestKey(key)) && item?.from_ms === range.fromMs && item?.to_ms === range.toMs ? item : null;
   };
   const currentItem = itemFor('current');
   const previousItem = itemFor('previous') || itemFor('previous_equal_range');

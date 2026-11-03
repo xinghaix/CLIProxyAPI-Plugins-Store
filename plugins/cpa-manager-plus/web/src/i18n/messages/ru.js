@@ -487,11 +487,13 @@ export default {
       filters: {
         all: 'Все',
         allStatuses: 'Все статусы',
+        enabledOnly: 'Только включённые',
         available: 'Доступны',
         attention: 'Требуют внимания',
         quotaRisk: 'Риск квоты',
         disabled: 'Отключены',
       },
+      bucketModels: 'Модели в группе: {models}',
       kpi: {
         total: 'Всего учёток',
         totalSub: 'OAuth-учётки в этом списке',

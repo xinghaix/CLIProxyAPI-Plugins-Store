@@ -268,7 +268,7 @@ func handleResource(requestPath string) managementResponse {
 	if err != nil {
 		return jsonResponse(http.StatusNotFound, map[string]any{"error": "resource not found"})
 	}
-	return managementResponse{StatusCode: http.StatusOK, Headers: http.Header{"Content-Type": []string{contentTypeHTML}}, Body: append([]byte(nil), body...)}
+	return managementResponse{StatusCode: http.StatusOK, Headers: http.Header{"Content-Type": []string{contentTypeHTML}, "Cache-Control": []string{"no-store, no-cache, must-revalidate"}}, Body: append([]byte(nil), body...)}
 }
 func resourceFileForPath(requestPath string) (string, bool) {
 	cleaned := path.Clean("/" + strings.TrimSpace(requestPath))

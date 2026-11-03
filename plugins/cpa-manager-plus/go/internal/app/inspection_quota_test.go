@@ -181,18 +181,32 @@ func TestBuildAntigravityQuotaKeepsGroupsAndRemainingDirection(t *testing.T) {
 		"groups": []any{
 			map[string]any{
 				"displayName": "Gemini models",
+				"description": "Models within this group: Gemini 2.5 Pro, Gemini 3 Flash",
 				"buckets": []any{
 					map[string]any{"bucketId": "five", "displayName": "5 hour limit", "window": "5h", "remainingFraction": 0.8, "resetTime": "2026-09-01T00:00:00Z"},
 				},
 			},
+			map[string]any{
+				"displayName": "Claude and GPT Models",
+				"description": "Models within this group: Claude Sonnet 4.5, GPT-OSS 120B",
+				"buckets": []any{
+					map[string]any{"bucketId": "five", "displayName": "Five Hour Limit Remaining", "window": "5h", "remainingFraction": 1.0, "resetTime": "2026-09-01T00:00:00Z"},
+				},
+			},
 		},
 	})
-	if len(groups) != 1 || len(groups[0]["buckets"].([]map[string]any)) != 1 || len(windows) != 1 {
+	if len(groups) != 2 || len(groups[0]["buckets"].([]map[string]any)) != 1 || len(windows) != 2 {
 		t.Fatalf("groups/windows = %#v %#v", groups, windows)
 	}
 	used, _ := windows[0]["usedPercent"].(float64)
 	if windows[0]["remainingPercent"] != float64(80) || used < 19.99 || used > 20.01 || windows[0]["periodHours"] != float64(5) {
 		t.Fatalf("Antigravity bucket = %#v", windows[0])
+	}
+	if windows[0]["id"] == windows[1]["id"] || windows[0]["groupLabel"] != "Gemini 模型" || windows[1]["groupLabel"] != "Claude 和 GPT 模型" {
+		t.Fatalf("Antigravity two buckets not distinguished: %#v vs %#v", windows[0], windows[1])
+	}
+	if windows[0]["label"] != "Gemini 模型 · 5 小时限额" || windows[1]["label"] != "Claude 和 GPT 模型 · 5 小时限额" {
+		t.Fatalf("Antigravity combined labels = %q, %q", windows[0]["label"], windows[1]["label"])
 	}
 }
 

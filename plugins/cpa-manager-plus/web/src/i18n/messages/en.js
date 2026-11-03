@@ -612,11 +612,13 @@ export default {
       filters: {
         all: 'All',
         allStatuses: 'All statuses',
+        enabledOnly: 'Enabled only',
         available: 'Available',
         attention: 'Needs attention',
         quotaRisk: 'Quota risk',
         disabled: 'Disabled',
       },
+      bucketModels: 'Models in group: {models}',
       kpi: {
         total: 'Total credentials',
         totalSub: 'OAuth credentials managed here',

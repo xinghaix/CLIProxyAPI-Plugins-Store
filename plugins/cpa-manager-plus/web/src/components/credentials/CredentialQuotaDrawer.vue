@@ -91,75 +91,98 @@
       </div>
 
       <div v-else-if="activeTab === 'quota'" class="cred-drawer-body">
-        <div class="cred-drawer-section-title">{{ t('monitoring.credentials.drawer.totalUsage') }}</div>
-        <p class="muted small-text">{{ historyRangeLabel }}</p>
+        <div class="cred-drawer-section-head">
+          <div class="cred-drawer-section-title">{{ t('monitoring.credentials.drawer.totalUsage') }}</div>
+          <span v-if="historyRangeLabel" class="muted small-text">{{ historyRangeLabel }}</span>
+        </div>
         <MetricGrid class="cred-kpi-grid cred-quota-summary" :cards="historyCards" />
 
-        <div class="cred-drawer-section-title">{{ t('monitoring.credentials.drawer.standardQuota') }}</div>
+        <div class="cred-drawer-section-head">
+          <div class="cred-drawer-section-title">{{ t('monitoring.credentials.drawer.standardQuota') }}</div>
+          <span v-if="windowCards.length" class="muted small-text">{{ t('monitoring.credentials.drawer.windowFooter') }}</span>
+        </div>
         <div v-if="!windowCards.length" class="empty">{{ probing ? t('monitoring.authCard.querying') : t('monitoring.authCard.noQuota') }}</div>
-        <article v-for="card in windowCards" :key="card.key" class="cred-window-card">
-          <div class="cred-window-head">
-            <div class="cred-window-head-main">
-              <span class="cred-window-icon" :data-kind="card.kind || 'unknown'" aria-hidden="true"></span>
-              <div>
+        <div
+          v-for="group in windowGroups"
+          :key="group.key"
+          :class="group.groupLabel ? 'cred-drawer-bucket' : 'cred-drawer-plain-group'"
+        >
+          <header v-if="group.groupLabel" class="cred-drawer-bucket-head">
+            <strong class="cred-drawer-bucket-title">{{ group.groupLabel }}</strong>
+            <span v-if="group.models?.length" class="muted small-text cred-drawer-bucket-models">
+              {{ t('monitoring.credentials.bucketModels', { models: group.models.join(', ') }) }}
+            </span>
+          </header>
+
+          <article v-for="card in group.cards" :key="card.key" class="cred-window-card">
+            <div class="cred-window-head">
+              <div class="cred-window-head-main">
+                <span class="cred-window-icon" :data-kind="card.kind || 'unknown'" aria-hidden="true"></span>
                 <div class="cred-window-title-row">
-                  <strong>{{ card.label }}</strong>
+                  <strong>{{ group.groupLabel ? (card.bucketLabel || card.label) : card.label }}</strong>
                   <span v-if="card.resetLabel" class="cred-reset-badge">{{ t('monitoring.credentials.drawer.resetAt', { time: card.resetLabel }) }}</span>
                 </div>
               </div>
-            </div>
-            <div class="cred-window-remaining" :class="{ 'cred-rem-depleted': isDepleted(card.remainingPercent) }">
-              <span>{{ t('monitoring.credentials.drawer.remainingLabel') }}</span>
-              <b>{{ remainingText(card.remainingPercent) }}</b>
-            </div>
-          </div>
-          <div class="quota-bar thick" :class="[quotaTone(card.remainingPercent), { depleted: isDepleted(card.remainingPercent) }]">
-            <span :style="{ width: `${clamp(card.remainingPercent)}%` }"></span>
-          </div>
-          <div class="cred-window-cols">
-            <div class="cred-window-col">
-              <div class="cred-window-col-title">{{ previousTitle(card) }}</div>
-              <div class="cred-window-col-sub muted small-text">{{ card.previousRangeLabel || '\u00a0' }}</div>
-              <UsageMetrics
-                :metrics="card.previous"
-                :format-compact="formatCompactNum"
-                :format-percent="formatPercent"
-                :format-cost-text="formatCostText"
-                :labels="usageLabels"
-              />
-            </div>
-            <div class="cred-window-col">
-              <div class="cred-window-col-title">{{ t('monitoring.credentials.drawer.current') }}</div>
-              <div class="cred-window-col-sub muted small-text">{{ card.currentRangeLabel || '\u00a0' }}</div>
-              <UsageMetrics
-                :metrics="card.current"
-                :format-compact="formatCompactNum"
-                :format-percent="formatPercent"
-                :format-cost-text="formatCostText"
-                :labels="usageLabels"
-              />
-            </div>
-            <div class="cred-window-col cred-window-col-forecast">
-              <div class="cred-window-col-title">{{ t('monitoring.credentials.drawer.forecast') }}</div>
-              <div class="cred-window-col-sub muted small-text">
-                <template v-if="card.forecast?.basis">{{ t(`monitoring.credentials.drawer.forecastBasis.${card.forecast.basis}`) }}</template>
-                <template v-else>&nbsp;</template>
+              <div class="cred-window-bar-inline">
+                <div class="quota-bar thick" :class="[quotaTone(card.remainingPercent), { depleted: isDepleted(card.remainingPercent) }]">
+                  <span :style="{ width: `${clamp(card.remainingPercent)}%` }"></span>
+                </div>
               </div>
-              <UsageMetrics
-                :metrics="card.forecast"
-                :format-compact="formatCompactNum"
-                :format-percent="formatPercent"
-                :format-cost-text="formatCostText"
-                :labels="forecastLabels"
-                forecast
-              />
-              <div v-if="card.forecast" class="muted small-text cred-forecast-note">
-                {{ t('monitoring.credentials.drawer.forecastSuccessUnavailable') }}
+              <div class="cred-window-remaining" :class="{ 'cred-rem-depleted': isDepleted(card.remainingPercent) }">
+                <span>{{ t('monitoring.credentials.drawer.remainingLabel') }}</span>
+                <b>{{ remainingText(card.remainingPercent) }}</b>
               </div>
             </div>
-          </div>
-          <p class="muted small-text cred-window-footer">{{ t('monitoring.credentials.drawer.windowFooter') }}</p>
-        </article>
+            <div class="cred-window-cols">
+              <div class="cred-window-col">
+                <div class="cred-window-col-head">
+                  <span class="cred-window-col-title">{{ previousTitle(card) }}</span>
+                  <span class="cred-window-col-sub muted small-text">{{ card.previousRangeLabel || '\u00a0' }}</span>
+                </div>
+                <UsageMetrics
+                  :metrics="card.previous"
+                  :format-compact="formatCompactNum"
+                  :format-percent="formatPercent"
+                  :format-cost-text="formatCostText"
+                  :labels="usageLabels"
+                />
+              </div>
+              <div class="cred-window-col">
+                <div class="cred-window-col-head">
+                  <span class="cred-window-col-title">{{ t('monitoring.credentials.drawer.current') }}</span>
+                  <span class="cred-window-col-sub muted small-text">{{ card.currentRangeLabel || '\u00a0' }}</span>
+                </div>
+                <UsageMetrics
+                  :metrics="card.current"
+                  :format-compact="formatCompactNum"
+                  :format-percent="formatPercent"
+                  :format-cost-text="formatCostText"
+                  :labels="usageLabels"
+                />
+              </div>
+              <div class="cred-window-col cred-window-col-forecast">
+                <div class="cred-window-col-head">
+                  <span class="cred-window-col-title">{{ t('monitoring.credentials.drawer.forecast') }}</span>
+                  <span class="cred-window-col-sub muted small-text">
+                    <template v-if="card.forecast?.basis">{{ t(`monitoring.credentials.drawer.forecastBasis.${card.forecast.basis}`) }}</template>
+                    <template v-else>&nbsp;</template>
+                  </span>
+                </div>
+                <UsageMetrics
+                  :metrics="card.forecast"
+                  :format-compact="formatCompactNum"
+                  :format-percent="formatPercent"
+                  :format-cost-text="formatCostText"
+                  :labels="forecastLabels"
+                  forecast
+                />
+                <div v-if="card.forecast" class="muted small-text cred-forecast-note">
+                  {{ t('monitoring.credentials.drawer.forecastSuccessUnavailable') }}
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
       </div>
 
 
@@ -347,6 +370,34 @@ const historyCards = computed(() => [
     iconClass: 'tone-green',
   },
 ]);
+
+const windowGroups = computed(() => {
+  const cards = Array.isArray(props.windowCards) ? props.windowCards : [];
+  const hasBuckets = cards.some((c) => Boolean(c?.groupLabel));
+  if (!hasBuckets) {
+    return [{ key: 'default', groupLabel: '', models: [], cards }];
+  }
+  const groups = [];
+  const byKey = new Map();
+  for (const card of cards) {
+    const key = card.groupId || card.groupLabel || 'default';
+    let group = byKey.get(key);
+    if (!group) {
+      group = {
+        key,
+        groupLabel: card.groupLabel || '',
+        models: Array.isArray(card.models) ? card.models : [],
+        cards: [],
+      };
+      byKey.set(key, group);
+      groups.push(group);
+    } else if (!group.models?.length && Array.isArray(card.models) && card.models.length) {
+      group.models = card.models;
+    }
+    group.cards.push(card);
+  }
+  return groups;
+});
 
 const historyRangeLabel = computed(() => {
   if (!props.historyFromMs || !props.historyToMs) return '';

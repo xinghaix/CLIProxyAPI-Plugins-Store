@@ -69,6 +69,7 @@ import {
 import {
   buildAccountWindowUsageTargets,
   credentialQuotaWindowsFromProbe,
+  normalizeUsageRequestKey,
   resolveWindowUsagePresentation,
 } from '../../utils/quotaWindowRanges.js';
 import {
@@ -97,7 +98,7 @@ const error = ref('');
 const rows = ref([]);
 const usageByRequestKey = ref(new Map());
 const providerFilter = ref('all');
-const statusFilter = ref('all');
+const statusFilter = ref('enabled');
 const sortBy = ref('default');
 const search = ref('');
 const selectedRowKey = ref('');
@@ -137,7 +138,13 @@ const filteredRows = computed(() => {
   const q = search.value.trim().toLowerCase();
   const list = rows.value.filter((row) => {
     if (providerFilter.value !== 'all' && row.provider !== providerFilter.value) return false;
-    if (statusFilter.value !== 'all' && row.statusBucket !== statusFilter.value) return false;
+    if (statusFilter.value === 'enabled') {
+      if (row.disabled) return false;
+    } else if (statusFilter.value === 'disabled') {
+      if (!row.disabled) return false;
+    } else if (statusFilter.value !== 'all' && row.statusBucket !== statusFilter.value) {
+      return false;
+    }
     if (!q) return true;
     if (row.searchText) return row.searchText.includes(q);
     const hay = [row.displayName, row.email, row.fileName, row.note, row.authIndex, row.provider, row.planLabel]
@@ -200,6 +207,10 @@ const selectedWindowCards = computed(() => {
       key: definition.key,
       kind: definition.kind,
       label: definition.label,
+      groupId: definition.groupId || '',
+      groupLabel: definition.groupLabel || '',
+      bucketLabel: definition.bucketLabel || definition.label,
+      models: Array.isArray(definition.models) ? definition.models : [],
       remainingPercent: definition.remainingPercent,
       usedPercent: definition.usedPercent,
       resetLabel: formatResetShort(definition.resetAtMs),
@@ -232,7 +243,7 @@ function formatResetShort(resetAtMs) {
 
 function buildQuotaDisplays(row, usageMap) {
   const windows = row.quotaWindows || [];
-  return windows.slice(0, 3).map((definition) => {
+  return windows.slice(0, 6).map((definition) => {
     const presentation = resolveWindowUsagePresentation(definition, usageMap, row.rowKey);
     const shortLabel = shortWindowLabel(definition.label, definition.kind);
     const current = presentation.current;
@@ -252,6 +263,9 @@ function buildQuotaDisplays(row, usageMap) {
     return {
       key: definition.key,
       shortLabel,
+      groupId: definition.groupId || '',
+      groupLabel: definition.groupLabel || '',
+      bucketLabel: definition.bucketLabel || shortLabel,
       remainingPercent: definition.remainingPercent,
       resetRel: resetRel || '',
       usageLine: parts.join(' · ') || (resetRel || ''),
@@ -422,12 +436,29 @@ function applyQuotaState(row, probe, windows) {
     probeFailureSummary: isProbeFailure(probe) ? (probeFailureMessage(probe) || t('monitoring.credentials.availability.probeFailed')) : '',
     primaryQuota: windows[0] ? { label: windows[0].label, remainingPercent: windows[0].remainingPercent } : null,
     minRemainingPercent: computeMinRemaining(windows),
-    extraQuotaCount: Math.max(0, (windows?.length || 0) - 3),
+    extraQuotaCount: Math.max(0, (windows?.length || 0) - 6),
     searchText: [row.displayName, row.email, row.fileName, row.note, row.authIndex, row.provider, planLabel, availability.label]
       .map((v) => String(v || '').toLowerCase())
       .join(' '),
   });
   row.quotaDisplays = buildQuotaDisplays(row, usageByRequestKey.value);
+}
+
+function mergeUsageResponseItems(nextMap, payloadTargets, items) {
+  const expected = new Map();
+  for (const target of payloadTargets) {
+    expected.set(target.request_key, target);
+    expected.set(normalizeUsageRequestKey(target.request_key), target);
+  }
+  for (const item of Array.isArray(items) ? items : []) {
+    const rawKey = item?.request_key;
+    const normKey = normalizeUsageRequestKey(rawKey);
+    const target = expected.get(rawKey) || expected.get(normKey);
+    if (target && item.from_ms === target.from_ms && item.to_ms === target.to_ms && item.period === target.period) {
+      const canonical = item.request_key === target.request_key ? item : { ...item, request_key: target.request_key };
+      nextMap.set(target.request_key, canonical);
+    }
+  }
 }
 
 async function refreshSelectedQuota({ force = true } = {}) {
@@ -440,7 +471,7 @@ async function refreshSelectedQuota({ force = true } = {}) {
   enrichingRowKey.value = row.rowKey;
   drawerNotice.value = '';
   try {
-    const inventoryWindows = !force && !row.probe && row.quotaWindows?.some(w => !w.stale && !(w.cycleEndMs != null && w.cycleEndMs <= Date.now()) && w.modelScope && w.modelScope !== 'unknown');
+    const inventoryWindows = !force && !row.probe && Boolean(row.quotaWindows?.length) && row.quotaWindows.every(w => !w.stale && !(w.cycleEndMs != null && w.cycleEndMs <= Date.now()) && w.modelScope && w.modelScope !== 'unknown');
     const probe = inventoryWindows
       ? { quotaWindows: row.quotaWindows.map(w => w.raw || w) }
       : await probeCredential(row, { force });
@@ -462,14 +493,8 @@ async function refreshSelectedQuota({ force = true } = {}) {
           body: { windows: payloadTargets },
         });
         if (!isCurrent()) return;
-        const expected = new Map(payloadTargets.map(target => [target.request_key, target]));
         const next = new Map(usageByRequestKey.value);
-        for (const item of Array.isArray(resp?.items) ? resp.items : []) {
-          const target = expected.get(item?.request_key);
-          if (target && item.from_ms === target.from_ms && item.to_ms === target.to_ms && item.period === target.period) {
-            next.set(item.request_key, item);
-          }
-        }
+        mergeUsageResponseItems(next, payloadTargets, resp?.items);
         usageByRequestKey.value = next;
         row.quotaDisplays = buildQuotaDisplays(row, next);
       } catch (err) {
@@ -509,14 +534,8 @@ async function refreshRowQuota(row, { force = true } = {}) {
           body: { windows: payloadTargets },
         });
         if (inventoryGeneration !== loadGeneration) return;
-        const expected = new Map(payloadTargets.map(target => [target.request_key, target]));
         const next = new Map(usageByRequestKey.value);
-        for (const item of Array.isArray(resp?.items) ? resp.items : []) {
-          const target = expected.get(item?.request_key);
-          if (target && item.from_ms === target.from_ms && item.to_ms === target.to_ms && item.period === target.period) {
-            next.set(item.request_key, item);
-          }
-        }
+        mergeUsageResponseItems(next, payloadTargets, resp?.items);
         usageByRequestKey.value = next;
         row.quotaDisplays = buildQuotaDisplays(row, next);
       } catch {
@@ -575,13 +594,7 @@ async function probeAllVisible() {
             body: { windows: chunk },
           });
           if (inventoryGeneration !== loadGeneration) return;
-          const expected = new Map(chunk.map(target => [target.request_key, target]));
-          for (const item of Array.isArray(resp?.items) ? resp.items : []) {
-            const target = expected.get(item?.request_key);
-            if (target && item.from_ms === target.from_ms && item.to_ms === target.to_ms && item.period === target.period) {
-              next.set(item.request_key, item);
-            }
-          }
+          mergeUsageResponseItems(next, chunk, resp?.items);
         } catch {
           /* ignore chunk failure */
         }

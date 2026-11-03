@@ -218,4 +218,60 @@ describe('credential async ownership', () => {
     state.openDrawer(state.rows[0], null, 'diagnostics');
     expect(state.drawerInitialTab).toBe('overview');
   });
+
+  it('defaults to enabled-only filter and supports switching to disabled or all', async () => {
+    const items = [
+      { ...credential, rowKey: 'enabled-1', authIndex: 'e1', disabled: false },
+      { ...credential, rowKey: 'disabled-1', authIndex: 'd1', disabled: true },
+    ];
+    const proxyCall = vi.fn(() => Promise.resolve({ items }));
+    const state = mount(CredentialsTab, proxyCall, true); await flush();
+
+    expect(state.statusFilter).toBe('enabled');
+    expect(state.filteredRows.map(r => r.rowKey)).toEqual(['enabled-1']);
+
+    state.statusFilter = 'disabled';
+    expect(state.filteredRows.map(r => r.rowKey)).toEqual(['disabled-1']);
+
+    state.statusFilter = 'all';
+    expect(state.filteredRows.map(r => r.rowKey)).toEqual(['enabled-1', 'disabled-1']);
+  });
+
+  it('distinguishes Antigravity 2 buckets (4 windows) and survives host HTML entity escaping on request_key', async () => {
+    const agWindows = [
+      { id: 'gemini-models-bucket-1', kind: 'antigravity_bucket', label: 'Weekly Limit Remaining', remainingPercent: 100, usedPercent: 0, resetAt: '2026-09-20T10:00:00Z' },
+      { id: 'gemini-models-bucket-2', kind: 'antigravity_bucket', label: 'Five Hour Limit Remaining', remainingPercent: 100, usedPercent: 0, resetAt: '2026-09-17T12:00:00Z' },
+      { id: 'claude-and-gpt-models-bucket-1', kind: 'antigravity_bucket', label: 'Weekly Limit Remaining', remainingPercent: 80, usedPercent: 20, resetAt: '2026-09-20T10:00:00Z' },
+      { id: 'claude-and-gpt-models-bucket-2', kind: 'antigravity_bucket', label: 'Five Hour Limit Remaining', remainingPercent: 60, usedPercent: 40, resetAt: '2026-09-17T12:00:00Z' },
+    ];
+    const escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&#34;').replace(/'/g, '&#39;');
+    const proxyCall = vi.fn(payload => {
+      if (payload.method === 'GET') {
+        return Promise.resolve({ items: [{ ...credential, provider: 'antigravity', quotaWindows: agWindows }] });
+      }
+      if (payload.path.endsWith('/account-window-usage')) {
+        const res = usageResponse(payload.body.windows);
+        return Promise.resolve({
+          items: res.items.map(item => ({ ...item, request_key: escapeHtml(item.request_key) })),
+        });
+      }
+      throw new Error('unexpected call');
+    });
+    const state = mount(CredentialsTab, proxyCall, true); await flush();
+    expect(state.rows[0].quotaDisplays).toHaveLength(4);
+    expect(state.rows[0].quotaDisplays.map(d => d.groupLabel)).toEqual([
+      'Gemini 模型',
+      'Gemini 模型',
+      'Claude 和 GPT 模型',
+      'Claude 和 GPT 模型',
+    ]);
+
+    state.openDrawer(state.rows[0]); await flush();
+    expect(state.selectedWindowCards).toHaveLength(4);
+    expect(state.selectedWindowCards[0].groupLabel).toBe('Gemini 模型');
+    expect(state.selectedWindowCards[2].groupLabel).toBe('Claude 和 GPT 模型');
+    expect(state.selectedWindowCards[0].current).toMatchObject({ requests: 10, tokens: 1000, cost: 2 });
+    expect(state.selectedWindowCards[2].current).toMatchObject({ requests: 10, tokens: 1000, cost: 2 });
+    expect(state.selectedWindowCards[0].currentRangeLabel).not.toBe('');
+  });
 });

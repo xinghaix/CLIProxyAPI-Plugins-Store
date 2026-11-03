@@ -98,14 +98,26 @@ export function quotaBarTone(remaining) {
 export function shortWindowLabel(label, kind) {
   const raw = String(label || kind || '').trim();
   const lower = raw.toLowerCase();
-  if (lower.includes('five') || lower.includes('5h') || lower.includes('5-hour') || lower === 'five_hour') {
-    return '5h';
+  let groupPrefix = '';
+  if (lower.includes('gemini')) {
+    groupPrefix = 'Gemini';
+  } else if (lower.includes('claude') || lower.includes('gpt')) {
+    groupPrefix = 'Claude/GPT';
   }
-  if (lower.includes('week')) return 'Weekly';
-  if (lower.includes('month')) return 'Monthly';
-  if (lower.includes('day') || lower.includes('daily')) return 'Daily';
-  if (raw.length <= 12) return raw;
-  return raw.slice(0, 10);
+  let period = '';
+  if (lower.includes('five') || lower.includes('5h') || lower.includes('5-hour') || lower.includes('5 hour') || lower.includes('5 小时') || lower === 'five_hour') {
+    period = '5h';
+  } else if (lower.includes('week') || lower.includes('周限额')) {
+    period = raw.includes('周') ? '周限额' : 'Weekly';
+  } else if (lower.includes('month') || lower.includes('月限额')) {
+    period = raw.includes('月') ? '月限额' : 'Monthly';
+  } else if (lower.includes('day') || lower.includes('daily') || lower.includes('日限额')) {
+    period = raw.includes('日') ? '日限额' : 'Daily';
+  }
+  if (groupPrefix && period) return `${groupPrefix} · ${period}`;
+  if (period) return period;
+  if (raw.length <= 14) return raw;
+  return raw.slice(0, 12);
 }
 
 /**

@@ -51,7 +51,28 @@
           :placeholder="t('monitoring.credentials.searchPlaceholder')"
           @input="$emit('update:search', $event.target.value)"
         />
+        <div class="segmented-control cred-scope-pills" role="group" :aria-label="t('monitoring.credentials.columns.availability')">
+          <button
+            type="button"
+            class="seg-btn"
+            :class="{ active: statusFilter === 'enabled' }"
+            @click="$emit('update:statusFilter', 'enabled')"
+          >{{ t('monitoring.credentials.filters.enabledOnly') }}</button>
+          <button
+            type="button"
+            class="seg-btn"
+            :class="{ active: statusFilter === 'disabled' }"
+            @click="$emit('update:statusFilter', 'disabled')"
+          >{{ t('monitoring.credentials.filters.disabled') }}</button>
+          <button
+            type="button"
+            class="seg-btn"
+            :class="{ active: statusFilter === 'all' }"
+            @click="$emit('update:statusFilter', 'all')"
+          >{{ t('monitoring.credentials.filters.all') }}</button>
+        </div>
         <select class="control compact" :value="statusFilter" @change="$emit('update:statusFilter', $event.target.value)">
+          <option value="enabled">{{ t('monitoring.credentials.filters.enabledOnly') }}</option>
           <option value="all">{{ t('monitoring.credentials.filters.allStatuses') }}</option>
           <option value="available">{{ t('monitoring.credentials.filters.available') }}</option>
           <option value="attention">{{ t('monitoring.credentials.filters.attention') }}</option>
@@ -174,9 +195,44 @@
           </button>
         </header>
 
-        <!-- Body: Aggregated Quota Windows -->
+        <!-- Body: Aggregated Quota Windows (Grouped by Bucket or Compact Rectangular Grid) -->
         <section class="cred-card-quota-section">
-          <div v-if="row.quotaDisplays?.length" class="cred-quota-stack">
+          <div v-if="hasGroupedBuckets(row)" class="cred-quota-buckets">
+            <div
+              v-for="bucket in groupQuotaBuckets(row)"
+              :key="bucket.key"
+              class="cred-bucket-box"
+            >
+              <div class="cred-bucket-title">{{ bucket.label }}</div>
+              <div class="cred-bucket-items">
+                <div
+                  v-for="qw in bucket.items"
+                  :key="qw.key"
+                  class="quota-row"
+                  :title="qw.title"
+                >
+                  <div class="quota-row-header">
+                    <div class="quota-row-left">
+                      <span class="quota-row-label">{{ qw.bucketLabel || qw.shortLabel }}</span>
+                      <span v-if="qw.usageLine" class="quota-usage-line muted">{{ qw.usageLine }}</span>
+                    </div>
+                    <b class="quota-row-pct" :class="{ 'cred-rem-depleted': isDepleted(qw.remainingPercent) }">
+                      {{ remainingText(qw.remainingPercent) }}
+                    </b>
+                  </div>
+                  <div class="quota-bar" :class="[quotaTone(qw.remainingPercent), { depleted: isDepleted(qw.remainingPercent) }]">
+                    <span :style="{ width: `${clamp(qw.remainingPercent)}%` }"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-else-if="row.quotaDisplays?.length"
+            class="cred-quota-stack"
+            :class="{ 'cred-quota-stack--grid': row.quotaDisplays.length >= 2 }"
+          >
             <div
               v-for="qw in row.quotaDisplays"
               :key="qw.key"
@@ -333,11 +389,34 @@ const kpiCards = computed(() => {
 });
 
 function toggleKpiFilter(filterValue) {
-  if (filterValue === 'all' || props.statusFilter === filterValue) {
-    emit('update:statusFilter', 'all');
+  if (filterValue === 'all') {
+    emit('update:statusFilter', props.statusFilter === 'all' ? 'enabled' : 'all');
+  } else if (props.statusFilter === filterValue) {
+    emit('update:statusFilter', 'enabled');
   } else {
     emit('update:statusFilter', filterValue);
   }
+}
+
+function hasGroupedBuckets(row) {
+  return Array.isArray(row?.quotaDisplays) && row.quotaDisplays.some((qw) => Boolean(qw?.groupLabel));
+}
+
+function groupQuotaBuckets(row) {
+  const list = Array.isArray(row?.quotaDisplays) ? row.quotaDisplays : [];
+  const buckets = [];
+  const byKey = new Map();
+  for (const qw of list) {
+    const key = qw.groupId || qw.groupLabel || 'default';
+    let group = byKey.get(key);
+    if (!group) {
+      group = { key, label: qw.groupLabel || qw.shortLabel, items: [] };
+      byKey.set(key, group);
+      buckets.push(group);
+    }
+    group.items.push(qw);
+  }
+  return buckets;
 }
 
 function fmtCompact(value) {

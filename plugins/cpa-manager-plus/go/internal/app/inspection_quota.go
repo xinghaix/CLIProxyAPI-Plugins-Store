@@ -1056,10 +1056,13 @@ func buildAntigravityQuota(root map[string]any) (groups []map[string]any, window
 		if groupID == "" {
 			groupID = fmt.Sprintf("quota-group-%d", groupIndex+1)
 		}
-		parsedGroup := map[string]any{"id": groupID, "label": label}
+		groupLabel := store.LocalizeAntigravityGroupLabel(label)
+		parsedGroup := map[string]any{"id": groupID, "label": groupLabel}
+		var groupModels []string
 		if description := firstString(group, "description"); description != "" {
 			parsedGroup["description"] = description
 			if models := parseAntigravityGroupModels(label, description); len(models) > 0 {
+				groupModels = models
 				parsedGroup["models"] = models
 			}
 		}
@@ -1073,18 +1076,21 @@ func buildAntigravityQuota(root map[string]any) (groups []map[string]any, window
 			if !ok {
 				continue
 			}
-			bucketID := firstString(bucket, "bucketId", "bucket_id")
+			rawBucketID := firstString(bucket, "bucketId", "bucket_id")
+			bucketID := rawBucketID
 			if bucketID == "" {
 				bucketID = fmt.Sprintf("%s-bucket-%d", groupID, bucketIndex+1)
 			}
-			bucketLabel := firstString(bucket, "displayName", "display_name")
-			if bucketLabel == "" {
-				bucketLabel = bucketID
+			rawBucketLabel := firstString(bucket, "displayName", "display_name")
+			if rawBucketLabel == "" {
+				rawBucketLabel = bucketID
 			}
+			winStr := firstString(bucket, "window")
+			bucketShortLabel := store.LocalizeAntigravityBucketLabel(rawBucketLabel, winStr)
 			parsedBucket := map[string]any{
 				"id":                bucketID,
-				"label":             bucketLabel,
-				"window":            firstString(bucket, "window"),
+				"label":             bucketShortLabel,
+				"window":            winStr,
 				"remainingFraction": clampFraction(fraction),
 				"remainingPercent":  clampInspectionPercent(clampFraction(fraction) * 100),
 			}
@@ -1094,18 +1100,33 @@ func buildAntigravityQuota(root map[string]any) (groups []map[string]any, window
 			if description := firstString(bucket, "description"); description != "" {
 				parsedBucket["description"] = description
 			}
-			if period := antigravityPeriodHours(firstString(bucket, "window"), bucketLabel, bucketID); period != nil {
+			if period := antigravityPeriodHours(winStr, rawBucketLabel, bucketID); period != nil {
 				parsedBucket["periodHours"] = period
 			}
 			buckets = append(buckets, parsedBucket)
 			used := clampInspectionPercent((1 - clampFraction(fraction)) * 100)
+			flatID := bucketID
+			if !strings.HasPrefix(normalizeInspectionWindowID(flatID), groupID+"-") {
+				suffix := normalizeInspectionWindowID(firstNonEmpty(rawBucketID, winStr, rawBucketLabel, fmt.Sprintf("bucket-%d", bucketIndex+1)))
+				flatID = fmt.Sprintf("%s-%s", groupID, suffix)
+			}
+			combinedLabel := bucketShortLabel
+			if groupLabel != "" && !strings.Contains(combinedLabel, groupLabel) {
+				combinedLabel = groupLabel + " · " + bucketShortLabel
+			}
 			flat := map[string]any{
-				"id":                bucketID,
+				"id":                flatID,
 				"kind":              "antigravity_bucket",
-				"label":             bucketLabel,
+				"groupId":           groupID,
+				"groupLabel":        groupLabel,
+				"bucketLabel":       bucketShortLabel,
+				"label":             combinedLabel,
 				"usedPercent":       used,
 				"remainingPercent":  clampInspectionPercent(clampFraction(fraction) * 100),
 				"remainingFraction": clampFraction(fraction),
+			}
+			if len(groupModels) > 0 {
+				flat["models"] = groupModels
 			}
 			for _, key := range []string{"resetAt", "periodHours", "window", "description"} {
 				if value, exists := parsedBucket[key]; exists {
