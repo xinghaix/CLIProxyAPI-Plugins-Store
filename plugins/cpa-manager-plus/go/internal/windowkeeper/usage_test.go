@@ -89,6 +89,18 @@ func TestExplicitStartAndPlanMismatch(t *testing.T) {
 	}
 }
 
+func TestGroupClassifiesOfficialCodexPlanTiers(t *testing.T) {
+	if Group("promax") != GroupProAndAbove || Group("pro_max") != GroupProAndAbove || Group("prolite") != GroupProAndAbove || Group("pro") != GroupProAndAbove {
+		t.Fatalf("expected promax/prolite/pro in GroupProAndAbove")
+	}
+	if Group("go") != GroupPlusTeam || Group("self_serve_business_prolite") != GroupPlusTeam || Group("team") != GroupPlusTeam {
+		t.Fatalf("expected go/self_serve_business_prolite/team in GroupPlusTeam")
+	}
+	if Group("free_workspace") != GroupFree || Group("k12") != GroupFree {
+		t.Fatalf("expected free_workspace/k12 in GroupFree")
+	}
+}
+
 func countGating(windows []Window) int {
 	c := 0
 	for _, w := range windows {

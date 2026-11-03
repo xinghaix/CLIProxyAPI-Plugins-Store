@@ -292,7 +292,7 @@ async function loadCredentials() {
       const hist = item.history || null;
       const lastMs = hist?.lastSeenMs || null;
       const cachedProbe = getQuotaCacheEntry(credentialQuotaCacheKey(item))?.result || null;
-      const quotaWindows = credentialQuotaWindowsFromProbe(cachedProbe || item, nowMs.value);
+      const quotaWindows = credentialQuotaWindowsFromProbe(cachedProbe || item, nowMs.value, item.provider);
       const row = {
         ...item,
         rowKey: item.rowKey || item.authIndex || item.fileName,

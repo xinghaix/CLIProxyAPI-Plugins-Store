@@ -27,8 +27,13 @@ const (
 	claudeModelsURL               = "https://api.anthropic.com/v1/models"
 	claudeUsageURL                = "https://api.anthropic.com/api/oauth/usage"
 	claudeProfileURL              = "https://api.anthropic.com/api/oauth/profile"
+	claudeUserAgent               = "claude-cli/2.1.280 (external, cli)"
 	kimiModelsURL                 = "https://api.kimi.com/coding/v1/models"
 	kimiUsageURL                  = "https://api.kimi.com/coding/v1/usages"
+	kimiMeURL                     = "https://api.kimi.com/coding/v1/me"
+	antigravityUserAgent          = "antigravity/hub/2.23.0 darwin/arm64"
+	xaiGrokClientVersion          = "1.0.46"
+	xaiGrokUserAgent              = "grok-pager/1.0.46 grok-shell/1.0.46 (macos; aarch64)"
 	antigravityAssistURL          = "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
 	antigravityQuotaURL           = "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 	antigravitySandboxQuotaURL    = "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary"
@@ -313,7 +318,7 @@ func (r *Runtime) probeLoadCodeAssist(ctx context.Context, settings CodexInspect
 	response, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodPost, antigravityAssistURL, map[string]string{
 		"Authorization": "Bearer $TOKEN$",
 		"Content-Type":  "application/json",
-		"User-Agent":    "antigravity/hub/1.23.2",
+		"User-Agent":    antigravityUserAgent,
 	}, map[string]any{"metadata": map[string]any{"ideType": ideType}})
 	if err != nil {
 		return inspectionFailure(result, 0, "upstream_error", err.Error())
@@ -954,7 +959,7 @@ func (r *Runtime) probeXAI(ctx context.Context, settings CodexInspectionSettings
 		}
 		return result
 	}
-	headers := map[string]string{"Authorization": "Bearer $TOKEN$", "x-xai-token-auth": "xai-grok-cli", "x-grok-client-version": "0.2.101", "User-Agent": "grok-pager/0.2.101 grok-shell/0.2.101"}
+	headers := map[string]string{"Authorization": "Bearer $TOKEN$", "x-xai-token-auth": "xai-grok-cli", "x-grok-client-version": xaiGrokClientVersion, "User-Agent": xaiGrokUserAgent}
 	if userID != "" {
 		headers["x-userid"] = userID
 	}
@@ -973,7 +978,7 @@ func (r *Runtime) probeXAI(ctx context.Context, settings CodexInspectionSettings
 		result = applyInspectionQuotaThreshold(result, settings.UsedPercentThreshold)
 	}
 	if settings.XAIInferenceEnabled && result.Action == "keep" {
-		inferenceHeaders := map[string]string{"Authorization": "Bearer $TOKEN$", "x-xai-token-auth": "xai-grok-cli", "x-grok-client-version": "0.2.101", "User-Agent": settings.XAIInferenceUserAgent, "Content-Type": "application/json"}
+		inferenceHeaders := map[string]string{"Authorization": "Bearer $TOKEN$", "x-xai-token-auth": "xai-grok-cli", "x-grok-client-version": xaiGrokClientVersion, "User-Agent": settings.XAIInferenceUserAgent, "Content-Type": "application/json"}
 		if userID != "" {
 			inferenceHeaders["x-userid"] = userID
 		}

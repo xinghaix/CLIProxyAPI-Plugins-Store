@@ -269,16 +269,78 @@ export function formatWindowRange(fromMs, toMs, formatFn) {
   return `${formatFn(fromMs)} — ${formatFn(toMs)}`;
 }
 
+export function formatPlanType(value, provider = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const lower = raw.toLowerCase();
+  const prov = String(provider || '').trim().toLowerCase();
+  if (prov === 'codex' && lower === 'pro') return 'Pro 200';
+  const labels = {
+    plan_max20: 'Max 20x',
+    plan_max5: 'Max 5x',
+    plan_max: 'Max',
+    plan_pro: 'Pro',
+    plan_team: 'Team',
+    plan_free: 'Free',
+    plan_plus: 'Plus',
+    promax: 'Pro 500',
+    pro_max: 'Pro 500',
+    'pro-max': 'Pro 500',
+    prolite: 'Pro 100',
+    pro_lite: 'Pro 100',
+    'pro-lite': 'Pro 100',
+    pro: 'Pro',
+    plus: 'Plus',
+    team: 'Team',
+    business: 'Business',
+    self_serve_business_prolite: 'Business Premium',
+    edu: 'Edu',
+    education: 'Edu',
+    edu_plus: 'Edu Plus',
+    edu_pro: 'Edu Pro',
+    ent26: 'Enterprise',
+    enterprise: 'Enterprise',
+    enterprise_cbp_automation: 'Enterprise',
+    enterprise_cbp_usage_based: 'Enterprise',
+    go: 'Go',
+    free: 'Free',
+    free_workspace: 'Free',
+    guest: 'Free',
+    k12: 'K12',
+    ultra: 'Ultra',
+    'g1-ultra-tier': 'Ultra',
+    'ultra-lite': 'Ultra Lite',
+    ultralite: 'Ultra Lite',
+    'g1-ultra-lite-tier': 'Ultra Lite',
+    'g1-pro-tier': 'Pro',
+    'standard-tier': 'Pro',
+    'free-tier': 'Free',
+    'legacy-tier': 'Free',
+    supergrok: 'SuperGrok',
+    'supergrok heavy': 'SuperGrok Heavy',
+    supergrok_heavy: 'SuperGrok Heavy',
+    'supergrok-heavy': 'SuperGrok Heavy',
+    paid: 'Paid',
+    allegro: 'Allegro',
+    allegretto: 'Allegretto',
+    moderato: 'Moderato',
+    andante: 'Andante',
+  };
+  return labels[lower] || raw;
+}
+
 export function planLabelFrom(probe, cred) {
-  return (
+  const raw =
     probe?.planType ||
     probe?.quotaMetadata?.planType ||
+    probe?.quotaMetadata?.planName ||
     probe?.plan ||
     cred?.planType ||
     cred?.planLabel ||
     cred?.metadata?.planType ||
-    ''
-  );
+    '';
+  const provider = probe?.provider || probe?.quotaMetadata?.provider || cred?.provider || cred?.type || '';
+  return formatPlanType(raw, provider);
 }
 
 /**

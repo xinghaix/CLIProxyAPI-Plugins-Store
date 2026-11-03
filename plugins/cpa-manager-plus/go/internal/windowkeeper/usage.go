@@ -73,11 +73,11 @@ func Select(windows []Window, opt Options) []Window {
 
 func Group(plan string) string {
 	switch strings.ToLower(strings.TrimSpace(plan)) {
-	case "free", "guest", "free_workspace":
+	case "free", "guest", "free_workspace", "k12":
 		return GroupFree
-	case "plus", "team", "edu_plus", "self_serve_business_prolite":
+	case "plus", "team", "go", "edu_plus", "self_serve_business_prolite":
 		return GroupPlusTeam
-	case "pro", "prolite", "business", "edu_pro", "ent26", "enterprise", "enterprise_cbp_automation", "enterprise_cbp_usage_based":
+	case "pro", "prolite", "pro_lite", "pro-lite", "promax", "pro_max", "pro-max", "business", "edu_pro", "ent26", "enterprise", "enterprise_cbp_automation", "enterprise_cbp_usage_based":
 		return GroupProAndAbove
 	default:
 		if strings.Contains(strings.ToLower(plan), "enterprise") {
@@ -263,7 +263,12 @@ func otherModel(name, model string) bool {
 	if strings.Contains(name, model) {
 		return false
 	}
-	return strings.Contains(name, "gpt") || strings.Contains(name, "sol")
+	for _, token := range []string{"gpt", "sol", "astra", "terra", "luna"} {
+		if strings.Contains(name, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func kindFor(seconds int64) string {

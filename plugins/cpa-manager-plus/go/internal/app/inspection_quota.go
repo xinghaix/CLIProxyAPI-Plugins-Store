@@ -671,6 +671,18 @@ func parseCodexResetCredits(value any) (available, applicable *int, credits []ma
 	return available, applicable, credits, valid
 }
 
+func isClaudeDollarDenominatedWindow(window map[string]any) bool {
+	if window == nil {
+		return false
+	}
+	for _, key := range []string{"limit_dollars", "limitDollars", "used_dollars", "usedDollars", "remaining_dollars", "remainingDollars"} {
+		if _, ok := numberFromOK(window, key); ok {
+			return true
+		}
+	}
+	return false
+}
+
 func buildClaudeInspectionWindows(root map[string]any) []map[string]any {
 	if root == nil {
 		return nil
@@ -687,21 +699,42 @@ func buildClaudeInspectionWindows(root map[string]any) []map[string]any {
 	windows := []map[string]any{}
 	fable := findClaudeFableLimit(arrayValue(root["limits"]))
 	for _, key := range []string{"five_hour", "seven_day", "seven_day_oauth_apps", "seven_day_opus", "seven_day_sonnet", "seven_day_cowork", "iguana_necktie"} {
-		if key == "iguana_necktie" && fable != nil {
-			continue
-		}
 		window := mapValue(root[key])
 		if window == nil {
+			continue
+		}
+		dollarDenominated := key == "iguana_necktie" && isClaudeDollarDenominatedWindow(window)
+		if key == "iguana_necktie" && fable != nil && !dollarDenominated {
 			continue
 		}
 		used, ok := numberFromOK(window, "utilization")
 		if !ok {
 			continue
 		}
-		item := makeInspectionWindow("claude-"+strings.ReplaceAll(key, "_", "-"), key, labels[key], window, &used)
-		item["periodHours"] = 5.0
-		if key != "five_hour" {
-			item["periodHours"] = 168.0
+		windowID := "claude-" + strings.ReplaceAll(key, "_", "-")
+		windowKind := key
+		windowLabel := labels[key]
+		if dollarDenominated {
+			windowID = "cloud-session-credits"
+			windowKind = "cloud_session_credits"
+			windowLabel = "云端会话额度"
+		}
+		item := makeInspectionWindow(windowID, windowKind, windowLabel, window, &used)
+		if !dollarDenominated {
+			item["periodHours"] = 5.0
+			if key != "five_hour" {
+				item["periodHours"] = 168.0
+			}
+		} else {
+			if limitDollars, ok := numberFromOK(window, "limit_dollars", "limitDollars"); ok {
+				item["limitDollars"] = limitDollars
+			}
+			if usedDollars, ok := numberFromOK(window, "used_dollars", "usedDollars"); ok {
+				item["usedDollars"] = usedDollars
+			}
+			if remainingDollars, ok := numberFromOK(window, "remaining_dollars", "remainingDollars"); ok {
+				item["remainingDollars"] = remainingDollars
+			}
 		}
 		if resetAt := inspectionResetAt(window); resetAt != "" {
 			item["resetAt"] = resetAt
@@ -749,16 +782,26 @@ func resolveClaudePlan(profile map[string]any) string {
 	if profile == nil {
 		return ""
 	}
+	organization := mapValue(profile["organization"])
+	// Check Team before personal account flags: Team-scoped tokens can carry
+	// personal has_claude_max / has_claude_pro flags on account.
+	if strings.EqualFold(firstString(organization, "organization_type", "organizationType"), "claude_team") &&
+		strings.EqualFold(firstString(organization, "subscription_status", "subscriptionStatus"), "active") {
+		return "plan_team"
+	}
+	tier := strings.ToLower(strings.TrimSpace(firstString(organization, "rate_limit_tier", "rateLimitTier")))
+	if strings.HasSuffix(tier, "claude_max_20x") {
+		return "plan_max20"
+	}
+	if strings.HasSuffix(tier, "claude_max_5x") {
+		return "plan_max5"
+	}
 	account := mapValue(profile["account"])
 	if flag, ok := boolFrom(account, "has_claude_max", "hasClaudeMax"); ok && flag {
 		return "plan_max"
 	}
 	if flag, ok := boolFrom(account, "has_claude_pro", "hasClaudePro"); ok && flag {
 		return "plan_pro"
-	}
-	organization := mapValue(profile["organization"])
-	if strings.EqualFold(firstString(organization, "organization_type", "organizationType"), "claude_team") && strings.EqualFold(firstString(organization, "subscription_status", "subscriptionStatus"), "active") {
-		return "plan_team"
 	}
 	max, hasMax := boolFrom(account, "has_claude_max", "hasClaudeMax")
 	pro, hasPro := boolFrom(account, "has_claude_pro", "hasClaudePro")
@@ -908,6 +951,56 @@ func kimiDurationHours(duration float64, rawUnit string) float64 {
 	}
 }
 
+func resolveAntigravityPlan(tierID string) string {
+	normalized := strings.ToLower(strings.TrimSpace(tierID))
+	if normalized == "" {
+		return "unknown"
+	}
+	switch {
+	case strings.Contains(normalized, "ultra-lite") || strings.Contains(normalized, "ultralite"):
+		return "ultra-lite"
+	case strings.Contains(normalized, "ultra"):
+		return "ultra"
+	case strings.Contains(normalized, "pro") || strings.Contains(normalized, "standard"):
+		return "pro"
+	case strings.Contains(normalized, "free") || strings.Contains(normalized, "legacy"):
+		return "free"
+	default:
+		return "unknown"
+	}
+}
+
+func parseAntigravityGroupModels(label, description string) []string {
+	const prefix = "models within this group:"
+	trimmed := strings.TrimSpace(description)
+	if len(trimmed) < len(prefix) || !strings.EqualFold(trimmed[:len(prefix)], prefix) {
+		return nil
+	}
+	raw := strings.TrimSpace(trimmed[len(prefix):])
+	if raw == "" {
+		return nil
+	}
+	models := []string{}
+	seen := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		name := strings.TrimSpace(part)
+		if name == "" {
+			continue
+		}
+		key := strings.ToLower(name)
+		if !seen[key] {
+			seen[key] = true
+			models = append(models, name)
+		}
+	}
+	// Official Antigravity group_gemini_models appends "Gemini Argon" because
+	// the upstream description currently omits it.
+	if strings.EqualFold(strings.TrimSpace(label), "Gemini Models") && !seen["gemini argon"] {
+		models = append(models, "Gemini Argon")
+	}
+	return models
+}
+
 func buildAntigravitySubscription(root map[string]any) map[string]any {
 	if root == nil {
 		return nil
@@ -923,15 +1016,7 @@ func buildAntigravitySubscription(root map[string]any) map[string]any {
 	}
 	id := firstString(effective, "id")
 	name := firstString(effective, "name")
-	plan := map[string]string{
-		"free-tier":          "free",
-		"g1-pro-tier":        "pro",
-		"g1-ultra-tier":      "ultra",
-		"g1-ultra-lite-tier": "ultra-lite",
-	}[id]
-	if plan == "" {
-		plan = "unknown"
-	}
+	plan := resolveAntigravityPlan(id)
 	return map[string]any{"plan": plan, "tierId": id, "tierName": name}
 }
 
@@ -976,6 +1061,9 @@ func buildAntigravityQuota(root map[string]any) (groups []map[string]any, window
 		parsedGroup := map[string]any{"id": groupID, "label": label}
 		if description := firstString(group, "description"); description != "" {
 			parsedGroup["description"] = description
+			if models := parseAntigravityGroupModels(label, description); len(models) > 0 {
+				parsedGroup["models"] = models
+			}
 		}
 		buckets := []map[string]any{}
 		for bucketIndex, rawBucket := range arrayValue(group["buckets"]) {
@@ -1118,7 +1206,7 @@ func (r *Runtime) probeCodexQuota(ctx context.Context, settings CodexInspectionS
 }
 
 func (r *Runtime) probeClaudeQuota(ctx context.Context, settings CodexInspectionSettings, result store.InspectionResult) store.InspectionResult {
-	headers := map[string]string{"Authorization": "Bearer $TOKEN$", "Content-Type": "application/json", "anthropic-beta": "oauth-2025-04-20"}
+	headers := map[string]string{"Authorization": "Bearer $TOKEN$", "Content-Type": "application/json", "anthropic-beta": "oauth-2025-04-20", "User-Agent": claudeUserAgent}
 	usage, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodGet, claudeUsageURL, headers, nil)
 	if err != nil {
 		return inspectionFailure(result, 0, "upstream_error", err.Error())
@@ -1154,8 +1242,21 @@ func (r *Runtime) probeClaudeQuota(ctx context.Context, settings CodexInspection
 	return result
 }
 
+func parseKimiPlanName(root map[string]any) string {
+	for _, scope := range []map[string]any{root, mapValue(root["user"]), mapValue(root["data"])} {
+		if scope == nil {
+			continue
+		}
+		if name := firstString(scope, "user_level_name", "userLevelName"); name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
 func (r *Runtime) probeKimiQuota(ctx context.Context, settings CodexInspectionSettings, result store.InspectionResult) store.InspectionResult {
-	response, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodGet, kimiUsageURL, map[string]string{"Authorization": "Bearer $TOKEN$", "Accept": "application/json"}, nil)
+	headers := map[string]string{"Authorization": "Bearer $TOKEN$", "Accept": "application/json"}
+	response, err := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodGet, kimiUsageURL, headers, nil)
 	if err != nil {
 		return inspectionFailure(result, 0, "upstream_error", err.Error())
 	}
@@ -1165,6 +1266,12 @@ func (r *Runtime) probeKimiQuota(ctx context.Context, settings CodexInspectionSe
 	}
 	windows := buildKimiInspectionWindows(inspectBodyObject(response.Body))
 	metadata := map[string]any{"provider": "kimi", "mode": "usage"}
+	if meResp, meErr := r.callInspectionAPI(ctx, settings, result.AuthIndex, http.MethodGet, kimiMeURL, headers, nil); meErr == nil && meResp.StatusCode >= 200 && meResp.StatusCode < 300 {
+		if plan := parseKimiPlanName(inspectBodyObject(meResp.Body)); plan != "" {
+			result.PlanType = plan
+			metadata["planName"] = plan
+		}
+	}
 	result = quotaMetadata(result, metadata, windows)
 	result.UsedPercent = maxWindowUsedPercent(windows)
 	result = applyInspectionQuotaThreshold(result, settings.UsedPercentThreshold)
@@ -1193,7 +1300,7 @@ func (r *Runtime) probeAntigravityQuota(ctx context.Context, settings CodexInspe
 		"Authorization": "Bearer $TOKEN$",
 		"Accept":        "*/*",
 		"Content-Type":  "application/json",
-		"User-Agent":    "antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)",
+		"User-Agent":    antigravityUserAgent,
 	}, loadBody)
 	if err != nil {
 		return inspectionFailure(result, 0, "upstream_error", err.Error())
@@ -1222,7 +1329,7 @@ func (r *Runtime) probeAntigravityQuota(ctx context.Context, settings CodexInspe
 			"Authorization": "Bearer $TOKEN$",
 			"Accept":        "*/*",
 			"Content-Type":  "application/json",
-			"User-Agent":    "antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)",
+			"User-Agent":    antigravityUserAgent,
 		}, map[string]any{"project": projectID})
 		if quotaErr == nil && quotaResponse.StatusCode >= 200 && quotaResponse.StatusCode < 300 {
 			break

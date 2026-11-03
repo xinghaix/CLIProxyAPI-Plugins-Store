@@ -452,7 +452,7 @@
 <script setup>
 import {computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import {useI18n} from 'vue-i18n';
-import { isProbeFailure } from '../utils/credentialPresentation.js';
+import { formatPlanType as formatOAuthPlanType, isProbeFailure } from '../utils/credentialPresentation.js';
 import DataCard from './DataCard.vue';
 import MetricGrid from './MetricGrid.vue';
 import { eventApiKeyDisplay, isSensitiveSource, maskSecretSummary, shortHash } from '../utils/apiKeyDisplay.js';
@@ -1156,14 +1156,9 @@ function formatQuotaResetRelative(value) {
   return formatQuotaResetRelativeValue(value, quotaNowMs.value, locale.value);
 }
 
-function formatPlanType(value) {
-  const plan = String(value || '').trim();
-  const labels = {
-    plan_max: 'Max', plan_pro: 'Pro', plan_team: 'Team', plan_free: 'Free',
-    plan_plus: 'Plus', supergrok: 'SuperGrok', 'supergrok heavy': 'SuperGrok Heavy',
-    paid: 'Paid', ultra: 'Ultra', 'ultra-lite': 'Ultra Lite', pro: 'Pro', free: 'Free',
-  };
-  return labels[plan.toLowerCase()] || plan || EMPTY_VALUE;
+function formatPlanType(value, provider = '') {
+  const formatted = formatOAuthPlanType(value, provider);
+  return formatted || EMPTY_VALUE;
 }
 
 function formatExtraUsage(extra) {

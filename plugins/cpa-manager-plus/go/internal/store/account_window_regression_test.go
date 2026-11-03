@@ -290,3 +290,33 @@ func TestAccountWindowExactModelScope(t *testing.T) {
 		})
 	}
 }
+
+func TestAccountWindowAntigravityBucketAndZeroCallReady(t *testing.T) {
+	st := observationStore(t)
+	ctx := context.Background()
+	if _, err := st.InsertEvents(ctx, []Event{
+		{Hash: "ag-1", TimestampMS: 100, AuthIndex: "ag-idx", Provider: "antigravity", Model: "gemini-2.5-pro", TotalTokens: 500},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	w := regressionWindow()
+	w.AuthProviderSnapshot = "antigravity"
+	w.AuthIndex = "ag-idx"
+	w.ProviderWindowID = "gemini-models-bucket-1"
+	w.WindowKey = "weekly"
+	w.FromMS = 50
+	w.ToMS = 200
+	got := windowResult(t, st, w)
+	if !got.Matched || got.SyncStatus != "ready" || got.ScopeMatchStatus != "complete" || got.TotalRequests != 1 || got.TotalTokens != 500 {
+		t.Fatalf("antigravity bucket usage = %#v", got)
+	}
+
+	// Zero calls in a valid account-scope window should still be ready/matched with 0 totals.
+	wEmpty := w
+	wEmpty.FromMS = 300
+	wEmpty.ToMS = 400
+	gotEmpty := windowResult(t, st, wEmpty)
+	if !gotEmpty.Matched || gotEmpty.SyncStatus != "ready" || gotEmpty.ScopeMatchStatus != "complete" || gotEmpty.TotalRequests != 0 {
+		t.Fatalf("zero-call window = %#v", gotEmpty)
+	}
+}

@@ -200,7 +200,7 @@
                 <strong class="wk-acc-email" :title="acc.email || acc.display_name || acc.auth_id">
                   {{ acc.email || acc.display_name || acc.auth_id }}
                 </strong>
-                <span v-if="acc.plan_type" class="plan-pill">{{ acc.plan_type }}</span>
+                <span v-if="acc.plan_type" class="plan-pill">{{ formatPlanType(acc.plan_type, 'codex') }}</span>
                 <span :class="['status-badge', accountEffectiveTone(acc)]">
                   <i aria-hidden="true"></i>{{ accountEffectiveLabel(acc) }}
                 </span>
@@ -284,7 +284,7 @@
         <DataCard
           v-if="selectedAccount"
           :title="selectedAccount.email || selectedAccount.display_name || selectedAccount.auth_id"
-          :subtitle="selectedAccount.plan_type ? selectedAccount.plan_type.toUpperCase() : ''"
+          :subtitle="selectedAccount.plan_type ? formatPlanType(selectedAccount.plan_type, 'codex') : ''"
         >
           <div class="window-keeper-detail">
             <!-- 1. Per-Account Policy Override Box -->
@@ -455,6 +455,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import DataCard from './DataCard.vue';
+import { formatPlanType } from '../utils/credentialPresentation.js';
 import { formatAttemptText, formatWindowRemainingText } from '../utils/windowKeeperDisplay.js';
 
 const props = defineProps({
@@ -579,6 +580,7 @@ const filteredAccounts = computed(() => {
       || String(acc.display_name || '').toLowerCase().includes(q)
       || String(acc.auth_id || '').toLowerCase().includes(q)
       || String(acc.plan_type || '').toLowerCase().includes(q)
+      || formatPlanType(acc.plan_type, 'codex').toLowerCase().includes(q)
     );
   });
 });

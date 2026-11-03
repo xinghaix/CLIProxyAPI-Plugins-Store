@@ -84,6 +84,56 @@ func TestBuildClaudeInspectionWindowsUsesModernFableLimit(t *testing.T) {
 	}
 }
 
+func TestBuildClaudeInspectionWindowsTreatsDollarIguanaAsCloudSessionCredits(t *testing.T) {
+	windows := buildClaudeInspectionWindows(map[string]any{
+		"five_hour": map[string]any{"utilization": 10},
+		"iguana_necktie": map[string]any{
+			"utilization":       40,
+			"limit_dollars":     50,
+			"used_dollars":      20,
+			"remaining_dollars": 30,
+		},
+		"limits": []any{
+			map[string]any{
+				"kind":      "weekly_scoped",
+				"percent":   15,
+				"is_active": true,
+				"scope":     map[string]any{"model": map[string]any{"display_name": "Fable 5"}},
+			},
+		},
+	})
+	if len(windows) != 3 {
+		t.Fatalf("windows = %#v, want five-hour, cloud-session-credits, and fable", windows)
+	}
+	if windows[1]["id"] != "cloud-session-credits" || windows[1]["label"] != "云端会话额度" || windows[1]["remainingDollars"] != float64(30) {
+		t.Fatalf("cloud session credits = %#v", windows[1])
+	}
+	if _, hasPeriod := windows[1]["periodHours"]; hasPeriod {
+		t.Fatalf("cloud session credits should not have fixed periodHours: %#v", windows[1])
+	}
+}
+
+func TestResolveClaudePlanSupportsMaxMultipliersAndTeamPriority(t *testing.T) {
+	if got := resolveClaudePlan(map[string]any{
+		"account":      map[string]any{"has_claude_max": true},
+		"organization": map[string]any{"organization_type": "claude_team", "subscription_status": "active"},
+	}); got != "plan_team" {
+		t.Fatalf("team priority = %q, want plan_team", got)
+	}
+	if got := resolveClaudePlan(map[string]any{
+		"account":      map[string]any{"has_claude_max": true},
+		"organization": map[string]any{"rate_limit_tier": "default_claude_max_20x"},
+	}); got != "plan_max20" {
+		t.Fatalf("max20 = %q, want plan_max20", got)
+	}
+	if got := resolveClaudePlan(map[string]any{
+		"account":      map[string]any{"has_claude_max": true},
+		"organization": map[string]any{"rate_limit_tier": "default_claude_max_5x"},
+	}); got != "plan_max5" {
+		t.Fatalf("max5 = %q, want plan_max5", got)
+	}
+}
+
 func TestBuildKimiInspectionWindowsPreservesProviderWindowDetails(t *testing.T) {
 	windows := buildKimiInspectionWindows(map[string]any{
 		"limits": []any{
@@ -117,6 +167,15 @@ func TestBuildAntigravityQuotaKeepsGroupsAndRemainingDirection(t *testing.T) {
 	})
 	if subscription["plan"] != "ultra" || subscription["tierId"] != "g1-ultra-tier" {
 		t.Fatalf("subscription = %#v", subscription)
+	}
+	if subPro := buildAntigravitySubscription(map[string]any{
+		"currentTier": map[string]any{"id": "standard-tier", "name": "Standard"},
+	}); subPro["plan"] != "pro" {
+		t.Fatalf("standard-tier subscription = %#v, want pro", subPro)
+	}
+	models := parseAntigravityGroupModels("Gemini Models", "Models within this group: Gemini 2.5 Pro, Gemini 3 Flash")
+	if len(models) != 3 || models[2] != "Gemini Argon" {
+		t.Fatalf("Gemini Models parsed = %#v, want Gemini Argon appended", models)
 	}
 	groups, windows := buildAntigravityQuota(map[string]any{
 		"groups": []any{

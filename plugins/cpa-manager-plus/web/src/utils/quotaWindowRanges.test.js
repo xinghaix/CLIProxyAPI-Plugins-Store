@@ -3,6 +3,7 @@ import {
   buildQuotaUsageRanges, normalizeCredentialQuotaWindow, buildAccountWindowUsageTargets,
   resolveWindowUsagePresentation, usageItemToMetrics,
 } from './quotaWindowRanges.js';
+import { formatPlanType, planLabelFrom } from './credentialPresentation.js';
 
 const now = Date.parse('2026-09-17T10:00:00Z');
 const credential = { rowKey: 'row', authIndex: 'index', authId: 'id', fileName: 'a.json', source: 'real-source', provider: 'codex' };
@@ -173,9 +174,29 @@ describe('quota usage snapshot isolation', () => {
     expect(codexTargets.targets).toHaveLength(2);
 
     const agCred = { ...credential, provider: 'antigravity' };
-    const agBucket = { id: 'bucket-1', kind: 'antigravity_bucket', label: 'Weekly Limit Remaining', usedPercent: 0, remainingPercent: 100, resetAt: '2026-09-20T11:52:00Z' };
+    const agBucket = { id: 'gemini-models-bucket-1', kind: 'antigravity_bucket', label: 'Weekly Limit Remaining', usedPercent: 0, remainingPercent: 100, resetAt: new Date(now + 7 * 24 * 3600 * 1000).toISOString() };
     const agTargets = buildAccountWindowUsageTargets(agCred, { quotaWindows: [agBucket] }, now);
     expect(agTargets.windows[0]).toMatchObject({ kind: 'weekly', modelScope: 'account', durationSeconds: 7 * 24 * 3600 });
     expect(agTargets.targets).toHaveLength(2);
+    expect(agTargets.targets[0]).toMatchObject({ period: 'current', window_key: 'weekly', provider_window_id: 'gemini-models-bucket-1' });
+
+    const kimiCred = { ...credential, provider: 'kimi' };
+    const kimiLimit = { id: 'kimi-limit-0', kind: 'limit', label: 'Coding 5h', usedPercent: 25, periodHours: 5 };
+    const kimiTargets = buildAccountWindowUsageTargets(kimiCred, { quotaWindows: [kimiLimit] }, now);
+    expect(kimiTargets.windows[0].modelScope).toBe('account');
+    expect(kimiTargets.targets).toHaveLength(2);
+  });
+
+  it('formats official OAuth plan tiers across providers', () => {
+    expect(formatPlanType('pro', 'codex')).toBe('Pro 200');
+    expect(formatPlanType('prolite', 'codex')).toBe('Pro 100');
+    expect(formatPlanType('promax', 'codex')).toBe('Pro 500');
+    expect(formatPlanType('self_serve_business_prolite', 'codex')).toBe('Business Premium');
+    expect(formatPlanType('plan_max20', 'claude')).toBe('Max 20x');
+    expect(formatPlanType('plan_max5', 'claude')).toBe('Max 5x');
+    expect(formatPlanType('plan_max', 'claude')).toBe('Max');
+    expect(formatPlanType('ultra-lite', 'antigravity')).toBe('Ultra Lite');
+    expect(planLabelFrom({ planType: 'plan_max20', provider: 'claude' }, {})).toBe('Max 20x');
+    expect(planLabelFrom({ quotaMetadata: { planName: 'Allegro', provider: 'kimi' } }, {})).toBe('Allegro');
   });
 });

@@ -46,19 +46,22 @@ function normalizeScopeSlug(value) {
 
 function isAccountScopeWindowForProvider(provider, window) {
   const prov = String(provider || '').trim().toLowerCase();
-  const candidates = [window?.id, window?.label].map(normalizeScopeSlug).filter(Boolean);
+  const candidates = [window?.id, window?.label, window?.kind, window?.window].map(normalizeScopeSlug).filter(Boolean);
   for (const slug of candidates) {
     if (slug === 'history' || slug === 'spark') return true;
     if (prov === 'codex' && (slug === 'five-hour' || slug === 'weekly' || slug === 'monthly')) return true;
-    if (prov === 'claude' && (slug === 'claude-five-hour' || slug === 'claude-seven-day')) return true;
+    if (prov === 'claude' && (slug === 'claude-five-hour' || slug === 'claude-seven-day' || slug === 'cloud-session-credits')) return true;
     if (prov === 'xai' && (slug === 'xai-weekly' || slug === 'xai-monthly')) return true;
-    if (prov === 'kimi' && slug === 'kimi-summary') return true;
-    if (prov === 'antigravity' && [
+    if (prov === 'kimi' && (slug === 'kimi-summary' || slug.startsWith('kimi-limit-'))) return true;
+    if (prov === 'devin' && (slug === 'devin-daily' || slug === 'devin-weekly' || slug === 'daily' || slug === 'weekly')) return true;
+    if (prov === 'meta' && (slug === 'meta-window' || slug === 'meta-weekly' || slug === 'window' || slug === 'weekly')) return true;
+    if (prov === 'antigravity' && ([
       'five-hour', '5h', '5-hour', 'five-hour-limit', 'five-hour-limit-remaining',
       'weekly', 'week', 'weekly-limit', 'weekly-limit-remaining',
       'daily', 'day', 'daily-limit', 'daily-limit-remaining',
       'monthly', 'month', 'monthly-limit', 'monthly-limit-remaining',
-    ].includes(slug)) {
+      'antigravity-bucket',
+    ].includes(slug) || slug.startsWith('bucket-') || slug.includes('-bucket-'))) {
       return true;
     }
   }
@@ -144,8 +147,11 @@ export function buildQuotaUsageRanges(definition, nowMs = Date.now()) {
 
   const currentEnd = Math.min(nowMs, definition.cycleEndMs);
   const ranges = [];
-  if (definition.cycleStartMs < currentEnd) {
-    ranges.push({ period: 'current', fromMs: definition.cycleStartMs, toMs: currentEnd });
+  const currentFrom = definition.cycleStartMs < currentEnd
+    ? definition.cycleStartMs
+    : Math.max(1, currentEnd - 1);
+  if (currentFrom < currentEnd) {
+    ranges.push({ period: 'current', fromMs: currentFrom, toMs: currentEnd });
   }
   ranges.push({
     period: 'previous',
@@ -180,7 +186,7 @@ export function buildAccountWindowUsageTargets(credential, probeResult, nowMs = 
       targets.push({
         request_key: requestKey,
         row_key: credential.rowKey,
-        window_key: definition.key,
+        window_key: definition.kind && definition.kind !== 'unknown' ? definition.kind : definition.key,
         provider_window_id: definition.providerWindowId,
         period: range.period,
         from_ms: range.fromMs,

@@ -136,7 +136,9 @@ func accountWindowUsageOne(window AccountWindowUsageTarget, prices map[string]Pr
 			return item, fmt.Errorf("model_scope_models must contain nonempty exact model IDs without surrounding whitespace")
 		}
 	}
-	if len(window.ModelScopeModels) == 0 && !AccountWindowIsAccountScope(window.AuthProviderSnapshot, window.ProviderWindowID) {
+	if len(window.ModelScopeModels) == 0 &&
+		!AccountWindowIsAccountScope(window.AuthProviderSnapshot, window.ProviderWindowID) &&
+		!AccountWindowIsAccountScope(window.AuthProviderSnapshot, window.WindowKey) {
 		item.ScopeMatchStatus = "unknown"
 		item.SyncStatus = "unknown"
 		item.CostComplete = false
@@ -158,9 +160,6 @@ func accountWindowUsageOne(window AccountWindowUsageTarget, prices map[string]Pr
 			continue
 		}
 		total.add(row, prices[row.Model])
-	}
-	if total.Calls == 0 {
-		return item, nil
 	}
 	item.Matched = true
 	item.TotalRequests = total.Calls
@@ -206,11 +205,15 @@ func AccountWindowIsAccountScope(provider, id string) bool {
 	case "codex":
 		return id == "five-hour" || id == "five_hour" || id == "weekly" || id == "monthly"
 	case "claude":
-		return id == "claude-five-hour" || id == "claude-seven-day"
+		return id == "claude-five-hour" || id == "claude-seven-day" || id == "cloud-session-credits"
 	case "xai":
 		return id == "xai-weekly" || id == "xai-monthly"
 	case "kimi":
-		return id == "kimi-summary"
+		return id == "kimi-summary" || strings.HasPrefix(id, "kimi-limit-")
+	case "devin":
+		return id == "devin-daily" || id == "devin-weekly" || id == "daily" || id == "weekly"
+	case "meta":
+		return id == "meta-window" || id == "meta-weekly" || id == "window" || id == "weekly"
 	case "antigravity":
 		return isAntigravityAccountScopeWindow(id)
 	}
@@ -223,10 +226,11 @@ func isAntigravityAccountScopeWindow(raw string) bool {
 	case "five-hour", "5h", "5-hour", "five-hour-limit", "five-hour-limit-remaining",
 		"weekly", "week", "weekly-limit", "weekly-limit-remaining",
 		"daily", "day", "daily-limit", "daily-limit-remaining",
-		"monthly", "month", "monthly-limit", "monthly-limit-remaining":
+		"monthly", "month", "monthly-limit", "monthly-limit-remaining",
+		"antigravity-bucket":
 		return true
 	default:
-		return false
+		return strings.HasPrefix(slug, "bucket-") || strings.Contains(slug, "-bucket-")
 	}
 }
 
@@ -313,6 +317,10 @@ func normalizeOneQuotaWindowMap(provider string, window map[string]any) map[stri
 	if label == "<nil>" {
 		label = ""
 	}
+	kind := strings.TrimSpace(fmt.Sprint(cloned["kind"]))
+	if kind == "<nil>" {
+		kind = ""
+	}
 	winText := strings.TrimSpace(fmt.Sprint(cloned["window"]))
 	if winText == "<nil>" {
 		winText = ""
@@ -322,7 +330,7 @@ func normalizeOneQuotaWindowMap(provider string, window map[string]any) map[stri
 		scope = ""
 	}
 	if scope == "" || scope == "unknown" {
-		if AccountWindowIsAccountScope(provider, id) || AccountWindowIsAccountScope(provider, label) {
+		if AccountWindowIsAccountScope(provider, id) || AccountWindowIsAccountScope(provider, label) || AccountWindowIsAccountScope(provider, kind) {
 			cloned["modelScope"] = "account"
 		} else if scope == "" {
 			cloned["modelScope"] = "unknown"
@@ -330,7 +338,7 @@ func normalizeOneQuotaWindowMap(provider string, window map[string]any) map[stri
 	}
 	if _, hasPeriod := cloned["periodHours"]; !hasPeriod {
 		if _, hasSnake := cloned["period_hours"]; !hasSnake {
-			if hours, ok := InferStandardWindowPeriodHours(winText, id, label); ok {
+			if hours, ok := InferStandardWindowPeriodHours(winText, id, label, kind); ok {
 				cloned["periodHours"] = hours
 			}
 		}
