@@ -45,47 +45,54 @@
       </div>
 
       <div class="cred-filters">
-        <input
-          class="control wide"
-          :value="search"
-          :placeholder="t('monitoring.credentials.searchPlaceholder')"
-          @input="$emit('update:search', $event.target.value)"
-        />
-        <div class="segmented-control cred-scope-pills" role="group" :aria-label="t('monitoring.credentials.columns.availability')">
+        <div class="segmented-control cred-scope-pills" role="tablist" :aria-label="t('monitoring.credentials.columns.availability')">
           <button
             type="button"
-            class="seg-btn"
-            :class="{ active: statusFilter === 'enabled' }"
+            :class="['segment-btn', { active: statusFilter === 'enabled' }]"
             @click="$emit('update:statusFilter', 'enabled')"
           >{{ t('monitoring.credentials.filters.enabledOnly') }}</button>
           <button
             type="button"
-            class="seg-btn"
-            :class="{ active: statusFilter === 'disabled' }"
+            :class="['segment-btn', { active: statusFilter === 'disabled' }]"
             @click="$emit('update:statusFilter', 'disabled')"
           >{{ t('monitoring.credentials.filters.disabled') }}</button>
           <button
             type="button"
-            class="seg-btn"
-            :class="{ active: statusFilter === 'all' }"
+            :class="['segment-btn', { active: statusFilter === 'all' }]"
             @click="$emit('update:statusFilter', 'all')"
           >{{ t('monitoring.credentials.filters.all') }}</button>
+          <button
+            type="button"
+            :class="['segment-btn', { active: statusFilter === 'available' }]"
+            @click="$emit('update:statusFilter', 'available')"
+          >{{ t('monitoring.credentials.filters.available') }}</button>
+          <button
+            type="button"
+            :class="['segment-btn', { active: statusFilter === 'attention' }]"
+            @click="$emit('update:statusFilter', 'attention')"
+          >{{ t('monitoring.credentials.filters.attention') }}</button>
+          <button
+            type="button"
+            :class="['segment-btn', { active: statusFilter === 'quota_risk' }]"
+            @click="$emit('update:statusFilter', 'quota_risk')"
+          >{{ t('monitoring.credentials.filters.quotaRisk') }}</button>
         </div>
-        <select class="control compact" :value="statusFilter" @change="$emit('update:statusFilter', $event.target.value)">
-          <option value="enabled">{{ t('monitoring.credentials.filters.enabledOnly') }}</option>
-          <option value="all">{{ t('monitoring.credentials.filters.allStatuses') }}</option>
-          <option value="available">{{ t('monitoring.credentials.filters.available') }}</option>
-          <option value="attention">{{ t('monitoring.credentials.filters.attention') }}</option>
-          <option value="quota_risk">{{ t('monitoring.credentials.filters.quotaRisk') }}</option>
-          <option value="disabled">{{ t('monitoring.credentials.filters.disabled') }}</option>
-        </select>
-        <select class="control compact" :value="sortBy" @change="$emit('update:sortBy', $event.target.value)">
-          <option value="default">{{ t('monitoring.credentials.sort.default') }}</option>
-          <option value="quota_asc">{{ t('monitoring.credentials.sort.quotaAsc') }}</option>
-          <option value="cost_desc">{{ t('monitoring.credentials.sort.costDesc') }}</option>
-          <option value="requests_desc">{{ t('monitoring.credentials.sort.requestsDesc') }}</option>
-          <option value="recent_desc">{{ t('monitoring.credentials.sort.recentDesc') }}</option>
-        </select>
+
+        <div class="cred-filters-right">
+          <input
+            class="control compact mp-search-input cred-search-input"
+            :value="search"
+            :placeholder="t('monitoring.credentials.searchPlaceholder')"
+            @input="$emit('update:search', $event.target.value)"
+          />
+          <select class="control compact cred-sort-select" :value="sortBy" @change="$emit('update:sortBy', $event.target.value)">
+            <option value="default">{{ t('monitoring.credentials.sort.default') }}</option>
+            <option value="quota_asc">{{ t('monitoring.credentials.sort.quotaAsc') }}</option>
+            <option value="cost_desc">{{ t('monitoring.credentials.sort.costDesc') }}</option>
+            <option value="requests_desc">{{ t('monitoring.credentials.sort.requestsDesc') }}</option>
+            <option value="recent_desc">{{ t('monitoring.credentials.sort.recentDesc') }}</option>
+          </select>
+        </div>
       </div>
     </div>
 

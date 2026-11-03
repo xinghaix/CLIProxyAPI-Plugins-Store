@@ -1709,14 +1709,30 @@ pre {
   gap: 6px;
 }
 .cred-filters {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto;
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
 }
-.cred-filters .control.wide {
-  width: 100%;
-  min-width: 0;
+.cred-scope-pills.segmented-control {
+  flex: 0 1 auto;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.cred-filters-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: 0 1 auto;
+}
+.cred-search-input {
+  width: 240px;
+  max-width: 100%;
 }
 .cred-provider-chips.segmented-control {
   flex: 0 1 auto;
@@ -2555,11 +2571,27 @@ pre {
     min-height: 40px;
   }
   .cred-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex-direction: column;
+    align-items: stretch;
     gap: 8px;
   }
-  .cred-filters .control.wide {
-    grid-column: 1 / -1;
+  .cred-scope-pills.segmented-control {
+    width: 100%;
+    scrollbar-width: none;
+  }
+  .cred-scope-pills.segmented-control::-webkit-scrollbar {
+    display: none;
+  }
+  .cred-filters-right {
+    width: 100%;
+    margin-left: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+  .cred-search-input {
+    width: 100%;
+    min-width: 0;
     font-size: 16px; /* Prevents iOS Safari auto-zoom on focus */
     min-height: 40px;
   }
@@ -3491,6 +3523,44 @@ pre {
 
 .mp-search-input {
   min-width: 220px;
+}
+
+.mp-list-table-wrap {
+  margin-top: 2px;
+}
+.mp-list-table th,
+.mp-list-table td {
+  vertical-align: middle;
+}
+.mp-list-row {
+  cursor: pointer;
+}
+.mp-list-row.is-missing td:first-child {
+  box-shadow: inset 3px 0 0 var(--cpa-warning);
+}
+.mp-list-row.is-official td:first-child {
+  box-shadow: inset 3px 0 0 var(--cpa-accent);
+}
+.mp-list-model-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.mp-drawer-official-box {
+  padding: 10px 12px;
+  border: 1px solid var(--cpa-rule);
+  border-radius: var(--cpa-radius);
+  background: var(--cpa-surface-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mp-drawer-official-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .mp-card-grid {

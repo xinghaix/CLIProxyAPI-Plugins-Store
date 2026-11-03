@@ -287,107 +287,96 @@
         </div>
       </div>
 
-      <div v-if="visibleRows.length" class="mp-card-grid">
-        <article
-          v-for="row in visibleRows"
-          :key="row.model"
-          :class="['mp-model-card', { 'is-missing': row.missing, 'is-official': !!row.officialSchedule }]"
-        >
-          <div class="mp-card-top">
-            <div class="mp-card-title-wrap">
-              <strong class="mp-model-name" :title="row.model">{{ row.model }}</strong>
-              <span v-if="row.usage?.provider" class="dash-kpi-chip">{{ row.usage.provider }}</span>
-            </div>
-            <div class="mp-card-badges">
-              <span v-if="row.officialSchedule" class="source-tag source-official">
-                {{ t('windowKeeper.ext.officialTier') }}
-              </span>
-              <span v-if="row.source" :class="['source-tag', row.source === 'manual' ? 'source-manual' : '']">
-                {{ formatSourceLabel(row.source) }}
-              </span>
-              <span v-else-if="!row.officialSchedule && row.hasCandidate" class="warn-text small-text">
-                {{ t('modelPrices.needsConfirm') }}
-              </span>
-              <span v-else-if="row.missing" class="bad-text small-text">
-                {{ t('modelPrices.notSet') }}
-              </span>
-            </div>
-          </div>
-
-          <!-- Official Multi-Tier Schedule Display (Standard / Fast · Short / Long Context) -->
-          <div v-if="row.officialSchedule" class="mp-official-bands">
-            <div class="mp-band-row">
-              <span class="mp-band-tag">Standard ≤{{ fmtThreshold(row.officialSchedule) }}</span>
-              <span>入 <b>{{ fmtRate(row.officialSchedule.standard?.Short?.Input) }}</b></span>
-              <span>缓 <b>{{ fmtRate(row.officialSchedule.standard?.Short?.CachedInput) }}</b></span>
-              <span>出 <b>{{ fmtRate(row.officialSchedule.standard?.Short?.Output) }}</b></span>
-            </div>
-            <div v-if="row.officialSchedule.standard?.Long" class="mp-band-row muted">
-              <span class="mp-band-tag">Standard &gt;{{ fmtThreshold(row.officialSchedule) }}</span>
-              <span>入 <b>{{ fmtRate(row.officialSchedule.standard.Long.Input) }}</b></span>
-              <span>缓 <b>{{ fmtRate(row.officialSchedule.standard.Long.CachedInput) }}</b></span>
-              <span>出 <b>{{ fmtRate(row.officialSchedule.standard.Long.Output) }}</b></span>
-            </div>
-            <div v-if="row.officialSchedule.fast?.Short" class="mp-band-row mp-band-fast">
-              <span class="mp-band-tag">Fast (Priority)</span>
-              <span>入 <b>{{ fmtRate(row.officialSchedule.fast.Short.Input) }}</b></span>
-              <span>缓 <b>{{ fmtRate(row.officialSchedule.fast.Short.CachedInput) }}</b></span>
-              <span>出 <b>{{ fmtRate(row.officialSchedule.fast.Short.Output) }}</b></span>
-            </div>
-          </div>
-
-          <!-- Flat Rates Grid (Input / Output / Cache Read / Cache Write) -->
-          <div v-if="!row.officialSchedule || row.hasSavedFlat" class="mp-rates-grid">
-            <div>
-              <span>{{ t('modelPrices.columns.promptPer1M') }}</span>
-              <strong>{{ row.hasSavedFlat ? fmtPrice(row.prompt) : EMPTY_VALUE }}</strong>
-            </div>
-            <div>
-              <span>{{ t('modelPrices.columns.completionPer1M') }}</span>
-              <strong>{{ row.hasSavedFlat ? fmtPrice(row.completion) : EMPTY_VALUE }}</strong>
-            </div>
-            <div>
-              <span>{{ t('modelPrices.columns.cacheRead') }}</span>
-              <strong>{{ row.hasSavedFlat ? fmtPrice(effectiveCacheRead(row)) : EMPTY_VALUE }}</strong>
-            </div>
-            <div>
-              <span>{{ t('modelPrices.columns.cacheCreation') }}</span>
-              <strong>{{ row.hasSavedFlat && Number(row.cacheCreation || 0) > 0 ? fmtPrice(row.cacheCreation) : EMPTY_VALUE }}</strong>
-            </div>
-          </div>
-
-          <div class="mp-card-foot">
-            <div class="mp-card-meta muted small-text">
-              <span v-if="row.usage?.calls">
-                {{ t('windowKeeper.ext.callsLabel') }} <b>{{ fmtCompact(row.usage.calls) }}</b> · {{ fmtCompact(row.usage.total_tokens) }} tok
-              </span>
-              <span v-else>{{ t('windowKeeper.ext.noLocalCalls') }}</span>
-              <template v-if="row.sourceModelId">
-                <span>·</span>
-                <span class="mono-cell" :title="row.sourceModelId">{{ row.sourceModelId }}</span>
-              </template>
-              <template v-else-if="row.updatedAtMs || row.syncedAtMs">
-                <span>·</span>
-                <span>{{ formatTimestamp(row.updatedAtMs || row.syncedAtMs, localeRef) }}</span>
-              </template>
-            </div>
-
-            <div class="mp-card-actions">
-              <button class="btn btn-xs" type="button" @click="startEdit(row)">
-                {{ row.hasSavedFlat ? t('modelPrices.edit') : t('modelPrices.add') }}
-              </button>
-              <button
-                v-if="row.hasSavedFlat"
-                class="btn btn-xs danger"
-                type="button"
-                :disabled="deleting"
-                @click="confirmDeletePrice(row.model)"
-              >
-                {{ t('common.delete') }}
-              </button>
-            </div>
-          </div>
-        </article>
+      <div v-if="visibleRows.length" class="table-wrap mp-list-table-wrap">
+        <table class="mp-list-table">
+          <thead>
+            <tr>
+              <th>{{ t('modelPrices.columns.model') }}</th>
+              <th>{{ t('modelPrices.columns.source') }}</th>
+              <th>{{ t('modelPrices.columns.promptPer1M') }}</th>
+              <th>{{ t('modelPrices.columns.completionPer1M') }}</th>
+              <th>{{ t('modelPrices.columns.cacheRead') }}</th>
+              <th>{{ t('modelPrices.columns.cacheCreation') }}</th>
+              <th>{{ t('windowKeeper.ext.callsLabel') }} / {{ t('modelPrices.columns.sourceModel') }}</th>
+              <th class="right">{{ t('modelPrices.columns.actions') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in visibleRows"
+              :key="row.model"
+              :class="['mp-list-row', 'clickable', { 'is-missing': row.missing, 'is-official': !!row.officialSchedule, selected: editingModel?.model === row.model }]"
+              @click="startEdit(row)"
+            >
+              <td>
+                <div class="mp-list-model-cell">
+                  <strong class="mp-model-name" :title="row.model">{{ row.model }}</strong>
+                  <span v-if="row.usage?.provider" class="dash-kpi-chip">{{ row.usage.provider }}</span>
+                </div>
+              </td>
+              <td>
+                <div class="mp-card-badges">
+                  <span v-if="row.officialSchedule" class="source-tag source-official">
+                    {{ t('windowKeeper.ext.officialTier') }}
+                  </span>
+                  <span v-if="row.source" :class="['source-tag', row.source === 'manual' ? 'source-manual' : '']">
+                    {{ formatSourceLabel(row.source) }}
+                  </span>
+                  <span v-else-if="!row.officialSchedule && row.hasCandidate" class="warn-text small-text">
+                    {{ t('modelPrices.needsConfirm') }}
+                  </span>
+                  <span v-else-if="row.missing" class="bad-text small-text">
+                    {{ t('modelPrices.notSet') }}
+                  </span>
+                </div>
+              </td>
+              <td class="mono-cell">
+                <strong>{{ displayRowPrompt(row) }}</strong>
+              </td>
+              <td class="mono-cell">
+                <strong>{{ displayRowCompletion(row) }}</strong>
+              </td>
+              <td class="mono-cell">
+                {{ displayRowCacheRead(row) }}
+              </td>
+              <td class="mono-cell">
+                {{ row.hasSavedFlat && Number(row.cacheCreation || 0) > 0 ? fmtPrice(row.cacheCreation) : EMPTY_VALUE }}
+              </td>
+              <td>
+                <div class="mp-card-meta muted small-text">
+                  <span v-if="row.usage?.calls">
+                    <b>{{ fmtCompact(row.usage.calls) }}</b> · {{ fmtCompact(row.usage.total_tokens) }} tok
+                  </span>
+                  <span v-else>{{ t('windowKeeper.ext.noLocalCalls') }}</span>
+                  <template v-if="row.sourceModelId">
+                    <span>·</span>
+                    <span class="mono-cell" :title="row.sourceModelId">{{ row.sourceModelId }}</span>
+                  </template>
+                  <template v-else-if="row.updatedAtMs || row.syncedAtMs">
+                    <span>·</span>
+                    <span>{{ formatTimestamp(row.updatedAtMs || row.syncedAtMs, localeRef) }}</span>
+                  </template>
+                </div>
+              </td>
+              <td class="right" @click.stop>
+                <div class="mp-card-actions">
+                  <button class="btn btn-xs" type="button" @click="startEdit(row)">
+                    {{ row.hasSavedFlat ? t('modelPrices.edit') : t('modelPrices.add') }}
+                  </button>
+                  <button
+                    v-if="row.hasSavedFlat"
+                    class="btn btn-xs danger"
+                    type="button"
+                    :disabled="deleting"
+                    @click="confirmDeletePrice(row.model)"
+                  >
+                    {{ t('common.delete') }}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
       <div v-else class="empty">{{ emptyTableText }}</div>
     </div>
@@ -413,6 +402,33 @@
               @input="onEditingModelInput"
             />
           </label>
+
+          <section v-if="editingOfficialSchedule" class="field-span-2 mp-drawer-official-box">
+            <div class="mp-drawer-official-head">
+              <strong>{{ t('windowKeeper.ext.officialTier') }}</strong>
+              <span v-if="editingModel.usage?.provider" class="dash-kpi-chip">{{ editingModel.usage.provider }}</span>
+            </div>
+            <div class="mp-official-bands">
+              <div class="mp-band-row">
+                <span class="mp-band-tag">Standard ≤{{ fmtThreshold(editingOfficialSchedule) }}</span>
+                <span>{{ t('windowKeeper.ext.rateIn') }} <b>{{ fmtRate(editingOfficialSchedule.standard?.Short?.Input) }}</b></span>
+                <span>{{ t('windowKeeper.ext.rateCache') }} <b>{{ fmtRate(editingOfficialSchedule.standard?.Short?.CachedInput) }}</b></span>
+                <span>{{ t('windowKeeper.ext.rateOut') }} <b>{{ fmtRate(editingOfficialSchedule.standard?.Short?.Output) }}</b></span>
+              </div>
+              <div v-if="editingOfficialSchedule.standard?.Long" class="mp-band-row muted">
+                <span class="mp-band-tag">Standard &gt;{{ fmtThreshold(editingOfficialSchedule) }}</span>
+                <span>{{ t('windowKeeper.ext.rateIn') }} <b>{{ fmtRate(editingOfficialSchedule.standard.Long.Input) }}</b></span>
+                <span>{{ t('windowKeeper.ext.rateCache') }} <b>{{ fmtRate(editingOfficialSchedule.standard.Long.CachedInput) }}</b></span>
+                <span>{{ t('windowKeeper.ext.rateOut') }} <b>{{ fmtRate(editingOfficialSchedule.standard.Long.Output) }}</b></span>
+              </div>
+              <div v-if="editingOfficialSchedule.fast?.Short" class="mp-band-row mp-band-fast">
+                <span class="mp-band-tag">Fast (Priority)</span>
+                <span>{{ t('windowKeeper.ext.rateIn') }} <b>{{ fmtRate(editingOfficialSchedule.fast.Short.Input) }}</b></span>
+                <span>{{ t('windowKeeper.ext.rateCache') }} <b>{{ fmtRate(editingOfficialSchedule.fast.Short.CachedInput) }}</b></span>
+                <span>{{ t('windowKeeper.ext.rateOut') }} <b>{{ fmtRate(editingOfficialSchedule.fast.Short.Output) }}</b></span>
+              </div>
+            </div>
+          </section>
 
           <section class="field-span-2 price-source-picker">
             <div class="price-source-picker-head">
@@ -872,6 +888,35 @@ function effectiveCacheRead(row) {
   return Number(row?.cache || 0);
 }
 
+function displayRowPrompt(row) {
+  if (row?.hasSavedFlat) return fmtPrice(row.prompt);
+  if (row?.officialSchedule?.standard?.Short?.Input != null) {
+    return fmtRate(row.officialSchedule.standard.Short.Input);
+  }
+  return EMPTY_VALUE;
+}
+
+function displayRowCompletion(row) {
+  if (row?.hasSavedFlat) return fmtPrice(row.completion);
+  if (row?.officialSchedule?.standard?.Short?.Output != null) {
+    return fmtRate(row.officialSchedule.standard.Short.Output);
+  }
+  return EMPTY_VALUE;
+}
+
+function displayRowCacheRead(row) {
+  if (row?.hasSavedFlat) return fmtPrice(effectiveCacheRead(row));
+  if (row?.officialSchedule?.standard?.Short?.CachedInput != null) {
+    return fmtRate(row.officialSchedule.standard.Short.CachedInput);
+  }
+  return EMPTY_VALUE;
+}
+
+const editingOfficialSchedule = computed(() => {
+  if (!editingModel.value?.model) return null;
+  return editingModel.value.officialSchedule || resolveOfficialSchedule(editingModel.value.model);
+});
+
 async function refresh(force = false) {
   if (!props.ready) return;
   if (loading.value && !force) return;
@@ -1104,6 +1149,8 @@ function startEdit(row) {
     cache: row.cache ?? 0,
     cacheRead: row.cacheRead ?? 0,
     cacheCreation: row.cacheCreation ?? 0,
+    officialSchedule: row.officialSchedule || null,
+    usage: row.usage || null,
   };
   lookupModelPriceSources(row.model);
 }

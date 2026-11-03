@@ -132,12 +132,22 @@ func fromWindow(prev State, window Window, now time.Time, mode string) State {
 	}
 
 	alwaysRoll := (mode == "always" || mode == "rolling")
-	expiredRolling := alwaysRoll && !window.EndsAt.IsZero() && !window.EndsAt.After(now) &&
-		(window.UsedPercent > 0 || prev.SeenBlocked || prev.Phase == PhaseAnchored || prev.Phase == PhaseClear)
+	hadActiveCycle := prev.SeenBlocked || prev.Phase == PhaseAnchored || prev.Phase == PhaseClear
+	currentExpired := !window.EndsAt.IsZero() && !window.EndsAt.After(now) &&
+		(window.UsedPercent > 0 || hadActiveCycle)
+	prevCycleElapsed := hadActiveCycle &&
+		!prev.EndsAt.IsZero() && !prev.EndsAt.After(now) &&
+		window.EndsAt.After(now) && window.UsedPercent == 0 &&
+		(prev.LastBlockedEnd.IsZero() || prev.LastBlockedEnd.Before(prev.EndsAt))
+	expiredRolling := alwaysRoll && (currentExpired || prevCycleElapsed)
 	// Key rolling generations to the observed expired window, not an older
 	// exhaustion. Keep pending identity when a probe shows a future window.
 	if expiredRolling && prev.Phase != PhaseBlocked && prev.Phase != PhaseInconclusive && prev.Phase != PhaseStopped {
-		state.LastBlockedEnd = window.EndsAt
+		if currentExpired {
+			state.LastBlockedEnd = window.EndsAt
+		} else {
+			state.LastBlockedEnd = prev.EndsAt
+		}
 	}
 
 	switch {

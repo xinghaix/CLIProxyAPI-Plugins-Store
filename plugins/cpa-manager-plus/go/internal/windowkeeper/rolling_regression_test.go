@@ -146,6 +146,25 @@ func TestRollingGenerationBoundaries(t *testing.T) {
 			t.Fatalf("%s gained automatic rolling: %+v", mode, result)
 		}
 	}
+
+	// Regression: when a previously anchored 5h window expires (prev.EndsAt <= now)
+	// and upstream wham/usage immediately reports used_percent=0 with a fresh relative
+	// reset_after_seconds (window.EndsAt > now), always/rolling mode must still fire ActionSend.
+	prevAnchored := State{
+		LimitID: "codex", Slot: "primary", Kind: KindFiveHour, PeriodSeconds: 18000,
+		StartsAt: end.Add(-5 * time.Hour), EndsAt: end, LastBlockedEnd: oldEnd,
+		Gating: true, SeenBlocked: true, Phase: PhaseAnchored, Hypothesis: PhaseAnchored,
+	}
+	freshZeroWindow := Window{
+		LimitID: "codex", Slot: "primary", Kind: KindFiveHour, PeriodSeconds: 18000,
+		UsedPercent: 0, LimitReached: false,
+		StartsAt: end.Add(3 * time.Second), EndsAt: end.Add(5*time.Hour + 3*time.Second),
+		Gating: true,
+	}
+	resRolling := AdvanceWithMode([]State{prevAnchored}, []Window{freshZeroWindow}, end.Add(3*time.Second), 0, "always")
+	if resRolling.Action != ActionSend || !resRolling.States[0].LastBlockedEnd.Equal(end) {
+		t.Fatalf("expected ActionSend when prev anchored cycle elapsed and upstream reset to 0%%: %+v", resRolling)
+	}
 }
 
 func TestKeeperRollingSeveralAnchoredGenerations(t *testing.T) {
