@@ -1139,16 +1139,22 @@ function addManualPrice() {
   };
 }
 
+function cleanRateValue(v) {
+  const n = Number(v ?? 0);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return parseFloat(n.toFixed(6));
+}
+
 function startEdit(row) {
   resetSourceLookup();
   editingModel.value = {
     isNew: false,
     model: row.model,
-    prompt: row.prompt ?? 0,
-    completion: row.completion ?? 0,
-    cache: row.cache ?? 0,
-    cacheRead: row.cacheRead ?? 0,
-    cacheCreation: row.cacheCreation ?? 0,
+    prompt: cleanRateValue(row.prompt),
+    completion: cleanRateValue(row.completion),
+    cache: cleanRateValue(row.cache),
+    cacheRead: cleanRateValue(row.cacheRead),
+    cacheCreation: cleanRateValue(row.cacheCreation),
     officialSchedule: row.officialSchedule || null,
     usage: row.usage || null,
   };
@@ -1160,11 +1166,11 @@ function editFromCandidate(c) {
   editingModel.value = {
     isNew: false,
     model: c.localModel,
-    prompt: c.prompt ?? c.price?.prompt ?? 0,
-    completion: c.completion ?? c.price?.completion ?? 0,
-    cache: c.cache ?? c.price?.cache ?? 0,
-    cacheRead: c.cacheRead ?? c.price?.cacheRead ?? 0,
-    cacheCreation: c.cacheCreation ?? c.price?.cacheCreation ?? 0,
+    prompt: cleanRateValue(c.prompt ?? c.price?.prompt),
+    completion: cleanRateValue(c.completion ?? c.price?.completion),
+    cache: cleanRateValue(c.cache ?? c.price?.cache),
+    cacheRead: cleanRateValue(c.cacheRead ?? c.price?.cacheRead),
+    cacheCreation: cleanRateValue(c.cacheCreation ?? c.price?.cacheCreation),
   };
   lookupModelPriceSources(c.localModel);
 }
@@ -1231,11 +1237,11 @@ function applySelectedSourceToDraft() {
   if (!editingModel.value || !selectedSourceOption.value) return;
   const entry = buildSourcePriceEntry(editingModel.value.model, selectedSourceOption.value);
   if (!entry) return;
-  editingModel.value.prompt = entry.price.prompt;
-  editingModel.value.completion = entry.price.completion;
-  editingModel.value.cache = entry.price.cache;
-  editingModel.value.cacheRead = entry.price.cacheRead;
-  editingModel.value.cacheCreation = entry.price.cacheCreation;
+  editingModel.value.prompt = cleanRateValue(entry.price.prompt);
+  editingModel.value.completion = cleanRateValue(entry.price.completion);
+  editingModel.value.cache = cleanRateValue(entry.price.cache);
+  editingModel.value.cacheRead = cleanRateValue(entry.price.cacheRead);
+  editingModel.value.cacheCreation = cleanRateValue(entry.price.cacheCreation);
   syncNotice.value = t('modelPrices.sourcePicker.applied', {
     source: formatSourceLabel(entry.selectedSource.source),
   });
