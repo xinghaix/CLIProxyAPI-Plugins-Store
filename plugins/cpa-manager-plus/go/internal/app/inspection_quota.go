@@ -367,9 +367,7 @@ func quotaMetadata(result store.InspectionResult, metadata map[string]any, windo
 			provider = firstString(metadata, "provider")
 		}
 		for _, window := range windows {
-			window["modelScope"] = "unknown"
-			if store.AccountWindowIsAccountScope(provider, firstString(window, "id")) ||
-				store.AccountWindowIsAccountScope(provider, firstString(window, "label")) {
+			if scope := firstString(window, "modelScope"); scope == "" || scope == "unknown" {
 				window["modelScope"] = "account"
 			}
 		}

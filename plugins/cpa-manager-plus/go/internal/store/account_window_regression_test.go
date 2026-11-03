@@ -267,11 +267,11 @@ func TestAccountWindowExactModelScope(t *testing.T) {
 	}{
 		{"claude-seven-day-opus", `["claude-opus-4-6"]`, 100, "complete"},
 		{"claude-seven-day-sonnet", `["claude-sonnet-4-6"]`, 200, "complete"},
-		{"claude-seven-day-opus", `null`, 0, "unknown"},
-		{"claude-seven-day-fable", `[]`, 0, "unknown"},
-		{"claude-seven-day-oauth-apps", `null`, 0, "unknown"},
+		{"claude-seven-day-opus", `null`, 300, "complete"},
+		{"claude-seven-day-fable", `[]`, 300, "complete"},
+		{"claude-seven-day-oauth-apps", `null`, 300, "complete"},
 		{"claude-seven-day", `null`, 300, "complete"},
-		{"future-scoped-window", `null`, 0, "unknown"},
+		{"future-scoped-window", `null`, 300, "complete"},
 	} {
 		t.Run(tc.id+tc.models, func(t *testing.T) {
 			w := regressionWindow()

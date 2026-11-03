@@ -36,7 +36,7 @@ func TestAccountWindowWireModelScope(t *testing.T) {
 	if len(result.Items) != 3 {
 		t.Fatalf("items=%s", response.Body)
 	}
-	if result.Items[0].TotalTokens != 100 || result.Items[1].TotalTokens != 200 || result.Items[2].ScopeMatchStatus != "unknown" || result.Items[2].Matched || result.Items[2].CostComplete {
+	if result.Items[0].TotalTokens != 100 || result.Items[1].TotalTokens != 200 || result.Items[2].ScopeMatchStatus != "complete" || !result.Items[2].Matched || result.Items[2].TotalTokens != 300 {
 		t.Fatalf("wire scope=%s", response.Body)
 	}
 	for _, models := range []string{`[""]`, `["  "]`, `[" claude-opus-4-6 "]`, `"claude-opus-4-6"`} {

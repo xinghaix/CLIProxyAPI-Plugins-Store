@@ -59,8 +59,12 @@ describe('quota usage snapshot isolation', () => {
     expect(data.targets).toHaveLength(2);
     expect(data.windows[0]).toMatchObject({ sampledAtMs: now, modelScope: 'model', modelScopeModels: models });
     for (const target of data.targets) expect(target.model_scope_models).toEqual(models);
-    for (const scope of [undefined, 'unknown', 'model']) expect(snapshot({ modelScope: scope }).targets).toEqual([]);
-    expect(snapshot({ modelScope: 'unknown', modelScopeModels: models }).targets).toEqual([]);
+    // 未指定 modelScope 或历史缓存为 'unknown' 时，默认跟随凭证统计（modelScope = 'account'）
+    for (const scope of [undefined, 'unknown', 'account']) {
+      expect(snapshot({ modelScope: scope }).windows[0].modelScope).toBe('account');
+      expect(snapshot({ modelScope: scope }).targets).toHaveLength(2);
+    }
+    expect(snapshot({ modelScope: 'model' }).targets).toEqual([]);
     for (const models of [[''], [' GPT-5'], ['GPT-5 '], [null]]) {
       expect(snapshot({ modelScope: 'model', modelScopeModels: models }).targets).toEqual([]);
     }

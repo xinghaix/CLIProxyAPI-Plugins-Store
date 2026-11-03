@@ -36,38 +36,6 @@ function inferKind(window) {
   return raw || 'unknown';
 }
 
-function normalizeScopeSlug(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function isAccountScopeWindowForProvider(provider, window) {
-  const prov = String(provider || '').trim().toLowerCase();
-  const candidates = [window?.id, window?.label, window?.kind, window?.window].map(normalizeScopeSlug).filter(Boolean);
-  for (const slug of candidates) {
-    if (slug === 'history' || slug === 'spark') return true;
-    if (prov === 'codex' && (slug === 'five-hour' || slug === 'weekly' || slug === 'monthly')) return true;
-    if (prov === 'claude' && (slug === 'claude-five-hour' || slug === 'claude-seven-day' || slug === 'cloud-session-credits')) return true;
-    if (prov === 'xai' && (slug === 'xai-weekly' || slug === 'xai-monthly')) return true;
-    if (prov === 'kimi' && (slug === 'kimi-summary' || slug.startsWith('kimi-limit-'))) return true;
-    if (prov === 'devin' && (slug === 'devin-daily' || slug === 'devin-weekly' || slug === 'daily' || slug === 'weekly')) return true;
-    if (prov === 'meta' && (slug === 'meta-window' || slug === 'meta-weekly' || slug === 'window' || slug === 'weekly')) return true;
-    if (prov === 'antigravity' && ([
-      'five-hour', '5h', '5-hour', 'five-hour-limit', 'five-hour-limit-remaining',
-      'weekly', 'week', 'weekly-limit', 'weekly-limit-remaining',
-      'daily', 'day', 'daily-limit', 'daily-limit-remaining',
-      'monthly', 'month', 'monthly-limit', 'monthly-limit-remaining',
-      'antigravity-bucket',
-    ].includes(slug) || slug.startsWith('bucket-') || slug.includes('-bucket-'))) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function durationSecondsFor(window) {
   const periodHours = Number(window?.periodHours ?? window?.period_hours);
   if (Number.isFinite(periodHours) && periodHours > 0) return periodHours * 3600;
@@ -102,10 +70,8 @@ export function normalizeCredentialQuotaWindow(window, index = 0, nowMs = Date.n
   }
   const windowMode = cycleStartMs != null && cycleEndMs != null ? 'fixed' : durationSeconds != null ? 'rolling' : 'unknown';
   const stale = windowMode === 'fixed' && cycleEndMs != null && cycleEndMs <= nowMs;
-  const hasExplicitScope = Boolean(window && Object.prototype.hasOwnProperty.call(window, 'modelScope'));
-  const resolvedScope = hasExplicitScope
-    ? (window?.modelScope || 'unknown')
-    : (isAccountScopeWindowForProvider(provider, window) ? 'account' : 'unknown');
+  const rawScope = typeof window?.modelScope === 'string' ? window.modelScope.trim() : '';
+  const resolvedScope = rawScope === 'model' ? 'model' : 'account';
   return {
     key: String(window?.id || window?.key || `${kind}-${index}`),
     providerWindowId: String(window?.id || window?.key || `${kind}-${index}`),

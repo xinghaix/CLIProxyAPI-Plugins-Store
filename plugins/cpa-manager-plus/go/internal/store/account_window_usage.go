@@ -136,14 +136,7 @@ func accountWindowUsageOne(window AccountWindowUsageTarget, prices map[string]Pr
 			return item, fmt.Errorf("model_scope_models must contain nonempty exact model IDs without surrounding whitespace")
 		}
 	}
-	if len(window.ModelScopeModels) == 0 &&
-		!AccountWindowIsAccountScope(window.AuthProviderSnapshot, window.ProviderWindowID) &&
-		!AccountWindowIsAccountScope(window.AuthProviderSnapshot, window.WindowKey) {
-		item.ScopeMatchStatus = "unknown"
-		item.SyncStatus = "unknown"
-		item.CostComplete = false
-		return item, nil
-	}
+	// 未指定精确子模型列表时，配额窗口流量默认直接跟随凭证本身统计。
 	total := stats{}
 	// ponytail: O(events * windows), capped at 200 windows; index in memory
 	// by credential if large batches become costly. Aggregate inputs are uncapped.
@@ -195,43 +188,10 @@ func normalizeAccountWindowPeriod(value string) string {
 	}
 }
 
-// AccountWindowIsAccountScope is shared by quota producers and usage queries.
-// New/product/family windows remain unknown until exact model IDs are supplied.
+// AccountWindowIsAccountScope 判断配额窗口是否按凭证维度统计流量。
+// 只要属于凭证的窗口，默认均跟随该凭证的全部流量请求，不再受硬编码窗口 ID 白名单限制。
 func AccountWindowIsAccountScope(provider, id string) bool {
-	if id == "history" || id == "spark" {
-		return true
-	}
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "codex":
-		return id == "five-hour" || id == "five_hour" || id == "weekly" || id == "monthly"
-	case "claude":
-		return id == "claude-five-hour" || id == "claude-seven-day" || id == "cloud-session-credits"
-	case "xai":
-		return id == "xai-weekly" || id == "xai-monthly"
-	case "kimi":
-		return id == "kimi-summary" || strings.HasPrefix(id, "kimi-limit-")
-	case "devin":
-		return id == "devin-daily" || id == "devin-weekly" || id == "daily" || id == "weekly"
-	case "meta":
-		return id == "meta-window" || id == "meta-weekly" || id == "window" || id == "weekly"
-	case "antigravity":
-		return isAntigravityAccountScopeWindow(id)
-	}
-	return false
-}
-
-func isAntigravityAccountScopeWindow(raw string) bool {
-	slug := normalizeWindowScopeSlug(raw)
-	switch slug {
-	case "five-hour", "5h", "5-hour", "five-hour-limit", "five-hour-limit-remaining",
-		"weekly", "week", "weekly-limit", "weekly-limit-remaining",
-		"daily", "day", "daily-limit", "daily-limit-remaining",
-		"monthly", "month", "monthly-limit", "monthly-limit-remaining",
-		"antigravity-bucket":
-		return true
-	default:
-		return strings.HasPrefix(slug, "bucket-") || strings.Contains(slug, "-bucket-")
-	}
+	return strings.TrimSpace(provider) != "" || strings.TrimSpace(id) != ""
 }
 
 func normalizeWindowScopeSlug(raw string) string {
@@ -330,11 +290,7 @@ func normalizeOneQuotaWindowMap(provider string, window map[string]any) map[stri
 		scope = ""
 	}
 	if scope == "" || scope == "unknown" {
-		if AccountWindowIsAccountScope(provider, id) || AccountWindowIsAccountScope(provider, label) || AccountWindowIsAccountScope(provider, kind) {
-			cloned["modelScope"] = "account"
-		} else if scope == "" {
-			cloned["modelScope"] = "unknown"
-		}
+		cloned["modelScope"] = "account"
 	}
 	if _, hasPeriod := cloned["periodHours"]; !hasPeriod {
 		if _, hasSnake := cloned["period_hours"]; !hasSnake {
